@@ -444,7 +444,7 @@ class RemediationManager:
                     validation_result = ai_validator.validate_and_enhance(
                         original_html=original_html,
                         remediated_html=remediated_html,
-                        algorithmic_changes=changes,
+                        changes=changes,
                         issues=tab_order_issues,
                     )
 
@@ -462,8 +462,8 @@ class RemediationManager:
                         )
 
                         final_html, ai_changes = ai_validator.apply_suggestions(
-                            remediated_html=remediated_html,
-                            suggested_changes=validation_result["suggested_changes"],
+                            html_content=remediated_html,
+                            suggestions=validation_result["suggested_changes"],
                         )
 
                         # Update soup with AI-enhanced changes
@@ -848,7 +848,6 @@ class RemediationManager:
                         detail["location"][
                             "description"
                         ] = f"Page {detail['page_number']}"
-
                 # Set result to None for failure counting
                 result = None
 

@@ -8,7 +8,6 @@ This module provides algorithmic remediation for tab order issues (WCAG 2.4.3).
 
 from typing import Dict, List, Any, Optional, Tuple
 from bs4 import BeautifulSoup, Tag
-import re
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 
 logger = setup_logger(__name__)
