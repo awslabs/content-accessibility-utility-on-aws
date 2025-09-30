@@ -32,6 +32,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Remediate common accessibility issues using Bedrock models
 - Advanced table remediation strategies
 - Support for single-page and multi-page output formats
+- **Multi-language support** (English, Spanish, French) for CLI, API, and Streamlit interface
 - Batch processing capabilities for large-scale document processing
 - Detailed usage tracking for BDA pages and Bedrock tokens
 - Cost analysis tools for resource usage monitoring
@@ -343,10 +344,36 @@ These options are available for all commands:
 
 - `--input`, `-i`: Input file or directory path (required)
 - `--output`, `-o`: Output file or directory path (defaults to a path based on input name)
+- `--language`, `-l`: Language for user interface and reports (choices: en, es, fr; default: en)
 - `--debug`: Enable debug logging
 - `--quiet`, `-q`: Only output reports, suppress other output
 - `--config`, `-c`: Path to configuration file
 - `--profile`: AWS profile name to use for credentials
+
+### Language Support
+
+The tool supports multiple languages for CLI output and reports:
+
+```bash
+# Use Spanish
+content-accessibilty-utility-on-aws process --input document.pdf --language es
+
+# Use French
+content-accessibilty-utility-on-aws audit --input document.html --language fr
+
+# Use English (default)
+content-accessibilty-utility-on-aws convert --input document.pdf --language en
+```
+
+Supported languages:
+- **en**: English (default)
+- **es**: Spanish (Español)
+- **fr**: French (Français)
+- **de**: German (Deutsch)
+- **pt**: Portuguese (Português)
+- **it**: Italian (Italiano)
+- **ja**: Japanese (日本語)
+- **zh**: Chinese Simplified (中文)
 
 ## Output Structure
 
@@ -405,8 +432,31 @@ result = process_pdf_accessibility(
         "auto_fix": True
     },
     perform_audit=True,
-    perform_remediation=True
+    perform_remediation=True,
+    language="en"  # Optional: Set language for reports (en, es, fr)
 )
+```
+
+### Language Support in API
+
+```python
+from content_accessibility_with_aws.api import process_pdf_accessibility
+from content_accessibility_with_aws.utils.i18n import set_language, translate
+
+# Set language globally
+set_language("es")  # Spanish
+
+# Or pass language parameter to API functions
+result = process_pdf_accessibility(
+    pdf_path="document.pdf",
+    output_dir="output/",
+    language="fr"  # French
+)
+
+# Access translated strings directly
+from content_accessibility_with_aws.utils.i18n import translate
+message = translate("cli.process_completed")  # Uses current language
+message_es = translate("cli.process_completed", language="es")  # Force Spanish
 ```
 
 ### Individual Components
@@ -494,4 +544,3 @@ Apache-2.0 License. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.
-

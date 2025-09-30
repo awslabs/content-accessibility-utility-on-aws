@@ -1,0 +1,257 @@
+{
+  "cli": {
+    "conversion_results": "Résultats de Conversion :",
+    "main_html": "HTML Principal : {path}",
+    "total_html_files": "Total de fichiers HTML : {count}",
+    "total_image_files": "Total de fichiers d'image : {count}",
+    "audit_results": "Résultats d'Audit :",
+    "remediation_results": "Résultats de Remédiation :",
+    "issues_processed": "Problèmes traités : {count}",
+    "issues_remediated": "Problèmes corrigés : {count}",
+    "issues_failed": "Problèmes échoués : {count}",
+    "remediated_html": "HTML Corrigé : {path}",
+    "remediation_report": "Rapport de remédiation : {path}",
+    "issue_types_remediated": "Types de problèmes corrigés : {types}",
+    "failed_issue_types": "Types de problèmes échoués : {types}",
+    "process_completed": "Processus terminé avec succès !",
+    "all_output_files": "Tous les fichiers de sortie sont dans : {path}",
+    "converting_pdf": "Conversion de PDF en HTML : {path}",
+    "auditing_html": "Audit HTML pour l'accessibilité : {path}",
+    "remediating_html": "Correction HTML : {path}",
+    "step_n_of_m": "Étape {n}/{m} : {description}",
+    "error": "Erreur : {message}",
+    "no_command_specified": "Aucune commande spécifiée"
+  },
+  "issues": {
+    "missing-alt-text": {
+      "description": "Image sans texte alternatif",
+      "remediation": "Ajouter un texte alternatif descriptif à l'image"
+    },
+    "generic-alt-text": {
+      "description": "L'image a un texte alternatif générique ou peu informatif",
+      "remediation": "Remplacer le texte alternatif générique par un contenu descriptif"
+    },
+    "decorative-image-with-alt": {
+      "description": "L'image décorative devrait avoir un texte alternatif vide",
+      "remediation": "Définir le texte alternatif comme chaîne vide pour les images décoratives"
+    },
+    "improper-heading-structure": {
+      "description": "Structure de niveaux de titre incorrecte (niveaux sautés)",
+      "remediation": "Ajuster les niveaux de titre pour suivre la hiérarchie appropriée"
+    },
+    "missing-document-language": {
+      "description": "Langue du document non spécifiée",
+      "remediation": "Ajouter l'attribut lang à l'élément html"
+    },
+    "missing-page-title": {
+      "description": "Page sans élément de titre",
+      "remediation": "Ajouter un élément de titre descriptif au document"
+    },
+    "missing-main-landmark": {
+      "description": "Aucun rôle de repère principal identifié",
+      "remediation": "Ajouter l'élément main ou l'attribut role='main'"
+    },
+    "missing-table-headers": {
+      "description": "Tableau sans cellules d'en-tête",
+      "remediation": "Ajouter des éléments th appropriés pour définir les en-têtes de tableau"
+    },
+    "missing-header-scope": {
+      "description": "En-têtes de tableau sans attribut scope",
+      "remediation": "Ajouter scope='row' ou scope='col' aux cellules d'en-tête"
+    },
+    "complex-table-no-ids": {
+      "description": "Tableau complexe sans ID d'en-tête et en-têtes de cellule de données",
+      "remediation": "Ajouter des attributs id aux en-têtes et l'attribut headers aux cellules de données"
+    },
+    "missing-form-label": {
+      "description": "Contrôle de formulaire sans étiquette",
+      "remediation": "Associer l'étiquette au contrôle de formulaire en utilisant les attributs for/id"
+    },
+    "missing-fieldset-legend": {
+      "description": "Groupe de contrôles de formulaire sans fieldset/legend",
+      "remediation": "Envelopper les contrôles liés dans fieldset avec legend"
+    },
+    "missing-aria-required": {
+      "description": "Champ de formulaire requis sans aria-required",
+      "remediation": "Ajouter aria-required='true' aux champs requis"
+    },
+    "empty-link": {
+      "description": "Le lien n'a pas de contenu textuel",
+      "remediation": "Ajouter un contenu textuel descriptif au lien"
+    },
+    "generic-link-text": {
+      "description": "Le texte du lien est générique (par ex., 'cliquez ici')",
+      "remediation": "Remplacer par un texte de lien descriptif"
+    },
+    "missing-skip-link": {
+      "description": "Aucun lien d'évitement de navigation trouvé",
+      "remediation": "Ajouter un lien d'évitement pour contourner la navigation"
+    },
+    "missing-button-role": {
+      "description": "Élément interactif sans rôle de bouton",
+      "remediation": "Ajouter role='button' à l'élément interactif"
+    },
+    "missing-aria-expanded": {
+      "description": "Élément extensible sans état aria-expanded",
+      "remediation": "Ajouter l'attribut aria-expanded pour afficher l'état développer/réduire"
+    },
+    "missing-focus-indicator": {
+      "description": "Élément interactif sans indicateur de focus visible",
+      "remediation": "Ajouter des styles de focus visibles en utilisant CSS"
+    },
+    "missing-video-captions": {
+      "description": "Vidéo sans sous-titres",
+      "remediation": "Ajouter l'élément track avec sous-titres"
+    },
+    "missing-audio-transcript": {
+      "description": "Audio sans transcription",
+      "remediation": "Fournir une transcription textuelle pour le contenu audio"
+    },
+    "missing-media-controls": {
+      "description": "Média sans contrôles accessibles au clavier",
+      "remediation": "Ajouter l'attribut controls à l'élément multimédia"
+    },
+    "insufficient-color-contrast": {
+      "description": "Le texte a un contraste de couleur insuffisant",
+      "remediation": "Ajuster les couleurs pour répondre aux exigences de contraste WCAG"
+    },
+    "color-only-indication": {
+      "description": "Information transmise uniquement par la couleur",
+      "remediation": "Ajouter des indicateurs non basés sur la couleur (texte, icônes, motifs)"
+    }
+  },
+  "reports": {
+    "audit_summary": "Résumé d'Audit",
+    "remediation_summary": "Résumé de Remédiation",
+    "total_issues": "Total de Problèmes : {count}",
+    "by_severity": "Problèmes par Gravité",
+    "critical": "Critique : {count}",
+    "major": "Majeur : {count}",
+    "minor": "Mineur : {count}",
+    "by_type": "Problèmes par Type",
+    "page": "Page",
+    "element": "Élément",
+    "severity": "Gravité",
+    "description": "Description",
+    "remediation": "Remédiation",
+    "status": "Statut",
+    "fixed": "Corrigé",
+    "failed": "Échoué",
+    "skipped": "Ignoré",
+    "needs_remediation": "Nécessite une Remédiation",
+    "automatically_fixed": "Corrigé Automatiquement",
+    "wcag_criterion": "Critère WCAG",
+    "location": "Emplacement",
+    "context": "Contexte",
+    "file": "Fichier",
+    "line": "Ligne"
+  },
+  "ui": {
+    "upload_file": "Télécharger le Fichier",
+    "process_button": "Traiter le Document",
+    "audit_results": "Résultats d'Audit",
+    "remediated_output": "Sortie Corrigée",
+    "remediation_report": "Rapport de Remédiation",
+    "usage_data": "Données d'Utilisation",
+    "processing_options": "Options de Traitement",
+    "conversion_options": "Options de Conversion",
+    "audit_options": "Options d'Audit",
+    "remediation_options": "Options de Remédiation",
+    "perform_audit": "Effectuer l'Audit",
+    "perform_remediation": "Effectuer la Remédiation",
+    "single_page_mode": "Mode Page Unique",
+    "multi_page_mode": "Mode Multi-Pages",
+    "extract_images": "Extraire les Images",
+    "image_format": "Format d'Image",
+    "severity_threshold": "Seuil de Gravité",
+    "model_selection": "Sélection de Modèle",
+    "max_issues": "Problèmes Maximum",
+    "language": "Langue",
+    "select_language": "Sélectionner la Langue",
+    "download": "Télécharger",
+    "preview": "Aperçu",
+    "no_data_available": "Aucune donnée disponible",
+    "loading": "Chargement...",
+    "processing": "Traitement...",
+    "document_accessibility_title": "Accessibilité des Documents",
+    "upload_document_description": "Téléchargez un document pour le traiter via le pipeline d'accessibilité.",
+    "choose_document": "Choisir un document",
+    "upload_help": "Téléchargez un PDF pour conversion/audit/remédiation, ou HTML/ZIP pour audit/remédiation directe",
+    "processing_mode": "Mode de Traitement",
+    "processing_mode_help": "Sélectionnez le niveau de traitement à appliquer",
+    "convert_only": "Conversion Uniquement",
+    "convert_audit": "Conversion + Audit",
+    "full_processing": "Traitement Complet",
+    "audit_only": "Audit Uniquement",
+    "audit_remediate": "Audit + Remédiation",
+    "multiple_documents": "Générer plusieurs fichiers HTML",
+    "check_images": "Vérifier les images",
+    "check_headings": "Vérifier les titres",
+    "check_links": "Vérifier les liens",
+    "check_tables": "Vérifier les tableaux",
+    "fix_images": "Corriger les problèmes d'image",
+    "fix_headings": "Corriger les problèmes de titre",
+    "fix_links": "Corriger les problèmes de lien",
+    "cost_calculation_options": "Options de Calcul des Coûts",
+    "cost_per_bda_page": "Coût par page dans BDA ($)",
+    "cost_per_bda_page_help": "Coût en $ par page traitée via Bedrock Data Automation",
+    "cost_per_input_token": "Coût par 1K jetons d'entrée ($)",
+    "cost_per_input_token_help": "Coût en $ par 1 000 jetons d'entrée pour les modèles Bedrock",
+    "cost_per_output_token": "Coût par 1K jetons de sortie ($)",
+    "cost_per_output_token_help": "Coût en $ par 1 000 jetons de sortie pour les modèles Bedrock"
+  },
+  "errors": {
+    "file_not_found": "Fichier introuvable : {path}",
+    "conversion_failed": "Conversion échouée : {reason}",
+    "audit_failed": "Audit échoué : {reason}",
+    "remediation_failed": "Remédiation échouée : {reason}",
+    "invalid_file_type": "Type de fichier invalide : {type}",
+    "unsupported_file": "Fichier non pris en charge : {filename}",
+    "missing_required_parameter": "Paramètre requis manquant : {param}",
+    "invalid_parameter_value": "Valeur de paramètre invalide pour {param} : {value}",
+    "aws_error": "Erreur du service AWS : {message}",
+    "bedrock_error": "Erreur du service Bedrock : {message}",
+    "s3_error": "Erreur du service S3 : {message}",
+    "processing_error": "Erreur de traitement : {message}",
+    "unexpected_error": "Erreur inattendue : {message}"
+  },
+  "status": {
+    "completed": "Terminé",
+    "in_progress": "En Cours",
+    "failed": "Échoué",
+    "pending": "En Attente",
+    "cancelled": "Annulé"
+  },
+  "common": {
+    "yes": "Oui",
+    "no": "Non",
+    "true": "Vrai",
+    "false": "Faux",
+    "none": "Aucun",
+    "all": "Tous",
+    "default": "Par Défaut",
+    "custom": "Personnalisé",
+    "optional": "Optionnel",
+    "required": "Requis",
+    "enabled": "Activé",
+    "disabled": "Désactivé",
+    "success": "Succès",
+    "warning": "Avertissement",
+    "info": "Information",
+    "error": "Erreur"
+  },
+  "help": {
+    "command_description": "Convertir des documents PDF en HTML accessible et corriger les problèmes d'accessibilité",
+    "convert_help": "Convertir PDF en HTML",
+    "audit_help": "Auditer HTML pour les problèmes d'accessibilité",
+    "remediate_help": "Corriger les problèmes d'accessibilité dans HTML",
+    "process_help": "Flux de travail complet : convertir PDF, auditer et corriger",
+    "input_help": "Chemin du fichier ou du répertoire d'entrée",
+    "output_help": "Chemin du fichier ou du répertoire de sortie",
+    "language_help": "Langue pour l'interface utilisateur et les rapports (par défaut : en)",
+    "config_help": "Chemin vers le fichier de configuration",
+    "debug_help": "Activer la journalisation de débogage",
+    "quiet_help": "Afficher uniquement les rapports, supprimer les autres sorties",
+    "version_help": "Afficher les informations de version"
+  }
+}

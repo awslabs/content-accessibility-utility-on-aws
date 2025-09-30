@@ -21,6 +21,7 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
 from content_accessibility_utility_on_aws.utils.config import config_manager
 from content_accessibility_utility_on_aws.utils.resources import ensure_directory
 from content_accessibility_utility_on_aws.utils.usage_tracker import SessionUsageTracker
+from content_accessibility_utility_on_aws.utils.i18n import set_language
 
 # Set up module-level logger
 logger = setup_logger(__name__, level="INFO")
@@ -37,6 +38,7 @@ def process_pdf_accessibility(
     usage_data_bucket: Optional[str] = None,
     usage_data_bucket_prefix: Optional[str] = None,
     profile: Optional[str] = None,
+    language: str = "en",
 ) -> Dict[str, Any]:
     """
     Process a PDF document through the full accessibility pipeline.
@@ -52,6 +54,7 @@ def process_pdf_accessibility(
         usage_data_bucket: S3 bucket to store usage data
         usage_data_bucket_prefix: Optional prefix for the S3 key path
         profile: AWS profile name to use for credentials
+        language: Language code for user interface and reports (default: 'en')
 
     Returns:
         Dictionary containing processing results:
@@ -64,6 +67,10 @@ def process_pdf_accessibility(
         DocumentAccessibilityError: If there's an error during processing.
     """
     try:
+        # Set language for this session
+        set_language(language)
+        logger.debug(f"Set language to: {language}")
+        
         # Verify PDF file exists
         if not os.path.isfile(pdf_path):
             raise FileNotFoundError(f"PDF file not found: {pdf_path}")

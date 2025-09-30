@@ -1,0 +1,257 @@
+{
+  "cli": {
+    "conversion_results": "変換結果:",
+    "main_html": "メインHTML: {path}",
+    "total_html_files": "HTMLファイル総数: {count}",
+    "total_image_files": "画像ファイル総数: {count}",
+    "audit_results": "監査結果:",
+    "remediation_results": "修正結果:",
+    "issues_processed": "処理された問題: {count}",
+    "issues_remediated": "修正された問題: {count}",
+    "issues_failed": "失敗した問題: {count}",
+    "remediated_html": "修正されたHTML: {path}",
+    "remediation_report": "修正レポート: {path}",
+    "issue_types_remediated": "修正された問題タイプ: {types}",
+    "failed_issue_types": "失敗した問題タイプ: {types}",
+    "process_completed": "プロセスが正常に完了しました！",
+    "all_output_files": "すべての出力ファイルは次にあります: {path}",
+    "converting_pdf": "PDFをHTMLに変換中: {path}",
+    "auditing_html": "HTMLのアクセシビリティを監査中: {path}",
+    "remediating_html": "HTMLを修正中: {path}",
+    "step_n_of_m": "ステップ {n}/{m}: {description}",
+    "error": "エラー: {message}",
+    "no_command_specified": "コマンドが指定されていません"
+  },
+  "issues": {
+    "missing-alt-text": {
+      "description": "代替テキストがない画像",
+      "remediation": "画像に説明的な代替テキストを追加する"
+    },
+    "generic-alt-text": {
+      "description": "画像に一般的または情報不足の代替テキストがある",
+      "remediation": "一般的な代替テキストを説明的な内容に置き換える"
+    },
+    "decorative-image-with-alt": {
+      "description": "装飾画像は空の代替テキストが必要",
+      "remediation": "装飾画像の代替テキストを空文字列に設定する"
+    },
+    "improper-heading-structure": {
+      "description": "不適切な見出しレベル構造（レベルがスキップされている）",
+      "remediation": "適切な階層に従うように見出しレベルを調整する"
+    },
+    "missing-document-language": {
+      "description": "ドキュメント言語が指定されていない",
+      "remediation": "html要素にlang属性を追加する"
+    },
+    "missing-page-title": {
+      "description": "title要素のないページ",
+      "remediation": "ドキュメントに説明的なtitle要素を追加する"
+    },
+    "missing-main-landmark": {
+      "description": "メインランドマークロールが識別されていない",
+      "remediation": "main要素またはrole='main'属性を追加する"
+    },
+    "missing-table-headers": {
+      "description": "ヘッダーセルのないテーブル",
+      "remediation": "テーブルヘッダーを定義する適切なth要素を追加する"
+    },
+    "missing-header-scope": {
+      "description": "テーブルヘッダーにscope属性がない",
+      "remediation": "ヘッダーセルにscope='row'またはscope='col'を追加する"
+    },
+    "complex-table-no-ids": {
+      "description": "ヘッダーIDとデータセルヘッダーのない複雑なテーブル",
+      "remediation": "ヘッダーにid属性、データセルにheaders属性を追加する"
+    },
+    "missing-form-label": {
+      "description": "ラベルのないフォームコントロール",
+      "remediation": "for/id属性を使用してラベルをフォームコントロールに関連付ける"
+    },
+    "missing-fieldset-legend": {
+      "description": "fieldset/legendのないフォームコントロールグループ",
+      "remediation": "関連するコントロールをfieldsetとlegendでラップする"
+    },
+    "missing-aria-required": {
+      "description": "aria-requiredのない必須フォームフィールド",
+      "remediation": "必須フィールドにaria-required='true'を追加する"
+    },
+    "empty-link": {
+      "description": "テキストコンテンツのないリンク",
+      "remediation": "リンクに説明的なテキストコンテンツを追加する"
+    },
+    "generic-link-text": {
+      "description": "リンクテキストが一般的（例：「ここをクリック」）",
+      "remediation": "説明的なリンクテキストに置き換える"
+    },
+    "missing-skip-link": {
+      "description": "スキップナビゲーションリンクが見つからない",
+      "remediation": "ナビゲーションをバイパスするスキップリンクを追加する"
+    },
+    "missing-button-role": {
+      "description": "ボタンロールのないインタラクティブ要素",
+      "remediation": "インタラクティブ要素にrole='button'を追加する"
+    },
+    "missing-aria-expanded": {
+      "description": "aria-expanded状態のない展開可能要素",
+      "remediation": "展開/折りたたみ状態を示すaria-expanded属性を追加する"
+    },
+    "missing-focus-indicator": {
+      "description": "視覚的なフォーカスインジケーターのないインタラクティブ要素",
+      "remediation": "CSSを使用して視覚的なフォーカススタイルを追加する"
+    },
+    "missing-video-captions": {
+      "description": "字幕のない動画",
+      "remediation": "字幕付きのtrack要素を追加する"
+    },
+    "missing-audio-transcript": {
+      "description": "トランスクリプトのない音声",
+      "remediation": "音声コンテンツのテキストトランスクリプトを提供する"
+    },
+    "missing-media-controls": {
+      "description": "キーボードアクセス可能なコントロールのないメディア",
+      "remediation": "メディア要素にcontrols属性を追加する"
+    },
+    "insufficient-color-contrast": {
+      "description": "テキストの色コントラストが不十分",
+      "remediation": "WCAGコントラスト要件を満たすように色を調整する"
+    },
+    "color-only-indication": {
+      "description": "色のみで伝えられる情報",
+      "remediation": "色に依存しないインジケーターを追加する（テキスト、アイコン、パターン）"
+    }
+  },
+  "reports": {
+    "audit_summary": "監査概要",
+    "remediation_summary": "修正概要",
+    "total_issues": "総問題数: {count}",
+    "by_severity": "重要度別の問題",
+    "critical": "重大: {count}",
+    "major": "主要: {count}",
+    "minor": "軽微: {count}",
+    "by_type": "タイプ別の問題",
+    "page": "ページ",
+    "element": "要素",
+    "severity": "重要度",
+    "description": "説明",
+    "remediation": "修正",
+    "status": "ステータス",
+    "fixed": "修正済み",
+    "failed": "失敗",
+    "skipped": "スキップ",
+    "needs_remediation": "修正が必要",
+    "automatically_fixed": "自動修正済み",
+    "wcag_criterion": "WCAG基準",
+    "location": "場所",
+    "context": "コンテキスト",
+    "file": "ファイル",
+    "line": "行"
+  },
+  "ui": {
+    "upload_file": "ファイルをアップロード",
+    "process_button": "ドキュメントを処理",
+    "audit_results": "監査結果",
+    "remediated_output": "修正済み出力",
+    "remediation_report": "修正レポート",
+    "usage_data": "使用データ",
+    "processing_options": "処理オプション",
+    "conversion_options": "変換オプション",
+    "audit_options": "監査オプション",
+    "remediation_options": "修正オプション",
+    "perform_audit": "監査を実行",
+    "perform_remediation": "修正を実行",
+    "single_page_mode": "単一ページモード",
+    "multi_page_mode": "マルチページモード",
+    "extract_images": "画像を抽出",
+    "image_format": "画像形式",
+    "severity_threshold": "重要度しきい値",
+    "model_selection": "モデル選択",
+    "max_issues": "最大問題数",
+    "language": "言語",
+    "select_language": "言語を選択",
+    "download": "ダウンロード",
+    "preview": "プレビュー",
+    "no_data_available": "データがありません",
+    "loading": "読み込み中...",
+    "processing": "処理中...",
+    "document_accessibility_title": "ドキュメントアクセシビリティ",
+    "upload_document_description": "アクセシビリティパイプラインで処理するドキュメントをアップロードしてください。",
+    "choose_document": "ドキュメントを選択",
+    "upload_help": "変換/監査/修正のためにPDFを、直接監査/修正のためにHTML/ZIPをアップロード",
+    "processing_mode": "処理モード",
+    "processing_mode_help": "適用する処理レベルを選択",
+    "convert_only": "変換のみ",
+    "convert_audit": "変換 + 監査",
+    "full_processing": "完全処理",
+    "audit_only": "監査のみ",
+    "audit_remediate": "監査 + 修正",
+    "multiple_documents": "複数のHTMLファイルを生成",
+    "check_images": "画像を確認",
+    "check_headings": "見出しを確認",
+    "check_links": "リンクを確認",
+    "check_tables": "テーブルを確認",
+    "fix_images": "画像の問題を修正",
+    "fix_headings": "見出しの問題を修正",
+    "fix_links": "リンクの問題を修正",
+    "cost_calculation_options": "コスト計算オプション",
+    "cost_per_bda_page": "BDAのページあたりのコスト ($)",
+    "cost_per_bda_page_help": "Bedrock Data Automation経由で処理されるページあたりの$でのコスト",
+    "cost_per_input_token": "1K入力トークンあたりのコスト ($)",
+    "cost_per_input_token_help": "Bedrockモデルの1,000入力トークンあたりの$でのコスト",
+    "cost_per_output_token": "1K出力トークンあたりのコスト ($)",
+    "cost_per_output_token_help": "Bedrockモデルの1,000出力トークンあたりの$でのコスト"
+  },
+  "errors": {
+    "file_not_found": "ファイルが見つかりません: {path}",
+    "conversion_failed": "変換に失敗しました: {reason}",
+    "audit_failed": "監査に失敗しました: {reason}",
+    "remediation_failed": "修正に失敗しました: {reason}",
+    "invalid_file_type": "無効なファイルタイプ: {type}",
+    "unsupported_file": "サポートされていないファイル: {filename}",
+    "missing_required_parameter": "必須パラメーターがありません: {param}",
+    "invalid_parameter_value": "{param}の無効なパラメーター値: {value}",
+    "aws_error": "AWSサービスエラー: {message}",
+    "bedrock_error": "Bedrockサービスエラー: {message}",
+    "s3_error": "S3サービスエラー: {message}",
+    "processing_error": "処理エラー: {message}",
+    "unexpected_error": "予期しないエラー: {message}"
+  },
+  "status": {
+    "completed": "完了",
+    "in_progress": "進行中",
+    "failed": "失敗",
+    "pending": "保留中",
+    "cancelled": "キャンセル"
+  },
+  "common": {
+    "yes": "はい",
+    "no": "いいえ",
+    "true": "真",
+    "false": "偽",
+    "none": "なし",
+    "all": "すべて",
+    "default": "デフォルト",
+    "custom": "カスタム",
+    "optional": "オプション",
+    "required": "必須",
+    "enabled": "有効",
+    "disabled": "無効",
+    "success": "成功",
+    "warning": "警告",
+    "info": "情報",
+    "error": "エラー"
+  },
+  "help": {
+    "command_description": "PDFドキュメントをアクセシブルなHTMLに変換し、アクセシビリティの問題を修正する",
+    "convert_help": "PDFをHTMLに変換",
+    "audit_help": "HTMLのアクセシビリティ問題を監査",
+    "remediate_help": "HTMLのアクセシビリティ問題を修正",
+    "process_help": "完全なワークフロー: PDF変換、監査、修正",
+    "input_help": "入力ファイルまたはディレクトリのパス",
+    "output_help": "出力ファイルまたはディレクトリのパス",
+    "language_help": "ユーザーインターフェースとレポートの言語（デフォルト: en）",
+    "config_help": "設定ファイルへのパス",
+    "debug_help": "デバッグログを有効化",
+    "quiet_help": "レポートのみを出力し、その他の出力を抑制",
+    "version_help": "バージョン情報を表示"
+  }
+}

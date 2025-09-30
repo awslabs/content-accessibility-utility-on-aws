@@ -7,6 +7,8 @@ HTML Accessibility Issue Types.
 This module defines the types of accessibility issues that can be detected and remediated.
 """
 
+from content_accessibility_utility_on_aws.utils.i18n import translate, get_language
+
 # Issue type definitions with their associated WCAG criteria and severity levels
 ISSUE_TYPES = {
     # Content Alternatives
@@ -250,3 +252,66 @@ def get_issues_by_element(element_type):
         for issue_type, info in ISSUE_TYPES.items()
         if element_type in info.get("element_types", [])
     ]
+
+
+def get_issue_description(issue_type, language=None):
+    """
+    Get the translated description for an issue type.
+    
+    Args:
+        issue_type: The type of accessibility issue
+        language: Optional language code (uses current language if not specified)
+    
+    Returns:
+        Translated description string, or the issue_type itself if not found.
+    """
+    # Try to get translated description
+    translation_key = f"issues.{issue_type}.description"
+    translated = translate(translation_key, language=language)
+    
+    # If translation returns the key itself (not found), fall back to hardcoded English
+    if translated == translation_key:
+        issue_info = ISSUE_TYPES.get(issue_type, {})
+        return issue_info.get("description", issue_type)
+    
+    return translated
+
+
+def get_issue_remediation(issue_type, language=None):
+    """
+    Get the translated remediation guidance for an issue type.
+    
+    Args:
+        issue_type: The type of accessibility issue
+        language: Optional language code (uses current language if not specified)
+    
+    Returns:
+        Translated remediation guidance string, or empty string if not found.
+    """
+    # Try to get translated remediation guidance
+    translation_key = f"issues.{issue_type}.remediation"
+    translated = translate(translation_key, language=language)
+    
+    # If translation returns the key itself (not found), return empty string
+    if translated == translation_key:
+        return ""
+    
+    return translated
+
+
+def get_issue_info_translated(issue_type, language=None):
+    """
+    Get issue information with translated description and remediation.
+    
+    Args:
+        issue_type: The type of accessibility issue
+        language: Optional language code (uses current language if not specified)
+    
+    Returns:
+        Dictionary with issue information including translated strings.
+    """
+    info = ISSUE_TYPES.get(issue_type, {}).copy()
+    if info:
+        info["description"] = get_issue_description(issue_type, language)
+        info["remediation"] = get_issue_remediation(issue_type, language)
+    return info

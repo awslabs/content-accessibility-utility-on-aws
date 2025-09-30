@@ -1,0 +1,257 @@
+{
+  "cli": {
+    "conversion_results": "转换结果：",
+    "main_html": "主HTML：{path}",
+    "total_html_files": "HTML文件总数：{count}",
+    "total_image_files": "图像文件总数：{count}",
+    "audit_results": "审计结果：",
+    "remediation_results": "修复结果：",
+    "issues_processed": "已处理的问题：{count}",
+    "issues_remediated": "已修复的问题：{count}",
+    "issues_failed": "失败的问题：{count}",
+    "remediated_html": "已修复的HTML：{path}",
+    "remediation_report": "修复报告：{path}",
+    "issue_types_remediated": "已修复的问题类型：{types}",
+    "failed_issue_types": "失败的问题类型：{types}",
+    "process_completed": "流程成功完成！",
+    "all_output_files": "所有输出文件位于：{path}",
+    "converting_pdf": "正在将PDF转换为HTML：{path}",
+    "auditing_html": "正在审计HTML可访问性：{path}",
+    "remediating_html": "正在修复HTML：{path}",
+    "step_n_of_m": "步骤 {n}/{m}：{description}",
+    "error": "错误：{message}",
+    "no_command_specified": "未指定命令"
+  },
+  "issues": {
+    "missing-alt-text": {
+      "description": "图像缺少替代文本",
+      "remediation": "为图像添加描述性替代文本"
+    },
+    "generic-alt-text": {
+      "description": "图像具有通用或信息不足的替代文本",
+      "remediation": "用描述性内容替换通用替代文本"
+    },
+    "decorative-image-with-alt": {
+      "description": "装饰性图像应该有空的替代文本",
+      "remediation": "将装饰性图像的替代文本设置为空字符串"
+    },
+    "improper-heading-structure": {
+      "description": "标题级别结构不当（跳过级别）",
+      "remediation": "调整标题级别以遵循适当的层次结构"
+    },
+    "missing-document-language": {
+      "description": "未指定文档语言",
+      "remediation": "向html元素添加lang属性"
+    },
+    "missing-page-title": {
+      "description": "页面缺少title元素",
+      "remediation": "向文档添加描述性title元素"
+    },
+    "missing-main-landmark": {
+      "description": "未识别主地标角色",
+      "remediation": "添加main元素或role='main'属性"
+    },
+    "missing-table-headers": {
+      "description": "表格缺少标题单元格",
+      "remediation": "添加适当的th元素以定义表格标题"
+    },
+    "missing-header-scope": {
+      "description": "表格标题缺少scope属性",
+      "remediation": "向标题单元格添加scope='row'或scope='col'"
+    },
+    "complex-table-no-ids": {
+      "description": "复杂表格缺少标题ID和数据单元格标题",
+      "remediation": "向标题添加id属性，向数据单元格添加headers属性"
+    },
+    "missing-form-label": {
+      "description": "表单控件缺少标签",
+      "remediation": "使用for/id属性将标签与表单控件关联"
+    },
+    "missing-fieldset-legend": {
+      "description": "表单控件组缺少fieldset/legend",
+      "remediation": "用fieldset和legend包装相关控件"
+    },
+    "missing-aria-required": {
+      "description": "必填表单字段缺少aria-required",
+      "remediation": "向必填字段添加aria-required='true'"
+    },
+    "empty-link": {
+      "description": "链接没有文本内容",
+      "remediation": "向链接添加描述性文本内容"
+    },
+    "generic-link-text": {
+      "description": "链接文本是通用的（例如'点击这里'）",
+      "remediation": "用描述性链接文本替换"
+    },
+    "missing-skip-link": {
+      "description": "未找到跳过导航链接",
+      "remediation": "添加跳过链接以绕过导航"
+    },
+    "missing-button-role": {
+      "description": "交互元素缺少按钮角色",
+      "remediation": "向交互元素添加role='button'"
+    },
+    "missing-aria-expanded": {
+      "description": "可展开元素缺少aria-expanded状态",
+      "remediation": "添加aria-expanded属性以显示展开/折叠状态"
+    },
+    "missing-focus-indicator": {
+      "description": "交互元素缺少可见的焦点指示器",
+      "remediation": "使用CSS添加可见的焦点样式"
+    },
+    "missing-video-captions": {
+      "description": "视频缺少字幕",
+      "remediation": "添加带字幕的track元素"
+    },
+    "missing-audio-transcript": {
+      "description": "音频缺少文字记录",
+      "remediation": "为音频内容提供文字记录"
+    },
+    "missing-media-controls": {
+      "description": "媒体缺少键盘可访问的控件",
+      "remediation": "向媒体元素添加controls属性"
+    },
+    "insufficient-color-contrast": {
+      "description": "文本颜色对比度不足",
+      "remediation": "调整颜色以满足WCAG对比度要求"
+    },
+    "color-only-indication": {
+      "description": "仅通过颜色传达信息",
+      "remediation": "添加非颜色指示器（文本、图标、图案）"
+    }
+  },
+  "reports": {
+    "audit_summary": "审计摘要",
+    "remediation_summary": "修复摘要",
+    "total_issues": "问题总数：{count}",
+    "by_severity": "按严重程度分类的问题",
+    "critical": "严重：{count}",
+    "major": "主要：{count}",
+    "minor": "次要：{count}",
+    "by_type": "按类型分类的问题",
+    "page": "页面",
+    "element": "元素",
+    "severity": "严重程度",
+    "description": "描述",
+    "remediation": "修复",
+    "status": "状态",
+    "fixed": "已修复",
+    "failed": "失败",
+    "skipped": "已跳过",
+    "needs_remediation": "需要修复",
+    "automatically_fixed": "自动修复",
+    "wcag_criterion": "WCAG标准",
+    "location": "位置",
+    "context": "上下文",
+    "file": "文件",
+    "line": "行"
+  },
+  "ui": {
+    "upload_file": "上传文件",
+    "process_button": "处理文档",
+    "audit_results": "审计结果",
+    "remediated_output": "已修复输出",
+    "remediation_report": "修复报告",
+    "usage_data": "使用数据",
+    "processing_options": "处理选项",
+    "conversion_options": "转换选项",
+    "audit_options": "审计选项",
+    "remediation_options": "修复选项",
+    "perform_audit": "执行审计",
+    "perform_remediation": "执行修复",
+    "single_page_mode": "单页模式",
+    "multi_page_mode": "多页模式",
+    "extract_images": "提取图像",
+    "image_format": "图像格式",
+    "severity_threshold": "严重程度阈值",
+    "model_selection": "模型选择",
+    "max_issues": "最大问题数",
+    "language": "语言",
+    "select_language": "选择语言",
+    "download": "下载",
+    "preview": "预览",
+    "no_data_available": "无可用数据",
+    "loading": "加载中...",
+    "processing": "处理中...",
+    "document_accessibility_title": "文档可访问性",
+    "upload_document_description": "上传文档以通过可访问性管道进行处理。",
+    "choose_document": "选择文档",
+    "upload_help": "上传PDF进行转换/审计/修复，或上传HTML/ZIP进行直接审计/修复",
+    "processing_mode": "处理模式",
+    "processing_mode_help": "选择要应用的处理级别",
+    "convert_only": "仅转换",
+    "convert_audit": "转换 + 审计",
+    "full_processing": "完整处理",
+    "audit_only": "仅审计",
+    "audit_remediate": "审计 + 修复",
+    "multiple_documents": "生成多个HTML文件",
+    "check_images": "检查图像",
+    "check_headings": "检查标题",
+    "check_links": "检查链接",
+    "check_tables": "检查表格",
+    "fix_images": "修复图像问题",
+    "fix_headings": "修复标题问题",
+    "fix_links": "修复链接问题",
+    "cost_calculation_options": "成本计算选项",
+    "cost_per_bda_page": "BDA每页成本（$）",
+    "cost_per_bda_page_help": "通过Bedrock数据自动化处理的每页成本（美元）",
+    "cost_per_input_token": "每1K输入令牌成本（$）",
+    "cost_per_input_token_help": "Bedrock模型每1,000个输入令牌的成本（美元）",
+    "cost_per_output_token": "每1K输出令牌成本（$）",
+    "cost_per_output_token_help": "Bedrock模型每1,000个输出令牌的成本（美元）"
+  },
+  "errors": {
+    "file_not_found": "未找到文件：{path}",
+    "conversion_failed": "转换失败：{reason}",
+    "audit_failed": "审计失败：{reason}",
+    "remediation_failed": "修复失败：{reason}",
+    "invalid_file_type": "无效的文件类型：{type}",
+    "unsupported_file": "不支持的文件：{filename}",
+    "missing_required_parameter": "缺少必需参数：{param}",
+    "invalid_parameter_value": "{param}的参数值无效：{value}",
+    "aws_error": "AWS服务错误：{message}",
+    "bedrock_error": "Bedrock服务错误：{message}",
+    "s3_error": "S3服务错误：{message}",
+    "processing_error": "处理错误：{message}",
+    "unexpected_error": "意外错误：{message}"
+  },
+  "status": {
+    "completed": "已完成",
+    "in_progress": "进行中",
+    "failed": "失败",
+    "pending": "待处理",
+    "cancelled": "已取消"
+  },
+  "common": {
+    "yes": "是",
+    "no": "否",
+    "true": "真",
+    "false": "假",
+    "none": "无",
+    "all": "全部",
+    "default": "默认",
+    "custom": "自定义",
+    "optional": "可选",
+    "required": "必需",
+    "enabled": "已启用",
+    "disabled": "已禁用",
+    "success": "成功",
+    "warning": "警告",
+    "info": "信息",
+    "error": "错误"
+  },
+  "help": {
+    "command_description": "将PDF文档转换为可访问的HTML并修复可访问性问题",
+    "convert_help": "将PDF转换为HTML",
+    "audit_help": "审计HTML的可访问性问题",
+    "remediate_help": "修复HTML中的可访问性问题",
+    "process_help": "完整工作流程：转换PDF、审计和修复",
+    "input_help": "输入文件或目录路径",
+    "output_help": "输出文件或目录路径",
+    "language_help": "用户界面和报告的语言（默认：en）",
+    "config_help": "配置文件的路径",
+    "debug_help": "启用调试日志记录",
+    "quiet_help": "仅输出报告，抑制其他输出",
+    "version_help": "显示版本信息"
+  }
+}

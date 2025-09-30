@@ -1,0 +1,257 @@
+{
+  "cli": {
+    "conversion_results": "Conversion Results:",
+    "main_html": "Main HTML: {path}",
+    "total_html_files": "Total HTML files: {count}",
+    "total_image_files": "Total image files: {count}",
+    "audit_results": "Audit Results:",
+    "remediation_results": "Remediation Results:",
+    "issues_processed": "Issues processed: {count}",
+    "issues_remediated": "Issues remediated: {count}",
+    "issues_failed": "Issues failed: {count}",
+    "remediated_html": "Remediated HTML: {path}",
+    "remediation_report": "Remediation report: {path}",
+    "issue_types_remediated": "Issue types remediated: {types}",
+    "failed_issue_types": "Failed issue types: {types}",
+    "process_completed": "Process completed successfully!",
+    "all_output_files": "All output files are in: {path}",
+    "converting_pdf": "Converting PDF to HTML: {path}",
+    "auditing_html": "Auditing HTML for accessibility: {path}",
+    "remediating_html": "Remediating HTML: {path}",
+    "step_n_of_m": "Step {n}/{m}: {description}",
+    "error": "Error: {message}",
+    "no_command_specified": "No command specified"
+  },
+  "issues": {
+    "missing-alt-text": {
+      "description": "Image missing alternative text",
+      "remediation": "Add descriptive alt text to the image"
+    },
+    "generic-alt-text": {
+      "description": "Image has generic or uninformative alternative text",
+      "remediation": "Replace generic alt text with descriptive content"
+    },
+    "decorative-image-with-alt": {
+      "description": "Decorative image should have empty alt text",
+      "remediation": "Set alt text to empty string for decorative images"
+    },
+    "improper-heading-structure": {
+      "description": "Improper heading level structure (skipped levels)",
+      "remediation": "Adjust heading levels to follow proper hierarchy"
+    },
+    "missing-document-language": {
+      "description": "Document language not specified",
+      "remediation": "Add lang attribute to html element"
+    },
+    "missing-page-title": {
+      "description": "Page missing title element",
+      "remediation": "Add descriptive title element to document"
+    },
+    "missing-main-landmark": {
+      "description": "No main landmark role identified",
+      "remediation": "Add main element or role='main' attribute"
+    },
+    "missing-table-headers": {
+      "description": "Table missing header cells",
+      "remediation": "Add proper th elements to define table headers"
+    },
+    "missing-header-scope": {
+      "description": "Table headers missing scope attribute",
+      "remediation": "Add scope='row' or scope='col' to header cells"
+    },
+    "complex-table-no-ids": {
+      "description": "Complex table missing header IDs and data cell headers",
+      "remediation": "Add id attributes to headers and headers attribute to data cells"
+    },
+    "missing-form-label": {
+      "description": "Form control missing label",
+      "remediation": "Associate label with form control using for/id attributes"
+    },
+    "missing-fieldset-legend": {
+      "description": "Group of form controls missing fieldset/legend",
+      "remediation": "Wrap related controls in fieldset with legend"
+    },
+    "missing-aria-required": {
+      "description": "Required form field missing aria-required",
+      "remediation": "Add aria-required='true' to required fields"
+    },
+    "empty-link": {
+      "description": "Link has no text content",
+      "remediation": "Add descriptive text content to the link"
+    },
+    "generic-link-text": {
+      "description": "Link text is generic (e.g., 'click here')",
+      "remediation": "Replace with descriptive link text"
+    },
+    "missing-skip-link": {
+      "description": "No skip navigation link found",
+      "remediation": "Add skip link to bypass navigation"
+    },
+    "missing-button-role": {
+      "description": "Interactive element missing button role",
+      "remediation": "Add role='button' to interactive element"
+    },
+    "missing-aria-expanded": {
+      "description": "Expandable element missing aria-expanded state",
+      "remediation": "Add aria-expanded attribute to show expand/collapse state"
+    },
+    "missing-focus-indicator": {
+      "description": "Interactive element missing visible focus indicator",
+      "remediation": "Add visible focus styles using CSS"
+    },
+    "missing-video-captions": {
+      "description": "Video missing closed captions",
+      "remediation": "Add track element with captions"
+    },
+    "missing-audio-transcript": {
+      "description": "Audio missing transcript",
+      "remediation": "Provide text transcript for audio content"
+    },
+    "missing-media-controls": {
+      "description": "Media missing keyboard-accessible controls",
+      "remediation": "Add controls attribute to media element"
+    },
+    "insufficient-color-contrast": {
+      "description": "Text has insufficient color contrast",
+      "remediation": "Adjust colors to meet WCAG contrast requirements"
+    },
+    "color-only-indication": {
+      "description": "Information conveyed by color alone",
+      "remediation": "Add non-color indicators (text, icons, patterns)"
+    }
+  },
+  "reports": {
+    "audit_summary": "Audit Summary",
+    "remediation_summary": "Remediation Summary",
+    "total_issues": "Total Issues: {count}",
+    "by_severity": "Issues by Severity",
+    "critical": "Critical: {count}",
+    "major": "Major: {count}",
+    "minor": "Minor: {count}",
+    "by_type": "Issues by Type",
+    "page": "Page",
+    "element": "Element",
+    "severity": "Severity",
+    "description": "Description",
+    "remediation": "Remediation",
+    "status": "Status",
+    "fixed": "Fixed",
+    "failed": "Failed",
+    "skipped": "Skipped",
+    "needs_remediation": "Needs Remediation",
+    "automatically_fixed": "Automatically Fixed",
+    "wcag_criterion": "WCAG Criterion",
+    "location": "Location",
+    "context": "Context",
+    "file": "File",
+    "line": "Line"
+  },
+  "ui": {
+    "upload_file": "Upload File",
+    "process_button": "Process Document",
+    "audit_results": "Audit Results",
+    "remediated_output": "Remediated Output",
+    "remediation_report": "Remediation Report",
+    "usage_data": "Usage Data",
+    "processing_options": "Processing Options",
+    "conversion_options": "Conversion Options",
+    "audit_options": "Audit Options",
+    "remediation_options": "Remediation Options",
+    "perform_audit": "Perform Audit",
+    "perform_remediation": "Perform Remediation",
+    "single_page_mode": "Single Page Mode",
+    "multi_page_mode": "Multi-Page Mode",
+    "extract_images": "Extract Images",
+    "image_format": "Image Format",
+    "severity_threshold": "Severity Threshold",
+    "model_selection": "Model Selection",
+    "max_issues": "Maximum Issues",
+    "language": "Language",
+    "select_language": "Select Language",
+    "download": "Download",
+    "preview": "Preview",
+    "no_data_available": "No data available",
+    "loading": "Loading...",
+    "processing": "Processing...",
+    "document_accessibility_title": "Document Accessibility",
+    "upload_document_description": "Upload a document to process through the accessibility pipeline.",
+    "choose_document": "Choose a document",
+    "upload_help": "Upload PDF for conversion/audit/remediation, or HTML/ZIP for direct audit/remediation",
+    "processing_mode": "Processing Mode",
+    "processing_mode_help": "Select the level of processing to apply",
+    "convert_only": "Convert Only",
+    "convert_audit": "Convert + Audit",
+    "full_processing": "Full Processing",
+    "audit_only": "Audit Only",
+    "audit_remediate": "Audit + Remediate",
+    "multiple_documents": "Generate multiple HTML files",
+    "check_images": "Check images",
+    "check_headings": "Check headings",
+    "check_links": "Check links",
+    "check_tables": "Check tables",
+    "fix_images": "Fix image issues",
+    "fix_headings": "Fix heading issues",
+    "fix_links": "Fix link issues",
+    "cost_calculation_options": "Cost Calculation Options",
+    "cost_per_bda_page": "Cost per page in BDA ($)",
+    "cost_per_bda_page_help": "Cost in $ per page processed through Bedrock Data Automation",
+    "cost_per_input_token": "Cost per 1K input tokens ($)",
+    "cost_per_input_token_help": "Cost in $ per 1,000 input tokens for Bedrock models",
+    "cost_per_output_token": "Cost per 1K output tokens ($)",
+    "cost_per_output_token_help": "Cost in $ per 1,000 output tokens for Bedrock models"
+  },
+  "errors": {
+    "file_not_found": "File not found: {path}",
+    "conversion_failed": "Conversion failed: {reason}",
+    "audit_failed": "Audit failed: {reason}",
+    "remediation_failed": "Remediation failed: {reason}",
+    "invalid_file_type": "Invalid file type: {type}",
+    "unsupported_file": "Unsupported file: {filename}",
+    "missing_required_parameter": "Missing required parameter: {param}",
+    "invalid_parameter_value": "Invalid parameter value for {param}: {value}",
+    "aws_error": "AWS service error: {message}",
+    "bedrock_error": "Bedrock service error: {message}",
+    "s3_error": "S3 service error: {message}",
+    "processing_error": "Processing error: {message}",
+    "unexpected_error": "Unexpected error: {message}"
+  },
+  "status": {
+    "completed": "Completed",
+    "in_progress": "In Progress",
+    "failed": "Failed",
+    "pending": "Pending",
+    "cancelled": "Cancelled"
+  },
+  "common": {
+    "yes": "Yes",
+    "no": "No",
+    "true": "True",
+    "false": "False",
+    "none": "None",
+    "all": "All",
+    "default": "Default",
+    "custom": "Custom",
+    "optional": "Optional",
+    "required": "Required",
+    "enabled": "Enabled",
+    "disabled": "Disabled",
+    "success": "Success",
+    "warning": "Warning",
+    "info": "Info",
+    "error": "Error"
+  },
+  "help": {
+    "command_description": "Convert PDF documents to accessible HTML and remediate accessibility issues",
+    "convert_help": "Convert PDF to HTML",
+    "audit_help": "Audit HTML for accessibility issues",
+    "remediate_help": "Remediate accessibility issues in HTML",
+    "process_help": "Full workflow: convert PDF, audit, and remediate",
+    "input_help": "Input file or directory path",
+    "output_help": "Output file or directory path",
+    "language_help": "Language for user interface and reports (default: en)",
+    "config_help": "Path to configuration file",
+    "debug_help": "Enable debug logging",
+    "quiet_help": "Only output reports, suppress other output",
+    "version_help": "Show version information"
+  }
+}

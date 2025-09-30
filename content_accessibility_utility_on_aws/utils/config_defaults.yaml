@@ -30,3 +30,8 @@ remediate:
 aws:
   region: "us-east-1"
   create_bda_project: false
+
+# Internationalization options
+i18n:
+  default_language: "en"
+  fallback_language: "en"

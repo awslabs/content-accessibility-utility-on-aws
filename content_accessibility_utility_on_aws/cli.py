@@ -30,6 +30,7 @@ from content_accessibility_utility_on_aws.api import (
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 from content_accessibility_utility_on_aws.utils.config import config_manager, load_config_file, ConfigurationError
+from content_accessibility_utility_on_aws.utils.i18n import set_language, translate
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -103,6 +104,13 @@ def _add_standardized_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", help="AWS profile name to use for credentials")
     # Add S3 bucket parameter as a standardized parameter
     parser.add_argument("--s3-bucket", help="Name of an existing S3 bucket to use")
+    # Add language parameter
+    parser.add_argument(
+        "--language",
+        "-l",
+        default="en",
+        help="Language for user interface and reports (default: en)",
+    )
 
     # AWS/BDA options
     parser.add_argument(
@@ -436,6 +444,12 @@ def parse_arguments() -> Dict[str, Any]:
     # Convert namespace to dictionary
     args_dict = vars(args)
     
+    # Set language if specified
+    if args_dict.get("language"):
+        language = args_dict["language"]
+        set_language(language)
+        logger.debug(f"Set interface language to: {language}")
+    
     # Load configuration from file if specified
     if args_dict.get("config"):
         config_path = args_dict["config"]
@@ -602,10 +616,10 @@ def run_convert_command(args: Dict[str, Any]) -> int:
         )
 
         if not args.get("quiet"):
-            print("\nConversion Results:")
-            print(f"  Main HTML: {result['html_path']}")
-            print(f"  Total HTML files: {len(result.get('html_files', []))}")
-            print(f"  Total image files: {len(result.get('image_files', []))}")
+            print(f"\n{translate('cli.conversion_results')}")
+            print(f"  {translate('cli.main_html', path=result['html_path'])}")
+            print(f"  {translate('cli.total_html_files', count=len(result.get('html_files', [])))}")
+            print(f"  {translate('cli.total_image_files', count=len(result.get('image_files', [])))}")
 
         return 0
 
@@ -662,7 +676,7 @@ def run_audit_command(args: Dict[str, Any]) -> int:
         )
 
         if not args.get("quiet"):
-            print("\nAudit Results:")
+            print(f"\n{translate('cli.audit_results')}")
             print(result["report"])
 
         return 0
@@ -670,7 +684,7 @@ def run_audit_command(args: Dict[str, Any]) -> int:
     except Exception as e:
         logger.error(f"Error in accessibility audit: {e}")
         if not args.get("quiet"):
-            print(f"Error: {e}")
+            print(f"{translate('cli.error', message=str(e))}")
         return 1
 
 
@@ -791,20 +805,20 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
             result["report_path"] = report_path
 
         if not args.get("quiet"):
-            print("\nRemediation Results:")
-            print(f"  Issues processed: {result.get('issues_processed', 0)}")
-            print(f"  Issues remediated: {result.get('issues_remediated', 0)}")
-            print(f"  Issues failed: {result.get('issues_failed', 0)}")
-            print(f"  Remediated HTML: {result['remediated_html_path']}")
+            print(f"\n{translate('cli.remediation_results')}")
+            print(f"  {translate('cli.issues_processed', count=result.get('issues_processed', 0))}")
+            print(f"  {translate('cli.issues_remediated', count=result.get('issues_remediated', 0))}")
+            print(f"  {translate('cli.issues_failed', count=result.get('issues_failed', 0))}")
+            print(f"  {translate('cli.remediated_html', path=result['remediated_html_path'])}")
             if result.get("report_path"):
-                print(f"  Remediation report: {result['report_path']}")
+                print(f"  {translate('cli.remediation_report', path=result['report_path'])}")
 
         return 0
 
     except Exception as e:
         logger.error(f"Error in accessibility remediation: {e}")
         if not args.get("quiet"):
-            print(f"Error: {e}")
+            print(f"{translate('cli.error', message=str(e))}")
         return 1
 
 
@@ -847,10 +861,10 @@ def run_process_command(args: Dict[str, Any]) -> int:
         html_path = convert_result["html_path"]
 
         if not args.get("quiet"):
-            print("\nConversion Results:")
-            print(f"  Main HTML: {html_path}")
-            print(f"  Total HTML files: {len(convert_result.get('html_files', []))}")
-            print(f"  Total image files: {len(convert_result.get('image_files', []))}")
+            print(f"\n{translate('cli.conversion_results')}")
+            print(f"  {translate('cli.main_html', path=html_path)}")
+            print(f"  {translate('cli.total_html_files', count=len(convert_result.get('html_files', [])))}")
+            print(f"  {translate('cli.total_image_files', count=len(convert_result.get('image_files', [])))}")
 
         # Step 2: Audit HTML (unless skipped)
         if not args.get("skip_audit"):
@@ -880,7 +894,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
             )
 
             if not args.get("quiet"):
-                print("\nAudit Results:")
+                print(f"\n{translate('cli.audit_results')}")
                 print(audit_result["report"])
         else:
             audit_result = None
@@ -1028,14 +1042,14 @@ def run_process_command(args: Dict[str, Any]) -> int:
             remediate_result["report_path"] = report_path
 
             if not args.get("quiet"):
-                print("\nRemediation Results:")
+                print(f"\n{translate('cli.remediation_results')}")
                 print(
-                    f"  Issues processed: {remediate_result.get('issues_processed', 0)}"
+                    f"  {translate('cli.issues_processed', count=remediate_result.get('issues_processed', 0))}"
                 )
                 print(
-                    f"  Issues remediated: {remediate_result.get('issues_remediated', 0)}"
+                    f"  {translate('cli.issues_remediated', count=remediate_result.get('issues_remediated', 0))}"
                 )
-                print(f"  Issues failed: {remediate_result.get('issues_failed', 0)}")
+                print(f"  {translate('cli.issues_failed', count=remediate_result.get('issues_failed', 0))}")
 
                 # Add detailed information about which issue types were processed
                 if remediate_result.get("file_results"):
@@ -1047,18 +1061,17 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
                     if issue_types_remediated:
                         print(
-                            f"  Issue types remediated: {', '.join(sorted(issue_types_remediated))}"
+                            f"  {translate('cli.issue_types_remediated', types=', '.join(sorted(issue_types_remediated)))}"
                         )
 
                 # Show failed issue types if any
                 if remediate_result.get("failed_issue_types"):
                     print(
-                        "  Failed issue types:"
-                        + f"{', '.join(sorted(remediate_result.get('failed_issue_types')))}"
+                        f"  {translate('cli.failed_issue_types', types=', '.join(sorted(remediate_result.get('failed_issue_types'))))}"
                     )
 
                 print(
-                    f"  Remediated HTML: {remediate_result.get('remediated_html_path', 'N/A')}"
+                    f"  {translate('cli.remediated_html', path=remediate_result.get('remediated_html_path', 'N/A'))}"
                 )
         elif not args.get("skip_remediation"):
             if not args.get("quiet"):
@@ -1068,15 +1081,15 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 logger.info("Remediation step skipped as requested")
 
         if not args.get("quiet"):
-            print("\nProcess completed successfully!")
-            print(f"All output files are in: {output_dir}")
+            print(f"\n{translate('cli.process_completed')}")
+            print(f"{translate('cli.all_output_files', path=output_dir)}")
 
         return 0
 
     except Exception as e:
         logger.error(f"Error in processing pipeline: {e}")
         if not args.get("quiet"):
-            print(f"Error: {e}")
+            print(f"{translate('cli.error', message=str(e))}")
         return 1
 
 
@@ -1097,12 +1110,12 @@ def main() -> int:
         elif args["command"] == "process":
             return run_process_command(args)
         else:
-            print("No command specified")
+            print(translate('cli.no_command_specified'))
             return 1
 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        print(f"Error: {e}")
+        print(f"{translate('cli.error', message=str(e))}")
         return 1
 
 
