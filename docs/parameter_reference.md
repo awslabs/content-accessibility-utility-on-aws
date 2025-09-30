@@ -16,6 +16,7 @@ The following table shows the standardized parameter names used across the tool:
 | **Common Parameters** |
 | Input Path | `--input`, `-i` | `input_path`, `pdf_path`, `html_path` | Yes | N/A | Path to input file or directory |
 | Output Path | `--output`, `-o` | `output_dir`, `output_path` | No | Auto-generated based on input | Path for output files or directory |
+| Language | `--language`, `-l` | `language` | No | `en` | Language for UI and reports (en, es, fr, de, pt, it, ja, zh) |
 | Debug Mode | `--debug` | N/A | No | Disabled | Enable debug logging |
 | Quiet Mode | `--quiet`, `-q` | `quiet` | No | Disabled | Suppress non-essential output |
 | Config File | `--config`, `-c` | `config_path` | No | None | Path to configuration file |
@@ -71,6 +72,22 @@ document-accessibility audit --input document.html --output audit_report.json --
 
 ```bash
 document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id amazon.nova-lite-v1:0
+```
+
+### Using Different Languages
+
+```bash
+# Spanish
+document-accessibility process --input document.pdf --language es
+
+# French
+document-accessibility audit --input document.html --language fr
+
+# German
+document-accessibility convert --input document.pdf --language de
+
+# Portuguese
+document-accessibility remediate --input document.html --language pt
 ```
 
 ## Process Command (Full Pipeline)
@@ -144,7 +161,8 @@ result = process_pdf_accessibility(
         "auto_fix": True
     },
     perform_audit=True,
-    perform_remediation=True
+    perform_remediation=True,
+    language="en"  # Optional: Set language (en, es, fr, de, pt, it, ja, zh)
 )
 ```
 
