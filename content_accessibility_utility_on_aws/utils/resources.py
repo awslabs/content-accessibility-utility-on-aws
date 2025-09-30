@@ -15,7 +15,10 @@ import uuid
 import contextlib
 from typing import List, Dict, Generator
 
-from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger, ResourceError
+from content_accessibility_utility_on_aws.utils.logging_helper import (
+    setup_logger,
+    ResourceError,
+)
 from content_accessibility_utility_on_aws.utils.path_fixes import normalize_path
 
 # Configure module-level logger

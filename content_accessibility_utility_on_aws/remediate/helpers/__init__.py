@@ -6,4 +6,3 @@ HTML Accessibility Remediator Helpers.
 
 This module provides helper functions and classes used by the remediation process.
 """
-

@@ -82,7 +82,9 @@ def create_job_record(
     }
 
     table.put_item(Item=item)
-    logger.debug("Created job record for job_id: %s, document: %s", job_id, document_key)
+    logger.debug(
+        "Created job record for job_id: %s, document: %s", job_id, document_key
+    )
 
     return item
 

@@ -19,7 +19,6 @@ class AccessibilityError(Exception):
     """Base class for accessibility-related errors."""
 
 
-
 def safe_check(check_func):
     """
     Decorator for safely running accessibility checks.

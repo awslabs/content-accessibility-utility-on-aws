@@ -308,7 +308,7 @@ def build_html_data(
             "    </style>",
             "</head>",
             "<body>",
-            "<nav><ul>"
+            "<nav><ul>",
         ]
         pages = []
         for i in range(num_pages):

@@ -539,7 +539,9 @@ def remediate_table_missing_scope(
     # Attempt AI analysis with retries
     for attempt in range(max_retries):
         try:
-            json_response = bedrock_client.generate_text(prompt, purpose="table_remediation", max_tokens=2000)
+            json_response = bedrock_client.generate_text(
+                prompt, purpose="table_remediation", max_tokens=2000
+            )
 
             # Extract JSON from the response
             json_start = json_response.find("{")
@@ -812,7 +814,9 @@ def remediate_table_missing_thead(
         """
 
         try:
-            json_response = bedrock_client.generate_text(prompt, purpose="table_remediation", max_tokens=2000)
+            json_response = bedrock_client.generate_text(
+                prompt, purpose="table_remediation", max_tokens=2000
+            )
             # Extract just the JSON part
             json_start = json_response.find("[")
             json_end = json_response.rfind("]") + 1

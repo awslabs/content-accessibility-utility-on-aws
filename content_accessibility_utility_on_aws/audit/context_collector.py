@@ -12,6 +12,7 @@ from typing import Dict, Any
 from bs4 import Tag
 
 from ..utils.logging_helper import setup_logger
+
 # Set up module-level logger
 logger = setup_logger(__name__)
 

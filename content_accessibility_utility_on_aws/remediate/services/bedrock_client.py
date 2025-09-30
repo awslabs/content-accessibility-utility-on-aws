@@ -233,7 +233,6 @@ class BedrockClient:
                     except Exception as e:
                         logger.debug(f"Failed to remove temporary file: {e}")
 
-    
             content = [
                 {
                     "text": prompt,

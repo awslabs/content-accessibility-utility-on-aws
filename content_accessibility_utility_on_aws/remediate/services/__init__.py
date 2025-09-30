@@ -7,6 +7,8 @@ Services for HTML accessibility remediation.
 This package provides services used by the HTML accessibility remediator.
 """
 
-from content_accessibility_utility_on_aws.remediate.services.bedrock_client import BedrockClient
+from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
+    BedrockClient,
+)
 
 __all__ = ["BedrockClient"]

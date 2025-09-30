@@ -25,6 +25,10 @@ audit:
 remediate:
   severity_threshold: "minor"  # Matches the audit parameter name
   model_id: "us.amazon.nova-lite-v1:0"
+  optimize_tab_order: true  # Enable tab order optimization (WCAG 2.4.3)
+  ai_validate_tab_order: true  # Enable AI validation of tab order fixes (default: true)
+  ai_confidence_threshold: 0.8  # Minimum confidence score for applying AI suggestions (0.0-1.0)
+  tab_order_row_threshold: 20.0  # Y-coordinate threshold for grouping elements into rows (pixels)
 
 # AWS service options
 aws:

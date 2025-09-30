@@ -15,7 +15,7 @@ from bs4 import BeautifulSoup
 def display_html_content(html_path: str) -> None:
     """
     Display HTML content in the Streamlit app with embedded resources.
-    
+
     Args:
         html_path: Path to the HTML file
     """
@@ -23,7 +23,7 @@ def display_html_content(html_path: str) -> None:
         if not os.path.exists(html_path):
             st.warning(f"HTML file not found: {html_path}")
             return
-            
+
         with open(html_path, "r", encoding="utf-8", errors="replace") as f:
             html_content = f.read()
 
@@ -50,7 +50,10 @@ def display_html_content(html_path: str) -> None:
                         try:
                             # Get mime type
                             # Get mime type
-                            mime_type = mimetypes.guess_type(file_full_path)[0] or 'application/octet-stream'
+                            mime_type = (
+                                mimetypes.guess_type(file_full_path)[0]
+                                or "application/octet-stream"
+                            )
                             # Read and encode the file
                             with open(file_full_path, "rb", encoding=None) as img_file:
                                 file_data = base64.b64encode(img_file.read()).decode()
@@ -71,34 +74,36 @@ def display_html_content(html_path: str) -> None:
     except Exception as e:
         st.error(f"Error displaying HTML file: {str(e)}")
 
+
 def display_html_with_pagination(html_dir: str) -> None:
     """
     Display HTML content with pagination for multi-page documents.
-    
+
     Args:
         html_dir: Directory containing HTML files
     """
     import re
-    
+
     if not os.path.exists(html_dir):
         st.warning(f"HTML directory not found: {html_dir}")
         return
-        
+
     if os.path.isfile(html_dir):
         # Single file
         display_html_content(html_dir)
         return
-        
+
     # Find all HTML files in the directory
     html_files = [
-        f for f in os.listdir(html_dir)
+        f
+        for f in os.listdir(html_dir)
         if f.lower().endswith(".html") and os.path.isfile(os.path.join(html_dir, f))
     ]
 
     if not html_files:
         st.warning(f"No HTML files found in {html_dir}")
         return
-        
+
     # Sort HTML files (try to extract page numbers for proper ordering)
     sorted_html_files = []
     for html_file in html_files:

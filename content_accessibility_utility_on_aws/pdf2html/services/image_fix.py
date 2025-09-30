@@ -29,7 +29,7 @@ def fix_image_src_attributes(soup, element, image_dir=None):
     """
     if not (
         element.get("type") == "FIGURE"
-        and element.get("sub_type") in  ["IMAGE", "DIAGRAM"]
+        and element.get("sub_type") in ["IMAGE", "DIAGRAM"]
         and element.get("crop_images")
     ):
         return False

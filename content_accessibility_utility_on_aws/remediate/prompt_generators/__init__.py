@@ -7,4 +7,3 @@ HTML Accessibility Remediation Prompt Generators.
 This module provides classes for generating prompts used by AI models
 to remediate specific types of accessibility issues.
 """
-

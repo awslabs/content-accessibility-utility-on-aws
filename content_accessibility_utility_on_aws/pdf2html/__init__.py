@@ -7,4 +7,3 @@ PDF to HTML conversion module.
 This module provides functionality for converting PDF documents to HTML
 using AWS Bedrock Data Automation.
 """
-

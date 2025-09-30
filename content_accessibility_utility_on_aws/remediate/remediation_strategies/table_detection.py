@@ -83,7 +83,9 @@ def preprocess_tables(html: str) -> str:
         # Add 1px solid border to table
         table_style = table.get("style", "")
         if "border" not in table_style.lower():
-            table["style"] = f"{table_style}; border: 1px solid black; border-collapse: collapse;"
+            table["style"] = (
+                f"{table_style}; border: 1px solid black; border-collapse: collapse;"
+            )
 
         # Add borders to all cells (th and td)
         for cell in table.find_all(["th", "td"]):

@@ -247,7 +247,9 @@ Key components:
 
 ## Command Line Interface
 
-The package provides a command-line interface with several subcommands:
+The package provides a command-line interface with several subcommands. For a complete reference of all CLI options and parameters, see the [Parameter Reference Guide](docs/parameter_reference.md).
+
+### Quick Start
 
 ### PDF to HTML Conversion
 
@@ -494,4 +496,3 @@ Apache-2.0 License. See [LICENSE](LICENSE) for details.
 
 ## Contributing
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to contribute to this project.
-

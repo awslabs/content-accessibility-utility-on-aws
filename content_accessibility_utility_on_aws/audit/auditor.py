@@ -33,6 +33,7 @@ from content_accessibility_utility_on_aws.audit.checks import (
     FormLabelCheck,
     FormRequiredFieldCheck,
     FormFieldsetCheck,
+    TabOrderCheck,
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
@@ -227,10 +228,16 @@ class AccessibilityAuditor:
                     # Extract the page number from the filename if it follows the page-X.html pattern
                     page_num = None
                     file_name = os.path.basename(html_file)
-                    match = re.search(r"page[_-]?(\d+)\.html$", file_name, re.IGNORECASE)
+                    match = re.search(
+                        r"page[_-]?(\d+)\.html$", file_name, re.IGNORECASE
+                    )
                     if match:
                         page_num = int(match.group(1))
-                        logger.debug("Extracted page number %d from filename: %s", page_num, file_name)
+                        logger.debug(
+                            "Extracted page number %d from filename: %s",
+                            page_num,
+                            file_name,
+                        )
 
                     # Run accessibility checks on this page
                     self._audit_page(page_soup, page_num, html_file, file_name)
@@ -241,17 +248,21 @@ class AccessibilityAuditor:
             # Single page mode - audit the already loaded HTML
             logger.info("Single page mode: Processing HTML content")
             # Pass the file path if available
-            file_path = self.html_path if hasattr(self, "html_path") and self.html_path else None
+            file_path = (
+                self.html_path
+                if hasattr(self, "html_path") and self.html_path
+                else None
+            )
             self._audit_page(self.soup, None, file_path)
 
         # Generate and return the report
         logger.info("Audit completed. Total issues found: %d", len(self.issues))
-        
+
         # Ensure all issues have a valid location field
         for issue in self.issues:
             if "location" not in issue or issue["location"] is None:
                 issue["location"] = {}
-            
+
             # Ensure page_number exists in location
             if "page_number" not in issue["location"]:
                 # Try to get page number from root level if available
@@ -373,17 +384,23 @@ class AccessibilityAuditor:
         # Extract file name from file path if not provided
         if file_name is None and file_path:
             file_name = os.path.basename(file_path)
-            
+
         # Try to extract page number from filename if not provided
         if page_num is None and file_name:
             match = re.search(r"page[_-]?(\d+)\.html$", file_name, re.IGNORECASE)
             if match:
                 page_num = int(match.group(1))
-                logger.info("Extracted page number %d from filename: %s", page_num, file_name)
+                logger.info(
+                    "Extracted page number %d from filename: %s", page_num, file_name
+                )
 
         logger.debug(
             "Running accessibility checks on %s",
-            f"page {page_num}" if page_num is not None else f"file {file_name}" if file_name else "(single page)",
+            (
+                f"page {page_num}"
+                if page_num is not None
+                else f"file {file_name}" if file_name else "(single page)"
+            ),
         )
 
         # Track the number of issues before running checks on this page
@@ -408,6 +425,7 @@ class AccessibilityAuditor:
             FormLabelCheck(self.soup, self._add_issue),
             FormRequiredFieldCheck(self.soup, self._add_issue),
             FormFieldsetCheck(self.soup, self._add_issue),
+            TabOrderCheck(self.soup, self._add_issue),
         ]
 
         for check in checks:
@@ -437,7 +455,7 @@ class AccessibilityAuditor:
                 # Store both in location and at the root level for compatibility
                 issue["location"]["file_path"] = file_path
                 issue["file_path"] = file_path
-                
+
                 # Also store the file name for easier reference
                 issue["location"]["file_name"] = file_name
                 issue["file_name"] = file_name
@@ -445,11 +463,15 @@ class AccessibilityAuditor:
             # Set page number if available (either provided or extracted from filename)
             if page_num is not None:
                 issue["location"]["page_number"] = page_num
-                issue["page_number"] = page_num  # Also store at root level for compatibility
-                
+                issue["page_number"] = (
+                    page_num  # Also store at root level for compatibility
+                )
+
                 # Add a human-readable description that includes both file name and page number if available
                 if file_name:
-                    issue["location"]["description"] = f"File: {file_name} (Page {page_num})"
+                    issue["location"][
+                        "description"
+                    ] = f"File: {file_name} (Page {page_num})"
                 else:
                     issue["location"]["description"] = f"Page {page_num}"
             else:
@@ -475,7 +497,7 @@ class AccessibilityAuditor:
             # Ensure location is always a dictionary, never None
             if "location" not in issue or issue["location"] is None:
                 issue["location"] = {}
-                
+
             # Ensure page_number exists in location
             if "page_number" not in issue["location"]:
                 # Try to get page number from root level if available
@@ -483,7 +505,7 @@ class AccessibilityAuditor:
                     issue["location"]["page_number"] = issue["page_number"]
                 else:
                     issue["location"]["page_number"] = 0
-                    
+
             page_num = issue["location"].get("page_number", 0)
             if page_num not in issues_by_page:
                 issues_by_page[page_num] = []

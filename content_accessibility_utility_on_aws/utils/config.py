@@ -15,7 +15,10 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 from copy import deepcopy
 
-from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger, ConfigurationError
+from content_accessibility_utility_on_aws.utils.logging_helper import (
+    setup_logger,
+    ConfigurationError,
+)
 
 # Configure module-level logger
 logger = setup_logger(__name__)
@@ -203,28 +206,28 @@ def validate_options(
 def load_config_file(file_path: str) -> Dict[str, Any]:
     """
     Load configuration from a file.
-    
+
     Supports YAML (.yaml, .yml) and JSON (.json) formats.
-    
+
     Args:
         file_path: Path to the configuration file
-        
+
     Returns:
         Dictionary with configuration options
-        
+
     Raises:
         ConfigurationError: If file cannot be loaded or parsed
     """
     path = Path(file_path)
-    
+
     if not path.exists():
         raise ConfigurationError(f"Configuration file not found: {file_path}")
-    
+
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            if path.suffix.lower() in ('.yaml', '.yml'):
+        with open(path, "r", encoding="utf-8") as f:
+            if path.suffix.lower() in (".yaml", ".yml"):
                 return yaml.safe_load(f) or {}
-            elif path.suffix.lower() == '.json':
+            elif path.suffix.lower() == ".json":
                 return json.load(f)
             else:
                 raise ConfigurationError(
@@ -237,20 +240,22 @@ def load_config_file(file_path: str) -> Dict[str, Any]:
         raise ConfigurationError(f"Error loading configuration file: {e}")
 
 
-def save_config(config: Dict[str, Any], file_path: str, file_format: str = "yaml") -> None:
+def save_config(
+    config: Dict[str, Any], file_path: str, file_format: str = "yaml"
+) -> None:
     """
     Save configuration to a file.
-    
+
     Args:
         config: Configuration dictionary
         file_path: Path to save the configuration file
         format: File format ('yaml' or 'json')
-        
+
     Raises:
         ConfigurationError: If file cannot be written
     """
     try:
-        with open(file_path, 'w', encoding='utf-8') as f:
+        with open(file_path, "w", encoding="utf-8") as f:
             if file_format.lower() == "yaml":
                 yaml.dump(config, f, default_flow_style=False)
             elif file_format.lower() == "json":

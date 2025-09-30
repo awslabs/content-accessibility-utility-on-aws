@@ -8,17 +8,19 @@ AWS utilities for the Document Accessibility Streamlit application.
 import streamlit as st
 from typing import Optional
 
+
 def check_aws_configuration(s3_bucket: Optional[str]) -> bool:
     """
     Check if AWS S3 bucket is configured.
-    
+
     Args:
         s3_bucket: S3 bucket name
-        
+
     Returns:
         True if configured, False otherwise
     """
     return s3_bucket is not None
+
 
 def display_aws_warning() -> None:
     """Display a warning about missing AWS configuration."""
@@ -33,7 +35,7 @@ def display_aws_warning() -> None:
         Without these, PDF processing will fail. Consider uploading HTML files directly if AWS resources aren't available.
         """
     )
-    
+
     # Add a second notice that will appear in the main content area
     st.error(
         """
@@ -47,6 +49,7 @@ def display_aws_warning() -> None:
         Please configure these resources using environment variables or upload HTML files directly.
         """
     )
+
 
 def display_html_upload_notice() -> None:
     """Display a notice about uploading HTML files directly."""

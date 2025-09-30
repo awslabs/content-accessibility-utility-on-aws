@@ -22,7 +22,9 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
 )
 from content_accessibility_utility_on_aws.utils.usage_tracker import SessionUsageTracker
-from content_accessibility_utility_on_aws.pdf2html.services.page_builder import build_html_data
+from content_accessibility_utility_on_aws.pdf2html.services.page_builder import (
+    build_html_data,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -280,7 +282,6 @@ class BDAClient:
 class ExtendedBDAClient(BDAClient):
     """Extended client with additional functionality for PDF processing."""
 
-
     def process_and_retrieve(
         self, pdf_path: str, output_dir: str, options: dict
     ) -> dict:
@@ -296,7 +297,7 @@ class ExtendedBDAClient(BDAClient):
             dict: Processing results
         """
         start_time = datetime.now()
-        
+
         try:
             # Verify we have a bucket
             if not self.s3_bucket:
@@ -503,10 +504,10 @@ class ExtendedBDAClient(BDAClient):
             # Calculate processing time
             end_time = datetime.now()
             processing_time_ms = int((end_time - start_time).total_seconds() * 1000)
-            
+
             # Count pages from the result data
             page_count = 0
-            
+
             # Read the result data to count pages
             try:
                 with open(result_json, "r", encoding="utf-8") as f:
@@ -515,18 +516,23 @@ class ExtendedBDAClient(BDAClient):
                         page_count = len(result_data["pages"])
             except Exception as e:
                 logger.warning(f"Error reading result data for page count: {e}")
-            
+
             # Fallback to counting HTML files if we couldn't get page count from result data
             if page_count == 0 and extract_result["html_files"]:
                 # If we don't have explicit page data, count HTML files as a fallback
                 # But only count files that appear to be pages (match page-X.html pattern)
                 import re
-                page_files = [f for f in extract_result["html_files"] if re.search(r'page-\d+\.html$', f)]
+
+                page_files = [
+                    f
+                    for f in extract_result["html_files"]
+                    if re.search(r"page-\d+\.html$", f)
+                ]
                 page_count = max(1, len(page_files))  # At least 1 page
-            
+
             # Generate a unique document ID
             document_id = f"doc-{uuid.uuid4().hex[:8]}"
-            
+
             # Track BDA usage
             try:
                 usage_tracker = SessionUsageTracker.get_instance()
@@ -534,12 +540,14 @@ class ExtendedBDAClient(BDAClient):
                     project_arn=self.project_arn,
                     document_id=document_id,
                     page_count=page_count,
-                    processing_time_ms=processing_time_ms
+                    processing_time_ms=processing_time_ms,
                 )
-                logger.debug(f"Tracked BDA processing: document={document_id}, pages={page_count}, time={processing_time_ms}ms")
+                logger.debug(
+                    f"Tracked BDA processing: document={document_id}, pages={page_count}, time={processing_time_ms}ms"
+                )
             except Exception as track_error:
                 logger.warning(f"Failed to track BDA usage: {track_error}")
-            
+
             # Return the results
             return {
                 "html_files": extract_result["html_files"],
@@ -551,7 +559,7 @@ class ExtendedBDAClient(BDAClient):
                 "image_files": downloaded_files,
                 "result_data": extract_result.get("element_data", {}),
                 "document_id": document_id,
-                "page_count": page_count
+                "page_count": page_count,
             }
 
         except Exception as e:

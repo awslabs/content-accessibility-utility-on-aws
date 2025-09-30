@@ -11,7 +11,9 @@ from typing import Dict, List, Any
 from bs4 import BeautifulSoup
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
-from content_accessibility_utility_on_aws.remediate.remediation_manager import RemediationManager
+from content_accessibility_utility_on_aws.remediate.remediation_manager import (
+    RemediationManager,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)

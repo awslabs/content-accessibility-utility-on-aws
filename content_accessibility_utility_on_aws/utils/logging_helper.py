@@ -18,35 +18,28 @@ class DocumentAccessibilityError(Exception):
     """Base exception class for all document_accessibility errors."""
 
 
-
 class PDFConversionError(DocumentAccessibilityError):
     """Raised when there's an error converting a PDF document to HTML."""
-
 
 
 class AccessibilityAuditError(DocumentAccessibilityError):
     """Raised when there's an error during accessibility auditing."""
 
 
-
 class AccessibilityRemediationError(DocumentAccessibilityError):
     """Raised when there's an error during accessibility remediation."""
-
 
 
 class ConfigurationError(DocumentAccessibilityError):
     """Raised when there's an error in configuration."""
 
 
-
 class ResourceError(DocumentAccessibilityError):
     """Raised when there's an error managing resources."""
 
 
-
 class AIRemediationRequiredError(DocumentAccessibilityError):
     """Raised when AI remediation is required but not available."""
-
 
 
 # Configure module-level logger
@@ -73,7 +66,7 @@ def setup_logger(name: str, level: Optional[int] = None) -> logging.Logger:
             level = logging.DEBUG
         else:
             level = logging.INFO
-        
+
         # Use logging instead of print
         logger.debug(f"Setting logger {name} level to {logging.getLevelName(level)}")
 

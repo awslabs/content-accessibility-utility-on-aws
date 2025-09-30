@@ -346,21 +346,41 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
 
     # Define generic alt text patterns
     generic_patterns = [
-        "image", "IMAGE", "Image", 
-        "picture", "PICTURE", "Picture",
-        "photo", "PHOTO", "Photo",
-        "graphic", "GRAPHIC", "Graphic",
-        "diagram", "DIAGRAM", "Diagram",
-        "chart", "CHART", "Chart",
-        "graph", "GRAPH", "Graph",
-        "icon", "ICON", "Icon",
-        "img", "IMG", "Img",
-        "pic", "PIC", "Pic"
+        "image",
+        "IMAGE",
+        "Image",
+        "picture",
+        "PICTURE",
+        "Picture",
+        "photo",
+        "PHOTO",
+        "Photo",
+        "graphic",
+        "GRAPHIC",
+        "Graphic",
+        "diagram",
+        "DIAGRAM",
+        "Diagram",
+        "chart",
+        "CHART",
+        "Chart",
+        "graph",
+        "GRAPH",
+        "Graph",
+        "icon",
+        "ICON",
+        "Icon",
+        "img",
+        "IMG",
+        "Img",
+        "pic",
+        "PIC",
+        "Pic",
     ]
 
     # First, try to find the image using the standard finder function
     img = find_image_by_issue(soup, issue)
-    
+
     # If not found and we have a generic alt value from the issue, try direct search
     if not img and generic_alt:
         images = soup.find_all("img", alt=generic_alt)
@@ -370,9 +390,14 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
         else:
             # Try case-insensitive search
             for image in soup.find_all("img"):
-                if image.has_attr("alt") and image["alt"].upper() == generic_alt.upper():
+                if (
+                    image.has_attr("alt")
+                    and image["alt"].upper() == generic_alt.upper()
+                ):
                     img = image
-                    logger.debug(f"Found image with case-insensitive alt text: '{generic_alt}'")
+                    logger.debug(
+                        f"Found image with case-insensitive alt text: '{generic_alt}'"
+                    )
                     break
 
     # If still not found, search for all images with generic alt text
@@ -391,7 +416,9 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
 
     # Confirm this image has generic alt text
     current_alt = img.get("alt", "").strip()
-    if not current_alt or current_alt.upper() not in [p.upper() for p in generic_patterns]:
+    if not current_alt or current_alt.upper() not in [
+        p.upper() for p in generic_patterns
+    ]:
         logger.info(f"Image alt text '{current_alt}' is not recognized as generic")
         return None
 
@@ -407,29 +434,35 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
 
     # Extract context for the image
     context = ""
-    
+
     # Try to get context from nearby text
     parent_text = img.parent.get_text(strip=True) if img.parent else ""
     if parent_text and len(parent_text) < 200:
         context = parent_text
-    
+
     # Try nearby headings if no context yet
     if not context:
         heading = img.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
         if heading:
             context = heading.get_text(strip=True)
-    
+
     # Create context-based alt text based on generic type
     generic_type = current_alt.lower()
     if "diagram" in generic_type or "chart" in generic_type or "graph" in generic_type:
-        new_alt = f"Diagram showing {context}" if context else "Diagram related to this content"
+        new_alt = (
+            f"Diagram showing {context}"
+            if context
+            else "Diagram related to this content"
+        )
     elif "photo" in generic_type or "picture" in generic_type:
         new_alt = f"Photo of {context}" if context else "Photo related to this content"
     else:
         new_alt = f"Image of {context}" if context else "Image related to this content"
-    
+
     img["alt"] = new_alt
-    return f"Added context-based alt text '{new_alt}' to replace generic '{current_alt}'"
+    return (
+        f"Added context-based alt text '{new_alt}' to replace generic '{current_alt}'"
+    )
 
 
 def remediate_long_alt_text(

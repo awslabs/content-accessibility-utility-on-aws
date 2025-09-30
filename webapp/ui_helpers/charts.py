@@ -8,19 +8,20 @@ Chart and visualization components for the Document Accessibility Streamlit appl
 import streamlit as st
 from typing import Dict, Any, List, Optional
 
+
 def display_audit_summary(summary: Dict[str, Any]) -> None:
     """
     Display audit summary metrics.
-    
+
     Args:
         summary: Dictionary containing audit summary data
     """
     if not summary:
         return
-    
+
     # Display summary metrics
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.metric("Total Issues", summary.get("total_issues", 0))
     with col2:
@@ -38,21 +39,22 @@ def display_audit_summary(summary: Dict[str, Any]) -> None:
             delta_color="inverse",
         )
 
+
 def display_remediation_stats(summary: Dict[str, Any]) -> None:
     """
     Display remediation statistics.
-    
+
     Args:
         summary: Dictionary containing remediation summary data
     """
     if not summary:
         return
-    
+
     # Calculate remediation statistics
     total_issues = summary.get("total_issues", 0)
     remediated_issues = summary.get("remediated_issues", 0)
     failed_issues = summary.get("failed_issues", 0)
-    
+
     # Check if we need to calculate the values
     if remediated_issues == 0 and failed_issues == 0 and "issues" in summary:
         issues = summary.get("issues", [])
@@ -62,12 +64,12 @@ def display_remediation_stats(summary: Dict[str, Any]) -> None:
         failed_issues = sum(
             1 for i in issues if i.get("remediation_status") != "remediated"
         )
-    
+
     # Calculate success rate
     success_rate = 0
     if total_issues > 0:
         success_rate = int((remediated_issues / total_issues) * 100)
-    
+
     # Display the statistics in columns
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -76,15 +78,18 @@ def display_remediation_stats(summary: Dict[str, Any]) -> None:
         st.metric("Successfully Remediated", remediated_issues)
     with col3:
         st.metric("Failed Remediation", failed_issues)
-    
+
     # Add progress bar for success rate
     st.progress(success_rate / 100)
     st.caption(f"Success Rate: {success_rate}%")
 
-def display_severity_breakdown(issues: List[Dict[str, Any]], summary: Optional[Dict[str, Any]] = None) -> None:
+
+def display_severity_breakdown(
+    issues: List[Dict[str, Any]], summary: Optional[Dict[str, Any]] = None
+) -> None:
     """
     Display severity breakdown of issues.
-    
+
     Args:
         issues: List of issue dictionaries
         summary: Optional summary dictionary that may contain pre-calculated severity counts
@@ -100,11 +105,11 @@ def display_severity_breakdown(issues: List[Dict[str, Any]], summary: Optional[D
         critical = sum(1 for i in issues if i.get("severity") == "critical")
         major = sum(1 for i in issues if i.get("severity") == "major")
         minor = sum(1 for i in issues if i.get("severity") == "minor")
-    
+
     # Display severity breakdown
     st.subheader("Severity Breakdown")
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         st.metric(
             "Critical Issues",
@@ -136,17 +141,20 @@ def display_severity_breakdown(issues: List[Dict[str, Any]], summary: Optional[D
             ),
         )
 
-def display_issues_by_type(issues: List[Dict[str, Any]], summary: Optional[Dict[str, Any]] = None) -> None:
+
+def display_issues_by_type(
+    issues: List[Dict[str, Any]], summary: Optional[Dict[str, Any]] = None
+) -> None:
     """
     Display issues grouped by type with bar charts.
-    
+
     Args:
         issues: List of issue dictionaries
         summary: Optional summary dictionary that may contain pre-calculated type statistics
     """
     # Get issue type statistics
     issue_types = {}
-    
+
     if summary and "issue_type_stats" in summary:
         issue_types = summary.get("issue_type_stats", {})
     else:
@@ -156,17 +164,14 @@ def display_issues_by_type(issues: List[Dict[str, Any]], summary: Optional[Dict[
             if issue_type not in issue_types:
                 issue_types[issue_type] = 0
             issue_types[issue_type] += 1
-    
+
     # Display issue type breakdown if we have any
     if issue_types:
         st.subheader("Issues by Type")
-        
+
         # Sort issue types by count (descending)
-        sorted_issues = sorted(
-            issue_types.items(), key=lambda x: x[1], reverse=True
-        )
-        
-    
+        sorted_issues = sorted(issue_types.items(), key=lambda x: x[1], reverse=True)
+
         # Display horizontal bar chart using markdown
         for issue_type, count in sorted_issues:
             # Count remediated issues of this type
@@ -176,7 +181,7 @@ def display_issues_by_type(issues: List[Dict[str, Any]], summary: Optional[Dict[
                 if i.get("type") == issue_type
                 and i.get("remediation_status") == "remediated"
             )
-            
+
             # Display bar with label
             st.write(f"**{issue_type}**: {count} ({remediated_of_type} remediated)")
             progress_value = remediated_of_type / count if count > 0 else 0

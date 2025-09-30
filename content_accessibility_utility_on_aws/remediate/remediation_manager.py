@@ -69,6 +69,12 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.form_
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.figure_remediation import (
     remediate_improper_figure_structure,
 )
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.tab_order_remediation import (
+    TabOrderRemediation,
+)
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.tab_order_ai_validator import (
+    AITabOrderValidator,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -96,9 +102,7 @@ class RemediationManager:
 
         if not self.options.get("disable_ai", False):
             try:
-                model_id = self.options.get(
-                    "model_id", "us.amazon.nova-lite-v1:0"
-                )
+                model_id = self.options.get("model_id", "us.amazon.nova-lite-v1:0")
                 profile = self.options.get("profile")
                 self.bedrock_client = BedrockClient(model_id=model_id, profile=profile)
                 logger.debug(
@@ -256,9 +260,7 @@ class RemediationManager:
                         BedrockClient,
                     )
 
-                    model_id = self.options.get(
-                        "model_id", "us.amazon.nova-lite-v1:0"
-                    )
+                    model_id = self.options.get("model_id", "us.amazon.nova-lite-v1:0")
                     profile = self.options.get("profile")
 
                     if profile:
@@ -370,6 +372,129 @@ class RemediationManager:
             logger.debug(f"No remediation strategy for issue type: {issue_type}")
             return None
 
+    def remediate_tab_order_issues(
+        self, tab_order_issues: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Remediate tab order issues using sequential two-phase approach.
+
+        Phase 1: Algorithmic remediation (always runs)
+        Phase 2: AI validation (enabled by default, can be disabled)
+
+        Args:
+            tab_order_issues: List of tab order issues to remediate
+
+        Returns:
+            Dictionary with remediation results including changes made
+        """
+        if not tab_order_issues:
+            logger.debug("No tab order issues to remediate")
+            return {
+                "issues_processed": 0,
+                "issues_remediated": 0,
+                "changes": [],
+                "ai_validation_performed": False,
+            }
+
+        logger.debug(f"Remediating {len(tab_order_issues)} tab order issues")
+
+        # Get current HTML as string
+        original_html = str(self.soup)
+
+        # Phase 1: Algorithmic Remediation (Required)
+        logger.debug("Phase 1: Running algorithmic tab order remediation")
+        remediator = TabOrderRemediation(
+            html_content=original_html, issues=tab_order_issues, options=self.options
+        )
+        remediated_html, changes = remediator.remediate()
+
+        # Update soup with algorithmic changes
+        self.soup.clear()
+        self.soup.append(BeautifulSoup(remediated_html, "html.parser"))
+
+        result = {
+            "issues_processed": len(tab_order_issues),
+            "issues_remediated": len(changes),
+            "changes": changes,
+            "ai_validation_performed": False,
+            "ai_confidence": None,
+            "ai_suggestions_applied": False,
+        }
+
+        # Phase 2: AI Validation (Enabled by default, but can be disabled)
+        if self.options.get("optimize_tab_order", True) and self.options.get(
+            "ai_validate_tab_order", True
+        ):
+            if self.bedrock_client:
+                try:
+                    logger.debug("Phase 2: Running AI validation of tab order fixes")
+
+                    # Get confidence threshold from options
+                    confidence_threshold = self.options.get(
+                        "ai_confidence_threshold", 0.8
+                    )
+
+                    # Initialize AI validator
+                    ai_validator = AITabOrderValidator(
+                        bedrock_client=self.bedrock_client,
+                        confidence_threshold=confidence_threshold,
+                    )
+
+                    # Validate algorithmic changes
+                    validation_result = ai_validator.validate_and_enhance(
+                        original_html=original_html,
+                        remediated_html=remediated_html,
+                        algorithmic_changes=changes,
+                        issues=tab_order_issues,
+                    )
+
+                    result["ai_validation_performed"] = True
+                    result["ai_confidence"] = validation_result.get("confidence", 0.0)
+
+                    # Apply AI suggestions if confidence is high enough
+                    if (
+                        validation_result.get("suggested_changes")
+                        and validation_result.get("confidence", 0)
+                        >= confidence_threshold
+                    ):
+                        logger.debug(
+                            f"Applying AI suggestions (confidence: {validation_result['confidence']:.2f})"
+                        )
+
+                        final_html, ai_changes = ai_validator.apply_suggestions(
+                            remediated_html=remediated_html,
+                            suggested_changes=validation_result["suggested_changes"],
+                        )
+
+                        # Update soup with AI-enhanced changes
+                        self.soup.clear()
+                        self.soup.append(BeautifulSoup(final_html, "html.parser"))
+
+                        # Merge AI changes with algorithmic changes
+                        result["changes"].extend(ai_changes)
+                        result["issues_remediated"] = len(result["changes"])
+                        result["ai_suggestions_applied"] = True
+
+                        logger.debug(
+                            f"Applied {len(ai_changes)} AI-suggested enhancements"
+                        )
+                    else:
+                        logger.debug(
+                            f"AI validation complete but confidence too low to apply suggestions (confidence: {validation_result.get('confidence', 0):.2f}, threshold: {confidence_threshold})"
+                        )
+
+                except Exception as e:
+                    logger.warning(
+                        f"AI validation failed, using algorithmic fixes only: {e}"
+                    )
+                    result["ai_validation_error"] = str(e)
+            else:
+                logger.debug("AI validation skipped: Bedrock client not available")
+        else:
+            logger.debug("AI validation disabled by configuration")
+
+        return result
+
     def remediate_issues(self, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Remediate multiple accessibility issues.
@@ -424,8 +549,137 @@ class RemediationManager:
         # Track changes applied across all issues
         total_changes_applied = 0
 
-        # Remediate each issue
-        for issue in issues:
+        # Separate tab order issues from other issues for batch processing
+        tab_order_issue_types = {
+            "positive-tabindex",
+            "illogical-tab-order",
+            "unnecessary-tabindex-zero",
+            "tab-order-mismatch",
+        }
+
+        tab_order_issues = [
+            issue for issue in issues if issue.get("type") in tab_order_issue_types
+        ]
+        other_issues = [
+            issue for issue in issues if issue.get("type") not in tab_order_issue_types
+        ]
+
+        # Process tab order issues together if tab order optimization is enabled
+        if tab_order_issues and self.options.get("optimize_tab_order", True):
+            logger.debug(
+                f"Processing {len(tab_order_issues)} tab order issues together"
+            )
+            try:
+                tab_order_result = self.remediate_tab_order_issues(tab_order_issues)
+
+                # Add tab order results to overall results
+                results["issues_remediated"] += tab_order_result.get(
+                    "issues_remediated", 0
+                )
+                total_changes_applied += len(tab_order_result.get("changes", []))
+
+                # Create detail entries for each tab order issue
+                for i, issue in enumerate(tab_order_issues):
+                    issue_id = issue.get("id", f"issue-{id(issue)}")
+
+                    # Determine if this specific issue was remediated based on changes
+                    changes_for_issue = [
+                        c
+                        for c in tab_order_result.get("changes", [])
+                        if c.get("issue_type") == issue.get("type")
+                    ]
+
+                    detail = {
+                        "id": issue_id,
+                        "type": issue.get("type"),
+                        "severity": issue.get("severity", "minor"),
+                        "message": f"Tab order optimized ({tab_order_result.get('issues_remediated', 0)} fixes applied)",
+                        "context": issue.get("context", ""),
+                        "selector": issue.get("selector", ""),
+                        "remediated": len(changes_for_issue) > 0,
+                        "remediation_status": (
+                            "remediated" if changes_for_issue else "failed"
+                        ),
+                        "before_content": issue.get("before_content", ""),
+                        "after_content": issue.get("after_content", ""),
+                        "fix_description": "; ".join(
+                            [c.get("description", "") for c in changes_for_issue]
+                        ),
+                        "failure_reason": (
+                            None if changes_for_issue else "No changes applied"
+                        ),
+                        "changes_applied": len(changes_for_issue),
+                        "file_path": issue.get("file_path", ""),
+                        "file_name": issue.get("file_name", ""),
+                        "page_number": issue.get("page_number"),
+                        "ai_validation_performed": tab_order_result.get(
+                            "ai_validation_performed", False
+                        ),
+                        "ai_suggestions_applied": tab_order_result.get(
+                            "ai_suggestions_applied", False
+                        ),
+                    }
+
+                    # Add location field
+                    if "location" not in detail:
+                        detail["location"] = {
+                            "file_path": detail.get("file_path", ""),
+                            "file_name": detail.get("file_name", ""),
+                            "page_number": detail.get("page_number"),
+                        }
+                        if (
+                            detail.get("file_name")
+                            and detail.get("page_number") is not None
+                        ):
+                            detail["location"][
+                                "description"
+                            ] = f"File: {detail['file_name']} (Page {detail['page_number']})"
+                        elif detail.get("file_name"):
+                            detail["location"][
+                                "description"
+                            ] = f"File: {detail['file_name']}"
+                        elif detail.get("page_number") is not None:
+                            detail["location"][
+                                "description"
+                            ] = f"Page {detail['page_number']}"
+
+                    results["details"].append(detail)
+                    if changes_for_issue:
+                        results["remediated_issues_details"].append(detail)
+                    else:
+                        results["failed_issues_details"].append(detail)
+                        results["issues_failed"] += 1
+
+            except Exception as e:
+                logger.error(f"Error remediating tab order issues: {e}")
+                # Mark all tab order issues as failed
+                for issue in tab_order_issues:
+                    issue_id = issue.get("id", f"issue-{id(issue)}")
+                    detail = {
+                        "id": issue_id,
+                        "type": issue.get("type"),
+                        "severity": issue.get("severity", "minor"),
+                        "message": f"Failed to remediate: {str(e)}",
+                        "context": issue.get("context", ""),
+                        "selector": issue.get("selector", ""),
+                        "remediated": False,
+                        "remediation_status": "failed",
+                        "before_content": issue.get("before_content", ""),
+                        "after_content": issue.get("after_content", ""),
+                        "fix_description": "",
+                        "failure_reason": str(e),
+                        "changes_applied": 0,
+                        "file_path": issue.get("file_path", ""),
+                        "file_name": issue.get("file_name", ""),
+                        "page_number": issue.get("page_number"),
+                    }
+                    results["details"].append(detail)
+                    results["failed_issues_details"].append(detail)
+                results["issues_failed"] += len(tab_order_issues)
+                failed_issue_types.update(tab_order_issue_types)
+
+        # Process other issues individually
+        for issue in other_issues:
             issue_type = issue.get("type")
 
             # Ensure issue has a proper ID - preserve the original ID from audit
@@ -477,15 +731,24 @@ class RemediationManager:
                     detail["location"] = {
                         "file_path": detail.get("file_path", ""),
                         "file_name": detail.get("file_name", ""),
-                        "page_number": detail.get("page_number")
+                        "page_number": detail.get("page_number"),
                     }
                     # Add a human-readable description
-                    if detail.get("file_name") and detail.get("page_number") is not None:
-                        detail["location"]["description"] = f"File: {detail['file_name']} (Page {detail['page_number']})"
+                    if (
+                        detail.get("file_name")
+                        and detail.get("page_number") is not None
+                    ):
+                        detail["location"][
+                            "description"
+                        ] = f"File: {detail['file_name']} (Page {detail['page_number']})"
                     elif detail.get("file_name"):
-                        detail["location"]["description"] = f"File: {detail['file_name']}"
+                        detail["location"][
+                            "description"
+                        ] = f"File: {detail['file_name']}"
                     elif detail.get("page_number") is not None:
-                        detail["location"]["description"] = f"Page {detail['page_number']}"
+                        detail["location"][
+                            "description"
+                        ] = f"Page {detail['page_number']}"
 
                 # Track changes applied to this issue
                 if result:
@@ -567,15 +830,24 @@ class RemediationManager:
                     detail["location"] = {
                         "file_path": detail.get("file_path", ""),
                         "file_name": detail.get("file_name", ""),
-                        "page_number": detail.get("page_number")
+                        "page_number": detail.get("page_number"),
                     }
                     # Add a human-readable description
-                    if detail.get("file_name") and detail.get("page_number") is not None:
-                        detail["location"]["description"] = f"File: {detail['file_name']} (Page {detail['page_number']})"
+                    if (
+                        detail.get("file_name")
+                        and detail.get("page_number") is not None
+                    ):
+                        detail["location"][
+                            "description"
+                        ] = f"File: {detail['file_name']} (Page {detail['page_number']})"
                     elif detail.get("file_name"):
-                        detail["location"]["description"] = f"File: {detail['file_name']}"
+                        detail["location"][
+                            "description"
+                        ] = f"File: {detail['file_name']}"
                     elif detail.get("page_number") is not None:
-                        detail["location"]["description"] = f"Page {detail['page_number']}"
+                        detail["location"][
+                            "description"
+                        ] = f"Page {detail['page_number']}"
 
                 # Set result to None for failure counting
                 result = None

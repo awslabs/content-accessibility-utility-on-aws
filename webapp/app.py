@@ -13,8 +13,10 @@ from typing import Dict, Any
 import sys
 import logging
 import streamlit as st
+
 # Import local modules
 from config.app_config_local import Config
+
 # Import other local modules
 from utils.session_utils import SessionState
 from utils.file_utils import save_uploaded_file, detect_file_type
@@ -26,14 +28,13 @@ from views.audit_view import display_audit_view
 from views.remediation_view import display_remediation_view
 from views.report_view import display_report_view
 from views.usage_view import display_usage_view
+
 # Make Python able to find local modules
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 
-
 # Create config instance
 app_config = Config()
-
 
 
 # Set up logger
@@ -149,12 +150,12 @@ def display_results(results: Dict[str, Any], temp_dir: str) -> None:
             display_report_view(results.get("remediation_result"), temp_dir)
         else:
             st.info("No remediation report is available.")
-            
+
     # Tab 4: Usage Data
     with tab4:
         # Look for usage data in results
         usage_data_path = results.get("usage_data_path")
-        
+
         # If no direct path but we have an S3 URI, show the S3 info
         if not usage_data_path and "usage_data_s3_uri" in results:
             st.info("Usage data was saved to S3. Download and view it locally.")
@@ -165,7 +166,7 @@ def display_results(results: Dict[str, Any], temp_dir: str) -> None:
                 possible_path = os.path.join(temp_dir, "usage_data.json")
                 if os.path.exists(possible_path):
                     usage_data_path = possible_path
-            
+
             # Display the usage data
             display_usage_view(usage_data_path)
 

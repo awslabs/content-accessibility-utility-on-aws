@@ -72,13 +72,11 @@ def remediate_missing_h1(
     h1 = soup.new_tag("h1")
     h1.string = title_text
 
-
     first_child = next(insertion_point.children, None)
     if first_child:
         first_child.insert_before(h1)
     else:
         insertion_point.append(h1)
-
 
     return f"Added h1 heading with content: '{title_text}'"
 

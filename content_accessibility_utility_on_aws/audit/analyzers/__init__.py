@@ -7,6 +7,8 @@ HTML Accessibility Analyzers.
 This module provides analyzer classes for specific types of accessibility checks.
 """
 
-from content_accessibility_utility_on_aws.audit.analyzers.base_analyzer import BaseAnalyzer
+from content_accessibility_utility_on_aws.audit.analyzers.base_analyzer import (
+    BaseAnalyzer,
+)
 
 __all__ = ["BaseAnalyzer"]

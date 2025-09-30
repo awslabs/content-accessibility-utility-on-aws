@@ -14,7 +14,9 @@ from typing import Dict, List, Any, Optional
 from bs4 import BeautifulSoup
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
-from content_accessibility_utility_on_aws.remediate.helpers.html_updater import HTMLUpdater
+from content_accessibility_utility_on_aws.remediate.helpers.html_updater import (
+    HTMLUpdater,
+)
 from .element_index import ElementIndex
 
 # Set up module-level logger
@@ -109,11 +111,15 @@ class RemediationManager:
         try:
             # Get elements for the current page
             elements = self.element_index.get_page_elements(self.current_page)
-            logger.debug("Found %d elements on page %s" % (len(elements), self.current_page))
+            logger.debug(
+                "Found %d elements on page %s" % (len(elements), self.current_page)
+            )
 
             # Get issues for the current page
             issues = self.element_index.get_page_issues(self.current_page)
-            logger.debug("Found %d issues on page %s" % (len(issues), self.current_page))
+            logger.debug(
+                "Found %d issues on page %s" % (len(issues), self.current_page)
+            )
 
             # Get remediation status for the page
             status = self.element_index.get_page_remediation_status(self.current_page)
@@ -260,20 +266,18 @@ class RemediationManager:
 
             # Log important details for debugging
             logger.debug(
-                "Applying fix for element %s - Fix type: %s" 
-                % (self.current_element_id, fix_data.get('type'))
+                "Applying fix for element %s - Fix type: %s"
+                % (self.current_element_id, fix_data.get("type"))
             )
             logger.debug(
-                "Element data: %s, Page: %s" 
-                % (element.get('type'), self.current_page)
+                "Element data: %s, Page: %s" % (element.get("type"), self.current_page)
             )
 
             # Get original HTML from BDA data
             original_html = element.get("representation", {}).get("html", "")
             if not original_html:
                 logger.error(
-                    "No HTML representation for element %s" 
-                    % self.current_element_id
+                    "No HTML representation for element %s" % self.current_element_id
                 )
                 return False
 
@@ -287,8 +291,7 @@ class RemediationManager:
                 and fix_data.get("type") == "attribute_update"
             ):
                 logger.debug(
-                    "Processing long-alt-text fix: %s..." 
-                    % fix_data.get('value')[:50]
+                    "Processing long-alt-text fix: %s..." % fix_data.get("value")[:50]
                 )
                 return self._apply_attribute_fix(original_html, fix_data, location)
 
@@ -296,20 +299,20 @@ class RemediationManager:
             success = False
             if fix_data["type"] == "attribute_update":
                 logger.debug(
-                    "Applying attribute update for %s = %s" 
-                    % (fix_data.get('attribute'), fix_data.get('value'))
+                    "Applying attribute update for %s = %s"
+                    % (fix_data.get("attribute"), fix_data.get("value"))
                 )
                 success = self._apply_attribute_fix(original_html, fix_data, location)
             elif fix_data["type"] == "content_update":
                 logger.debug(
-                    "Applying content update with %d characters" 
-                    % len(fix_data.get('content', ''))
+                    "Applying content update with %d characters"
+                    % len(fix_data.get("content", ""))
                 )
                 success = self._apply_content_fix(original_html, fix_data, location)
             elif fix_data["type"] == "replace_html":
                 logger.debug(
-                    "Applying HTML replacement with %d characters" 
-                    % len(fix_data.get('html', ''))
+                    "Applying HTML replacement with %d characters"
+                    % len(fix_data.get("html", ""))
                 )
                 success = self._apply_html_replacement(
                     original_html, fix_data, location
@@ -318,7 +321,7 @@ class RemediationManager:
                 logger.debug("Applying figure structure fix")
                 success = self._apply_figure_structure_fix(element, fix_data, location)
             else:
-                logger.error("Unknown fix type: %s" % fix_data['type'])
+                logger.error("Unknown fix type: %s" % fix_data["type"])
                 return False
 
             if success:
@@ -334,14 +337,14 @@ class RemediationManager:
                 )
 
                 logger.debug(
-                    "✅ Successfully applied %s fix for element %s" 
-                    % (fix_data['type'], self.current_element_id)
+                    "✅ Successfully applied %s fix for element %s"
+                    % (fix_data["type"], self.current_element_id)
                 )
                 return True
             else:
                 logger.warning(
-                    "❌ Failed to apply %s fix for element %s" 
-                    % (fix_data['type'], self.current_element_id)
+                    "❌ Failed to apply %s fix for element %s"
+                    % (fix_data["type"], self.current_element_id)
                 )
                 return False
 

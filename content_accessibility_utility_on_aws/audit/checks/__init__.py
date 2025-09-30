@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-
 """
 Accessibility checks package.
 
@@ -34,11 +33,16 @@ from content_accessibility_utility_on_aws.audit.checks.table_checks import (
     TableHeaderCheck,
     TableStructureCheck,
 )
-from content_accessibility_utility_on_aws.audit.checks.color_contrast_checks import ColorContrastCheck
+from content_accessibility_utility_on_aws.audit.checks.color_contrast_checks import (
+    ColorContrastCheck,
+)
 from content_accessibility_utility_on_aws.audit.checks.form_checks import (
     FormLabelCheck,
     FormRequiredFieldCheck,
     FormFieldsetCheck,
+)
+from content_accessibility_utility_on_aws.audit.checks.tab_order_checks import (
+    TabOrderCheck,
 )
 
 __all__ = [
@@ -59,4 +63,5 @@ __all__ = [
     "FormLabelCheck",
     "FormRequiredFieldCheck",
     "FormFieldsetCheck",
+    "TabOrderCheck",
 ]

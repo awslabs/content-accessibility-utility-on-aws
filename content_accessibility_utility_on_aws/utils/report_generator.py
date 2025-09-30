@@ -135,7 +135,9 @@ def prepare_for_json_serialization(data, depth=20, visited=None):
 
     # For lists, process each item
     elif isinstance(data, list):
-        return [prepare_for_json_serialization(item, depth - 1, visited) for item in data]
+        return [
+            prepare_for_json_serialization(item, depth - 1, visited) for item in data
+        ]
 
     # For dictionaries, process each value
     elif isinstance(data, dict):
@@ -172,7 +174,9 @@ def prepare_for_json_serialization(data, depth=20, visited=None):
 
             # Try to convert to dict if the object has a __dict__ attribute
             if hasattr(data, "__dict__"):
-                result = prepare_for_json_serialization(data.__dict__, depth - 1, visited)
+                result = prepare_for_json_serialization(
+                    data.__dict__, depth - 1, visited
+                )
                 visited.remove(object_id)
                 return result
             # If the object is iterable, convert to list
@@ -295,10 +299,7 @@ def generate_html_report(
         with app.app_context():
             template_file = "unified_report.html"
             logger.debug(f"Using template file: {template_file}")
-            html = render_template(
-                template_file,
-                report=report_data
-            )
+            html = render_template(template_file, report=report_data)
 
         logger.info("Using Flask's render_template for secure HTML generation")
 

@@ -23,14 +23,18 @@ from content_accessibility_utility_on_aws.pdf2html.services.bedrock_client impor
     ExtendedBDAClient,
     resolve_bda_project,
 )
-from content_accessibility_utility_on_aws.pdf2html.utils.pdf_utils import is_image_only_pdf
+from content_accessibility_utility_on_aws.pdf2html.utils.pdf_utils import (
+    is_image_only_pdf,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
 
 
 @contextlib.contextmanager
-def temp_directory(prefix=None, suffix=None, file_dir=None, use_cwd=False, cleanup=True):
+def temp_directory(
+    prefix=None, suffix=None, file_dir=None, use_cwd=False, cleanup=True
+):
     """
     Context manager for creating and cleaning up a temporary directory.
 

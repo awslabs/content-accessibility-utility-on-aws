@@ -59,7 +59,7 @@ def resize_image(image_path: str, max_size: int = 4000000, quality: int = 85) ->
         with Image.open(image_path) as img:
             # Get format or default to PNG
             img_format = img.format or "PNG"
-            
+
             # Map format to appropriate extension and ensure lowercase
             format_ext_map = {
                 "JPEG": "jpg",
@@ -67,7 +67,7 @@ def resize_image(image_path: str, max_size: int = 4000000, quality: int = 85) ->
                 "GIF": "gif",
                 "BMP": "bmp",
                 "TIFF": "tif",
-                "WEBP": "webp"
+                "WEBP": "webp",
             }
             ext = format_ext_map.get(img_format, "jpg").lower()
             temp_path = f"{image_path}.resized.{ext}"
@@ -81,21 +81,25 @@ def resize_image(image_path: str, max_size: int = 4000000, quality: int = 85) ->
             # Convert mode if necessary for format compatibility
             if img_format == "JPEG" and img.mode == "RGBA":
                 img = img.convert("RGB")
-            
+
             # Initial quality setting
             current_quality = quality
-            
+
             # Try up to 10 times with progressively smaller dimensions
             for attempt in range(10):
                 # Ensure minimum dimensions
                 new_width = max(new_width, 100)
                 new_height = max(new_height, 100)
-                
-                logger.debug(f"Resize attempt {attempt+1}: {new_width}x{new_height}, quality={current_quality}")
-                
+
+                logger.debug(
+                    f"Resize attempt {attempt+1}: {new_width}x{new_height}, quality={current_quality}"
+                )
+
                 # Resize the image
-                resized_img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
+                resized_img = img.resize(
+                    (new_width, new_height), Image.Resampling.LANCZOS
+                )
+
                 # Save with optimized settings
                 save_kwargs = {}
                 if img_format in ("JPEG", "PNG"):
@@ -105,15 +109,17 @@ def resize_image(image_path: str, max_size: int = 4000000, quality: int = 85) ->
                     save_kwargs["progressive"] = True
                 elif img_format == "PNG":
                     save_kwargs["compress_level"] = 9
-                
+
                 resized_img.save(temp_path, format=img_format, **save_kwargs)
-                
+
                 # Check if we succeeded
                 new_size = os.path.getsize(temp_path)
                 if new_size <= max_size:
-                    logger.debug(f"Successfully resized image to {new_size} bytes ({new_width}x{new_height}, quality={current_quality})")
+                    logger.debug(
+                        f"Successfully resized image to {new_size} bytes ({new_width}x{new_height}, quality={current_quality})"
+                    )
                     return temp_path
-                
+
                 # Adjust for next attempt - first reduce quality, then dimensions
                 if img_format == "JPEG" and current_quality > 60:
                     current_quality = max(current_quality - 10, 60)
@@ -121,18 +127,26 @@ def resize_image(image_path: str, max_size: int = 4000000, quality: int = 85) ->
                     # Reduce dimensions by 20% each time
                     new_width = int(new_width * 0.8)
                     new_height = int(new_height * 0.8)
-                    
+
                     # If dimensions are getting too small, just reduce quality further
-                    if new_width < 300 and img_format == "JPEG" and current_quality > 40:
+                    if (
+                        new_width < 300
+                        and img_format == "JPEG"
+                        and current_quality > 40
+                    ):
                         new_width = int(width * 0.3)  # Reset to 30% of original
                         new_height = int(height * 0.3)
                         current_quality = max(current_quality - 15, 40)
-            
+
             # If we've tried everything and failed
             os.remove(temp_path)
-            logger.warning(f"Failed to resize image to meet size requirement after multiple attempts: {image_path}")
-            raise ValueError(f"Could not resize image to meet {max_size} byte limit after multiple attempts")
-            
+            logger.warning(
+                f"Failed to resize image to meet size requirement after multiple attempts: {image_path}"
+            )
+            raise ValueError(
+                f"Could not resize image to meet {max_size} byte limit after multiple attempts"
+            )
+
     except (IOError, OSError) as e:
         logger.error(f"Error processing image {image_path}: {str(e)}")
         return image_path  # Return original path if resizing fails

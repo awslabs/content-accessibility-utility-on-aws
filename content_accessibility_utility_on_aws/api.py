@@ -285,21 +285,21 @@ def process_pdf_accessibility(
             local_path = None
             if output_dir:
                 local_path = os.path.join(output_dir, "usage_data.json")
-                
+
             # Save data and get the path
             usage_data_path = save_usage_data(
                 output_path=local_path,
                 usage_data_bucket=usage_data_bucket,
                 usage_data_bucket_prefix=usage_data_bucket_prefix,
-                profile=profile
+                profile=profile,
             )
-            
+
             if usage_data_path:
                 if usage_data_bucket and usage_data_path.startswith("s3://"):
                     result["usage_data_s3_uri"] = usage_data_path
                 elif local_path:
                     result["usage_data_path"] = usage_data_path
-                    
+
                 logger.info(f"Usage data saved to {usage_data_path}")
         except Exception as e:
             logger.warning(f"Failed to save usage data: {e}")
@@ -551,7 +551,7 @@ def save_usage_data(
 ) -> Optional[str]:
     """
     Save the current session usage data to a file or S3 bucket.
-    
+
     If both output_path and usage_data_bucket are provided, data will be saved to both locations.
 
     Args:
@@ -574,7 +574,7 @@ def save_usage_data(
         # Finalize the session
         usage_tracker = SessionUsageTracker.get_instance()
         usage_tracker.finalize_session()
-        
+
         result_path = None
 
         # Save to local file if output_path is provided
@@ -593,7 +593,7 @@ def save_usage_data(
                 s3_uri = usage_tracker.save_to_s3(
                     bucket_name=usage_data_bucket,
                     prefix=usage_data_bucket_prefix,
-                    profile=profile
+                    profile=profile,
                 )
                 logger.info(f"Usage data saved to S3: {s3_uri}")
                 result_path = s3_uri
@@ -602,9 +602,9 @@ def save_usage_data(
                 # If we already saved locally, don't fail completely
                 if output_path is None:
                     raise
-        
+
         return result_path
-        
+
     except Exception as e:
         handle_exception(
             e,

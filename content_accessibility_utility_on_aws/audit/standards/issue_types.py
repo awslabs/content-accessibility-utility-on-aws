@@ -148,6 +148,35 @@ ISSUE_TYPES = {
         "remediation_type": "style",
         "element_types": ["a", "button", "input", "select", "textarea"],
     },
+    # Tab Order and Keyboard Navigation
+    "positive-tabindex": {
+        "wcag": "2.4.3",
+        "severity": "critical",
+        "description": "Element has positive tabindex value which disrupts natural tab order",
+        "remediation_type": "attribute",
+        "element_types": ["*"],
+    },
+    "illogical-tab-order": {
+        "wcag": "2.4.3",
+        "severity": "major",
+        "description": "Tab order does not follow logical reading sequence",
+        "remediation_type": "structure",
+        "element_types": ["a", "button", "input", "select", "textarea", "area"],
+    },
+    "unnecessary-tabindex-zero": {
+        "wcag": "2.4.3",
+        "severity": "minor",
+        "description": "Non-interactive element has tabindex='0'",
+        "remediation_type": "attribute",
+        "element_types": ["div", "span", "p", "img"],
+    },
+    "tab-order-mismatch": {
+        "wcag": "2.4.3",
+        "severity": "major",
+        "description": "DOM order does not match visual reading order",
+        "remediation_type": "structure",
+        "element_types": ["*"],
+    },
     # Media
     "missing-video-captions": {
         "wcag": "1.2.2",

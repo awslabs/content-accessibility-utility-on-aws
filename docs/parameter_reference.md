@@ -48,6 +48,10 @@ The following table shows the standardized parameter names used across the tool:
 | Audit Report | `--audit-report` | `audit_report` | No | None | Path to audit report JSON file |
 | Generate Report | `--generate-report` | `generate_report` | No | Enabled | Generate a remediation report |
 | Report Format | `--report-format` | `report_format` | No | `html` | Format for the remediation report |
+| Optimize Tab Order | `--optimize-tab-order` | `optimize_tab_order` | No | Enabled | Enable tab order optimization (WCAG 2.4.3) |
+| AI Validate Tab Order | `--ai-validate-tab-order` | `ai_validate_tab_order` | No | Enabled | Enable AI validation of tab order fixes |
+| AI Confidence Threshold | `--ai-confidence-threshold` | `ai_confidence_threshold` | No | `0.8` | Minimum confidence score for applying AI suggestions (0.0-1.0) |
+| Tab Order Row Threshold | `--tab-order-row-threshold` | `tab_order_row_threshold` | No | `20.0` | Y-coordinate threshold for grouping elements into rows (pixels) |
 | **Process Command** |
 | Skip Audit | `--skip-audit` | `perform_audit=False` | No | Disabled | Skip the audit step |
 | Skip Remediation | `--skip-remediation` | `perform_remediation=False` | No | Disabled | Skip the remediation step |
@@ -119,6 +123,67 @@ Common issue types include:
 - `empty-links`: Links with no text content
 - `table-structure`: Tables without proper headers or structure
 - `document-structure`: Issues with overall document structure and landmarks
+- `positive-tabindex`: Elements with positive tabindex values (disrupts natural tab order)
+- `illogical-tab-order`: Tab order doesn't follow logical reading sequence
+- `unnecessary-tabindex-zero`: Non-interactive elements with tabindex="0"
+- `tab-order-mismatch`: DOM order doesn't match visual layout order
+
+### Tab Order Optimization (WCAG 2.4.3)
+
+Tab order optimization uses a two-phase sequential approach:
+
+1. **Phase 1: Algorithmic Remediation** (Always runs)
+   - Removes positive tabindex values
+   - Removes unnecessary tabindex="0" from non-interactive elements
+   - Reorders DOM elements based on visual position (using BDA bounding box data)
+   - Adds tabindex="-1" for skip link targets
+
+2. **Phase 2: AI Validation** (Enabled by default, optional)
+   - Validates algorithmic changes
+   - Detects edge cases (multi-column layouts, sidebars, modals)
+   - Suggests enhancements with confidence scoring
+   - Only applies suggestions if confidence ≥ threshold (default: 0.8)
+
+**Configuration Options:**
+- `optimize_tab_order`: Enable/disable feature (default: `True`)
+- `ai_validate_tab_order`: Enable/disable AI validation (default: `True`)
+- `ai_confidence_threshold`: Minimum confidence for AI suggestions (default: `0.8`)
+- `tab_order_row_threshold`: Y-coordinate threshold for row grouping in pixels (default: `20.0`)
+
+**Usage Examples:**
+
+```python
+# Default behavior (algorithmic + AI validation)
+result = remediate_html_accessibility(
+    html_path="document.html",
+    audit_report=audit_result,
+    options={
+        "optimize_tab_order": True,  # Default
+        "ai_validate_tab_order": True  # Default
+    }
+)
+
+# Algorithmic only (skip AI validation for speed)
+result = remediate_html_accessibility(
+    html_path="document.html",
+    audit_report=audit_result,
+    options={
+        "optimize_tab_order": True,
+        "ai_validate_tab_order": False  # Skip AI phase
+    }
+)
+
+# Custom confidence threshold
+result = remediate_html_accessibility(
+    html_path="document.html",
+    audit_report=audit_result,
+    options={
+        "optimize_tab_order": True,
+        "ai_validate_tab_order": True,
+        "ai_confidence_threshold": 0.9  # More conservative
+    }
+)
+```
 
 ## Python API Examples
 

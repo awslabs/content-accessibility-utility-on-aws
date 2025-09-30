@@ -8,13 +8,19 @@ This package contains strategies for remediating different types of accessibilit
 """
 
 # Import remediation strategies for easier access
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.tab_order_remediation import (
+    TabOrderRemediation,
+)
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.tab_order_ai_validator import (
+    AITabOrderValidator,
+)
 
-
-
-
-
-
-
+__all__ = [
+    "TabOrderRemediation",
+    "AITabOrderValidator",
+    "get_remediation_template",
+    "format_remediation_prompt",
+]
 
 
 # Define functions needed by remediator.py

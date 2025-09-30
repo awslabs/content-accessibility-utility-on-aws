@@ -29,7 +29,11 @@ from content_accessibility_utility_on_aws.api import (
     remediate_html_accessibility,
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
-from content_accessibility_utility_on_aws.utils.config import config_manager, load_config_file, ConfigurationError
+from content_accessibility_utility_on_aws.utils.config import (
+    config_manager,
+    load_config_file,
+    ConfigurationError,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -95,9 +99,9 @@ def _add_standardized_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", "-c", help="Path to configuration file")
     # Add save-config parameter to save current configuration
     parser.add_argument(
-        "--save-config", 
+        "--save-config",
         metavar="CONFIG_PATH",
-        help="Save current configuration to the specified file path"
+        help="Save current configuration to the specified file path",
     )
     # Add AWS profile parameter
     parser.add_argument("--profile", help="AWS profile name to use for credentials")
@@ -435,7 +439,7 @@ def parse_arguments() -> Dict[str, Any]:
 
     # Convert namespace to dictionary
     args_dict = vars(args)
-    
+
     # Load configuration from file if specified
     if args_dict.get("config"):
         config_path = args_dict["config"]
@@ -443,20 +447,23 @@ def parse_arguments() -> Dict[str, Any]:
             # Load configuration from file
             logger.info(f"Loading configuration from {config_path}")
             config_data = load_config_file(config_path)
-            
+
             # Update configuration for each section
             for section in ["pdf", "audit", "remediate", "aws"]:
                 if section in config_data:
                     config_manager.set_user_config(config_data[section], section)
                     logger.debug(f"Applied configuration for section: {section}")
-            
+
             # Handle top-level configuration (not in a section)
-            top_level = {k: v for k, v in config_data.items() 
-                         if k not in ["pdf", "audit", "remediate", "aws"]}
+            top_level = {
+                k: v
+                for k, v in config_data.items()
+                if k not in ["pdf", "audit", "remediate", "aws"]
+            }
             if top_level:
                 config_manager.set_user_config(top_level)
                 logger.debug("Applied top-level configuration")
-                
+
         except ConfigurationError as e:
             logger.error(f"Configuration error: {e}")
             print(f"Error: {e}")
@@ -474,46 +481,56 @@ def parse_arguments() -> Dict[str, Any]:
 def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
     """
     Save configuration to file based on command-line arguments.
-    
+
     Args:
         args_dict: Dictionary of command-line arguments
     """
-    from content_accessibility_utility_on_aws.utils.config import save_config, config_manager
-    
+    from content_accessibility_utility_on_aws.utils.config import (
+        save_config,
+        config_manager,
+    )
+
     # Get the configuration file path
     config_path = args_dict.get("save_config")
     if not config_path:
         return
-        
+
     # Determine format based on file extension
     file_format = "yaml"
     if config_path.lower().endswith(".json"):
         file_format = "json"
-    
+
     # Organize parameters into appropriate sections
-    config = {
-        "pdf": {},
-        "audit": {},
-        "remediate": {},
-        "aws": {}
-    }
-    
+    config = {"pdf": {}, "audit": {}, "remediate": {}, "aws": {}}
+
     # PDF conversion parameters
     pdf_params = [
-        "extract_images", "image_format", "single_file", "single_page", 
-        "multi_page", "continuous", "embed_images", "exclude_images", 
-        "embed_fonts", "inline_css", "cleanup_bda_output"
+        "extract_images",
+        "image_format",
+        "single_file",
+        "single_page",
+        "multi_page",
+        "continuous",
+        "embed_images",
+        "exclude_images",
+        "embed_fonts",
+        "inline_css",
+        "cleanup_bda_output",
     ]
-    
+
     for param in pdf_params:
         if param in args_dict and args_dict[param] is not None:
             config["pdf"][param] = args_dict[param]
-    
+
     # Audit parameters
     audit_params = [
-        "severity", "detailed", "summary_only", "checks", "skip_automated_checks"
+        "severity",
+        "detailed",
+        "summary_only",
+        "checks",
+        "skip_automated_checks",
     ]
-    
+
     for param in audit_params:
         if param in args_dict and args_dict[param] is not None:
             # Rename parameters for consistency with config structure
@@ -529,13 +546,17 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
                     ]
             else:
                 config["audit"][param] = args_dict[param]
-    
+
     # Remediation parameters
     remediate_params = [
-        "severity_threshold", "auto_fix", "max_issues", "model_id", 
-        "issue_types", "report_format"
+        "severity_threshold",
+        "auto_fix",
+        "max_issues",
+        "model_id",
+        "issue_types",
+        "report_format",
     ]
-    
+
     for param in remediate_params:
         if param in args_dict and args_dict[param] is not None:
             # Special handling for severity if using the shared parameter
@@ -543,17 +564,20 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
                 config["remediate"]["severity_threshold"] = args_dict[param]
             else:
                 config["remediate"][param] = args_dict[param]
-    
+
     # AWS parameters
     aws_params = [
-        "s3_bucket", "bda_project_arn", "create_bda_project", 
-        "bda_project_name", "profile"
+        "s3_bucket",
+        "bda_project_arn",
+        "create_bda_project",
+        "bda_project_name",
+        "profile",
     ]
-    
+
     for param in aws_params:
         if param in args_dict and args_dict[param] is not None:
             config["aws"][param] = args_dict[param]
-    
+
     # Apply the config manager's defaults to empty sections
     for section in config:
         if not config[section]:
@@ -564,7 +588,7 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
             for key, value in section_defaults.items():
                 if key not in config[section]:
                     config[section][key] = value
-    
+
     # Save the configuration
     try:
         save_config(config, config_path, file_format=file_format)
