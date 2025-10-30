@@ -174,7 +174,21 @@ ISSUE_TYPES = {
     "insufficient-color-contrast": {
         "wcag": "1.4.3",
         "severity": "major",
-        "description": "Text has insufficient color contrast",
+        "description": "Text has insufficient color contrast (AA level)",
+        "remediation_type": "style",
+        "element_types": ["*"],
+    },
+    "insufficient-color-contrast-aaa": {
+        "wcag": "1.4.6",
+        "severity": "minor",
+        "description": "Text has insufficient color contrast (AAA level)",
+        "remediation_type": "style",
+        "element_types": ["*"],
+    },
+    "potential-color-contrast-issue": {
+        "wcag": "1.4.3",
+        "severity": "minor",
+        "description": "Potential color contrast issue - colors could not be determined automatically",
         "remediation_type": "style",
         "element_types": ["*"],
     },
@@ -184,6 +198,27 @@ ISSUE_TYPES = {
         "description": "Information conveyed by color alone",
         "remediation_type": "content",
         "element_types": ["*"],
+    },
+    "insufficient-ui-component-contrast": {
+        "wcag": "1.4.11",
+        "severity": "major",
+        "description": "UI component has insufficient contrast with adjacent colors",
+        "remediation_type": "style",
+        "element_types": ["button", "input", "select", "textarea"],
+    },
+    "insufficient-icon-contrast": {
+        "wcag": "1.4.11",
+        "severity": "major",
+        "description": "Graphical object has insufficient contrast with adjacent colors",
+        "remediation_type": "style",
+        "element_types": ["svg", "img"],
+    },
+    "insufficient-focus-indicator-contrast": {
+        "wcag": "1.4.11",
+        "severity": "major",
+        "description": "Focus indicator has insufficient contrast",
+        "remediation_type": "style",
+        "element_types": ["a", "button", "input", "select", "textarea"],
     },
 }
 

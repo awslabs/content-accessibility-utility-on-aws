@@ -34,7 +34,13 @@ from content_accessibility_utility_on_aws.audit.checks.table_checks import (
     TableHeaderCheck,
     TableStructureCheck,
 )
-from content_accessibility_utility_on_aws.audit.checks.color_contrast_checks import ColorContrastCheck
+from content_accessibility_utility_on_aws.audit.checks.color_contrast_checks import (
+    ColorContrastCheck,
+    NonTextContrastCheck,
+)
+from content_accessibility_utility_on_aws.audit.checks.color_usage_checks import (
+    ColorUsageCheck,
+)
 from content_accessibility_utility_on_aws.audit.checks.form_checks import (
     FormLabelCheck,
     FormRequiredFieldCheck,
@@ -56,6 +62,8 @@ __all__ = [
     "TableHeaderCheck",
     "TableStructureCheck",
     "ColorContrastCheck",
+    "NonTextContrastCheck",
+    "ColorUsageCheck",
     "FormLabelCheck",
     "FormRequiredFieldCheck",
     "FormFieldsetCheck",
