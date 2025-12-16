@@ -17,6 +17,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
   - [PDF2HTML](#pdf2html)
   - [Audit](#audit)
   - [Remediate](#remediate)
+  - [Report](#report)
   - [Batch](#batch)
 - [Command Line Interface](#command-line-interface)
 - [Python API](#python-api)
@@ -28,7 +29,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Convert PDF documents to accessible HTML
 - Preserve layout and visual appearance
 - Extract and embed images
-- Audit HTML for WCAG 2.1 accessibility compliance
+- Audit HTML for WCAG 2.1 accessibility compliance (all 78 success criteria)
 - Remediate common accessibility issues using Bedrock models
 - Advanced table remediation strategies
 - Support for single-page and multi-page output formats
@@ -36,6 +37,13 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Detailed usage tracking for BDA pages and Bedrock tokens
 - Cost analysis tools for resource usage monitoring
 - Streamlit sample web interface with usage visualization
+- **Comprehensive reporting capabilities:**
+  - Accessibility scoring with letter grades (A-F)
+  - VPAT 2.4 (Voluntary Product Accessibility Template) generation
+  - ACR (Accessibility Conformance Report) generation
+  - PDF report export
+  - Multiple output formats (HTML, JSON, Markdown, PDF)
+  - WCAG compliance tracking by level (A, AA, AAA)
 
 ## Prerequisites
 
@@ -133,7 +141,7 @@ aws:
 
 ## Architecture
 
-The package consists of four main modules working together to convert, audit, remediate, and batch process documents:
+The package consists of five main modules working together to convert, audit, remediate, report, and batch process documents:
 
 ```mermaid
 graph TD
@@ -142,12 +150,17 @@ graph TD
     D[Audit] --> E[Check Accessibility Issues]
     F[Remediate] --> G[Fix Accessibility Problems]
     F --> H[Generate Remediation Reports]
+    R[Report] --> S[Generate VPAT/ACR Reports]
+    R --> T[Calculate Accessibility Scores]
+    R --> U[Export to PDF]
     I[Batch] --> J[Orchestrate Large-scale Processing]
     I --> K[Track Jobs & Handle AWS Integration]
-    
+
     A --> I
     D --> I
+    D --> R
     F --> I
+    F --> R
 ```
 
 ## Core Packages
@@ -220,6 +233,35 @@ Key components:
 - Advanced table structure remediation
 - Image accessibility enhancements
 - Remediation reporting
+
+### Report
+
+The Report module generates comprehensive accessibility reports in multiple formats.
+
+```mermaid
+graph TD
+    A[Audit Results] --> B[Report Module]
+    B --> C[Accessibility Score]
+    B --> D[VPAT Generator]
+    B --> E[ACR Generator]
+    B --> F[PDF Exporter]
+    C --> G[Score & Grade]
+    D --> H[VPAT 2.4 Report]
+    E --> I[Conformance Report]
+    F --> J[PDF Document]
+```
+
+Key components:
+- **Scoring**: Calculate accessibility scores (0-100) with letter grades and compliance status
+- **VPAT Generator**: Generate VPAT 2.4 WCAG format reports for vendor disclosure
+- **ACR Generator**: Create detailed Accessibility Conformance Reports with executive summaries
+- **PDF Exporter**: Export reports to professional PDF documents using ReportLab
+
+Supported output formats:
+- HTML (interactive reports with styling)
+- JSON (machine-readable data)
+- Markdown (documentation-friendly)
+- PDF (professional print-ready reports)
 
 ### Batch
 
@@ -445,6 +487,68 @@ remediation_result = remediate_html_accessibility(
         "model_id": "amazon.nova-lite-v1:0",
         "auto_fix": True
     }
+)
+```
+
+### Accessibility Reporting
+
+```python
+from content_accessibility_utility_on_aws.report import (
+    calculate_accessibility_score,
+    calculate_wcag_compliance,
+    get_score_summary,
+)
+from content_accessibility_utility_on_aws.report.vpat_generator import generate_vpat
+from content_accessibility_utility_on_aws.report.acr_generator import generate_acr
+from content_accessibility_utility_on_aws.report.pdf_exporter import export_pdf
+
+# Calculate accessibility score from audit results
+score_result = calculate_accessibility_score(audit_result["issues"])
+print(f"Score: {score_result['score']}, Grade: {score_result['grade']}")
+print(f"Status: {score_result['compliance_status']}")
+
+# Check WCAG compliance at specific level
+compliance = calculate_wcag_compliance(audit_result["issues"], target_level="AA")
+print(f"AA Compliant: {compliance['compliant']}")
+
+# Generate VPAT report
+vpat_data = generate_vpat(
+    audit_report=audit_result,
+    output_path="reports/vpat.html",
+    output_format="html",
+    product_info={
+        "name": "My Product",
+        "version": "1.0",
+        "vendor": "My Company"
+    },
+    target_level="AA"
+)
+
+# Generate ACR (Accessibility Conformance Report)
+acr_data = generate_acr(
+    audit_report=audit_result,
+    output_path="reports/acr.html",
+    output_format="html",
+    organization_info={
+        "name": "My Organization",
+        "product": "My Product"
+    },
+    target_level="AA",
+    include_remediation_guidance=True
+)
+
+# Export audit report to PDF
+export_pdf(
+    report_data=audit_result,
+    output_path="reports/audit_report.pdf",
+    report_type="audit"
+)
+
+# Export VPAT to PDF
+export_pdf(
+    report_data=vpat_data,
+    output_path="reports/vpat.pdf",
+    report_type="vpat"
 )
 ```
 

@@ -651,3 +651,92 @@ def _remediate_html_file(
     except Exception as e:
         logger.warning(f"Error remediating HTML file: {e}")
         raise DocumentAccessibilityError(f"Failed to remediate HTML file: {e}")
+
+
+def remediate_and_validate(
+    html_path: str,
+    audit_report: Optional[Dict[str, Any]] = None,
+    options: Optional[Dict[str, Any]] = None,
+    output_path: Optional[str] = None,
+    image_dir: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Remediate accessibility issues and validate the results.
+
+    This function performs remediation and then re-audits the HTML
+    to verify that the issues were successfully fixed.
+
+    Args:
+        html_path: Path to the HTML file or directory of HTML files.
+        audit_report: Optional audit report from audit_html_accessibility().
+        options: Remediation options including:
+            - validate: Enable post-remediation validation (default: True)
+            - validation_threshold: Minimum success rate to pass (default: 0.5)
+        output_path: Path to save the remediated HTML file or directory.
+        image_dir: Directory containing images referenced in the HTML.
+
+    Returns:
+        Dictionary containing remediation results and validation:
+            - remediation: The remediation result
+            - validation: The validation result (if enabled)
+            - validation_passed: Boolean indicating if validation passed
+    """
+    from content_accessibility_utility_on_aws.remediate.validation import (
+        RemediationValidator,
+    )
+
+    # Set default options
+    if options is None:
+        options = {}
+
+    validate_enabled = options.get("validate", True)
+
+    # Get original HTML content for validation comparison
+    original_html = None
+    if validate_enabled and os.path.isfile(html_path):
+        with open(html_path, "r", encoding="utf-8") as f:
+            original_html = f.read()
+
+    # Perform remediation
+    remediation_result = remediate_html_accessibility(
+        html_path=html_path,
+        audit_report=audit_report,
+        options=options,
+        output_path=output_path,
+        image_dir=image_dir,
+    )
+
+    result = {
+        "remediation": remediation_result,
+        "validation": None,
+        "validation_passed": None,
+    }
+
+    # Perform validation if enabled and we have original HTML
+    if validate_enabled and original_html and audit_report:
+        # Get the remediated HTML
+        remediated_html_path = remediation_result.get("remediated_html_path")
+        if remediated_html_path and os.path.isfile(remediated_html_path):
+            with open(remediated_html_path, "r", encoding="utf-8") as f:
+                remediated_html = f.read()
+
+            # Get original issues
+            original_issues = audit_report.get("issues", [])
+
+            # Validate
+            validator = RemediationValidator()
+            validation_result = validator.validate_remediation(
+                original_html=original_html,
+                remediated_html=remediated_html,
+                original_issues=original_issues,
+                options=options,
+            )
+
+            result["validation"] = validation_result
+            result["validation_passed"] = validation_result.get("validation_passed", False)
+
+            logger.info(
+                f"Validation complete: {validation_result['success_rate_percent']}% success rate"
+            )
+
+    return result
