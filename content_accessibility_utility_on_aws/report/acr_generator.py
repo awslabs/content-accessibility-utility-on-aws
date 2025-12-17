@@ -239,9 +239,9 @@ class ACRGenerator:
 
         # Check severities
         has_critical = any(i.get("severity") == "critical" for i in unremediated)
-        has_major = any(i.get("severity") == "major" for i in unremediated)
+        major_count = sum(1 for i in unremediated if i.get("severity") == "major")
 
-        if has_critical or len([i for i in unremediated if i.get("severity") == "major"]) > 2:
+        if has_critical or major_count > 2:
             return "does_not_conform"
         else:
             # Has unremediated issues but not critical/many major - partial conformance
