@@ -34,12 +34,43 @@ jobs:
         name: python-package-distributions
         path: dist/
 
+  validate-tag:
+    name: Validate tag format
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      is_production_tag: ${{ steps.check.outputs.is_production }}
+      is_rc_tag: ${{ steps.check.outputs.is_rc }}
+    steps:
+    - name: Check tag format
+      id: check
+      run: |
+        TAG="${GITHUB_REF_NAME}"
+        echo "Validating tag: $TAG"
+
+        # Production tag pattern: v{major}.{minor}.{patch}
+        if [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "Tag matches production pattern (v{x.x.x})"
+          echo "is_production=true" >> $GITHUB_OUTPUT
+          echo "is_rc=false" >> $GITHUB_OUTPUT
+        # RC tag pattern: v{major}.{minor}.{patch}-RC{number}
+        elif [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-RC[0-9]+$ ]]; then
+          echo "Tag matches RC pattern (v{x.x.x}-RC{x})"
+          echo "is_production=false" >> $GITHUB_OUTPUT
+          echo "is_rc=true" >> $GITHUB_OUTPUT
+        else
+          echo "Tag does not match any release pattern"
+          echo "is_production=false" >> $GITHUB_OUTPUT
+          echo "is_rc=false" >> $GITHUB_OUTPUT
+        fi
+
   publish-to-pypi:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
-    if: startsWith(github.ref, 'refs/tags/')  # only publish to PyPI on tag pushes
-    needs:
-    - build
+    needs: [build, validate-tag]
+    if: needs.validate-tag.outputs.is_production_tag == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -56,53 +87,10 @@ jobs:
     - name: Publish distribution 📦 to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
 
-  github-release:
-    name: >-
-      Sign the Python 🐍 distribution 📦 with Sigstore
-      and upload them to GitHub Release
-    needs:
-    - publish-to-pypi
-    runs-on: ubuntu-latest
-
-    permissions:
-      contents: write  # IMPORTANT: mandatory for making GitHub Releases
-      id-token: write  # IMPORTANT: mandatory for sigstore
-
-    steps:
-    - name: Download all the dists
-      uses: actions/download-artifact@v4
-      with:
-        name: python-package-distributions
-        path: dist/
-    - name: Sign the dists with Sigstore
-      uses: sigstore/gh-action-sigstore-python@v3.0.0
-      with:
-        inputs: >-
-          ./dist/*.tar.gz
-          ./dist/*.whl
-    - name: Create GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: >-
-        gh release create
-        "$GITHUB_REF_NAME"
-        --repo "$GITHUB_REPOSITORY"
-        --notes ""
-    - name: Upload artifact signatures to GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      # Upload to GitHub Release using the `gh` CLI.
-      # `dist/` contains the built packages, and the
-      # sigstore-produced signatures and certificates.
-      run: >-
-        gh release upload
-        "$GITHUB_REF_NAME" dist/**
-        --repo "$GITHUB_REPOSITORY"
-
   publish-to-testpypi:
     name: Publish Python 🐍 distribution 📦 to TestPyPI
-    needs:
-    - build
+    needs: [build, validate-tag]
+    if: needs.validate-tag.outputs.is_rc_tag == 'true'
     runs-on: ubuntu-latest
 
     environment:
@@ -122,3 +110,80 @@ jobs:
       uses: pypa/gh-action-pypi-publish@release/v1
       with:
         repository-url: https://test.pypi.org/legacy/
+
+  github-release:
+    name: >-
+      Sign the Python 🐍 distribution 📦 with Sigstore
+      and upload them to GitHub Release
+    needs: [publish-to-pypi]
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # IMPORTANT: mandatory for making GitHub Releases
+      id-token: write  # IMPORTANT: mandatory for sigstore
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Download all the dists
+      uses: actions/download-artifact@v4
+      with:
+        name: python-package-distributions
+        path: dist/
+    - name: Sign the dists with Sigstore
+      uses: sigstore/gh-action-sigstore-python@v3.0.0
+      with:
+        inputs: >-
+          ./dist/*.tar.gz
+          ./dist/*.whl
+    - name: Extract release notes from changelog
+      id: release_notes
+      run: |
+        VERSION="${GITHUB_REF_NAME#v}"
+        echo "Extracting notes for version: $VERSION"
+
+        # Extract the section for this version from CHANGELOG.md
+        # Matches from "## [VERSION]" until the next "## [" or end of file
+        if [ -f CHANGELOG.md ]; then
+          NOTES=$(awk -v ver="$VERSION" '
+            BEGIN { found=0 }
+            /^## \[/ {
+              if (found) exit
+              if (index($0, "[" ver "]") > 0) found=1
+            }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Release ${GITHUB_REF_NAME}"
+          fi
+        else
+          NOTES="Release ${GITHUB_REF_NAME}"
+        fi
+
+        # Use heredoc delimiter for multiline output
+        {
+          echo "notes<<RELEASE_NOTES_EOF"
+          echo "$NOTES"
+          echo "RELEASE_NOTES_EOF"
+        } >> $GITHUB_OUTPUT
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: >-
+        gh release create
+        "$GITHUB_REF_NAME"
+        --repo "$GITHUB_REPOSITORY"
+        --title "Release $GITHUB_REF_NAME"
+        --notes "${{ steps.release_notes.outputs.notes }}"
+    - name: Upload artifact signatures to GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      # Upload to GitHub Release using the `gh` CLI.
+      # `dist/` contains the built packages, and the
+      # sigstore-produced signatures and certificates.
+      run: >-
+        gh release upload
+        "$GITHUB_REF_NAME" dist/**
+        --repo "$GITHUB_REPOSITORY"
