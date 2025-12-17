@@ -9,6 +9,7 @@ ACR is a detailed report format that provides comprehensive accessibility
 compliance information, often used for procurement and regulatory compliance.
 """
 
+import html
 import json
 import os
 from datetime import datetime
@@ -592,15 +593,15 @@ class ACRGenerator:
 
         # Build key findings list
         key_findings_html = "\n".join(
-            f"<li>{finding}</li>" for finding in summary["key_findings"]
+            f"<li>{html.escape(finding)}</li>" for finding in summary["key_findings"]
         )
 
-        html = f'''<!DOCTYPE html>
+        html_content = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accessibility Conformance Report - {org["product"]}</title>
+    <title>Accessibility Conformance Report - {html.escape(org["product"])}</title>
     <style>
         * {{
             box-sizing: border-box;
@@ -811,7 +812,7 @@ class ACRGenerator:
         <h1>Accessibility Conformance Report</h1>
 
         <div class="metadata">
-            <strong>{org["product"]}</strong> | {org["name"]}<br>
+            <strong>{html.escape(org["product"])}</strong> | {html.escape(org["name"])}<br>
             <small>
                 Evaluation Date: {metadata["report_date"]} |
                 WCAG Version: {metadata["wcag_version"]} |
@@ -878,7 +879,7 @@ class ACRGenerator:
     </div>
 </body>
 </html>'''
-        return html
+        return html_content
 
     def _generate_markdown(self, acr_data: Dict[str, Any]) -> str:
         """Generate Markdown content for ACR."""

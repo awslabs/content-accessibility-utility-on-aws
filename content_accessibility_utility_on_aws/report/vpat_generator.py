@@ -8,6 +8,7 @@ This module generates VPAT 2.4 WCAG format reports for accessibility audits.
 VPAT is an industry-standard format for documenting accessibility conformance.
 """
 
+import html
 import json
 import os
 from datetime import datetime
@@ -384,12 +385,12 @@ class VPATGenerator:
                         f'</tr>'
                     )
 
-        html = f'''<!DOCTYPE html>
+        html_content = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VPAT - {product["name"]}</title>
+    <title>VPAT - {html.escape(product["name"])}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -522,15 +523,15 @@ class VPATGenerator:
         <h2>Product Information</h2>
         <dl>
             <dt>Product Name</dt>
-            <dd>{product["name"]}</dd>
+            <dd>{html.escape(product["name"])}</dd>
             <dt>Version</dt>
-            <dd>{product["version"]}</dd>
+            <dd>{html.escape(product["version"])}</dd>
             <dt>Vendor</dt>
-            <dd>{product["vendor"] or "N/A"}</dd>
+            <dd>{html.escape(product["vendor"]) if product["vendor"] else "N/A"}</dd>
             <dt>Evaluation Date</dt>
-            <dd>{product["date"]}</dd>
+            <dd>{html.escape(product["date"])}</dd>
             <dt>Description</dt>
-            <dd>{product["description"] or "N/A"}</dd>
+            <dd>{html.escape(product["description"]) if product["description"] else "N/A"}</dd>
         </dl>
     </div>
 
@@ -587,7 +588,7 @@ class VPATGenerator:
     </div>
 </body>
 </html>'''
-        return html
+        return html_content
 
     def _generate_markdown(self, vpat_data: Dict[str, Any]) -> str:
         """Generate Markdown content for VPAT."""
