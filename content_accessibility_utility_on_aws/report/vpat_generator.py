@@ -14,10 +14,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from content_accessibility_utility_on_aws.audit.standards import (
-    WCAG_CRITERIA,
-    get_criterion_info,
     get_criteria_for_level,
-    get_criteria_by_principle,
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 

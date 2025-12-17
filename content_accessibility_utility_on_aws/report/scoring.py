@@ -8,9 +8,8 @@ This module provides functionality to calculate accessibility compliance scores
 based on audit results and issue severity.
 """
 
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from content_accessibility_utility_on_aws.audit.standards import (
-    SEVERITY_LEVELS,
     WCAG_LEVELS,
     get_criterion_info,
 )

@@ -6,7 +6,6 @@ Unit tests for color contrast accessibility checks.
 """
 
 import pytest
-from bs4 import BeautifulSoup
 from content_accessibility_utility_on_aws.audit.checks.color_contrast_checks import (
     ColorContrastCheck,
 )
@@ -138,9 +137,9 @@ class TestColorContrastCheck:
 
         # Current implementation may flag false positives due to inheritance limitations
         # This documents current behavior - Phase 3 will improve this
-        insufficient_issues = [i for i in issue_collector.issues
-                               if "insufficient" in i["type"].lower()]
-        # Test passes regardless - we're documenting current behavior
+        # Note: We don't assert on the result as behavior may vary - this test
+        # documents that the check handles inheritance scenarios without crashing
+        _ = [i for i in issue_collector.issues if "insufficient" in i["type"].lower()]
 
     def test_flags_potential_issues(self, soup_factory, issue_collector):
         """Test flagging of elements with classes (potential issues)."""
@@ -154,10 +153,9 @@ class TestColorContrastCheck:
         check.check()
 
         # May flag as potential issue since we can't determine class-based colors
-        potential_issues = [i for i in issue_collector.issues
-                            if "potential" in i["type"].lower()]
         # This is a known limitation - class-based colors can't be determined
-        # Test passes regardless of whether it's flagged
+        # Test documents that the check handles class-based styling without crashing
+        _ = [i for i in issue_collector.issues if "potential" in i["type"].lower()]
 
 
 class TestColorContrastCalculations:

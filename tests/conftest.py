@@ -5,7 +5,6 @@
 Pytest configuration and fixtures for Content Accessibility Utility tests.
 """
 
-import os
 import pytest
 from pathlib import Path
 from bs4 import BeautifulSoup

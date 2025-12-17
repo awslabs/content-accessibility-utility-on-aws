@@ -13,7 +13,6 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple
 
 from content_accessibility_utility_on_aws.audit.standards import (
-    WCAG_CRITERIA,
     get_criterion_info,
 )
 from content_accessibility_utility_on_aws.report.scoring import (

@@ -6,7 +6,6 @@ Unit tests for image accessibility checks.
 """
 
 import pytest
-from bs4 import BeautifulSoup
 from content_accessibility_utility_on_aws.audit.checks.image_checks import (
     AltTextCheck,
     FigureStructureCheck,
@@ -110,9 +109,8 @@ class TestAltTextCheck:
 
         # Current implementation doesn't check for long alt text
         # This documents current behavior - can be improved in Phase 2
-        long_alt_issues = [i for i in issue_collector.issues
-                          if "long" in i["type"].lower()]
-        # Test passes regardless - documenting current behavior
+        # Test documents that the check handles long alt text without crashing
+        _ = [i for i in issue_collector.issues if "long" in i["type"].lower()]
 
 
 class TestFigureStructureCheck:

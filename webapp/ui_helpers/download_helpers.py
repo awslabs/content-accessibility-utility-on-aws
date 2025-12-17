@@ -8,7 +8,6 @@ Download utilities for the Document Accessibility Streamlit application.
 import os
 import json
 import zipfile
-import tempfile
 import streamlit as st
 from typing import Optional, Dict, Any
 
@@ -257,13 +256,14 @@ def create_pdf_download_section(
                 pdf_path = _generate_pdf_report(audit_data, "audit", temp_dir, product_info)
                 if pdf_path and os.path.exists(pdf_path):
                     with open(pdf_path, "rb") as f:
-                        st.download_button(
-                            label="Download Audit PDF",
-                            data=f.read(),
-                            file_name="accessibility_audit.pdf",
-                            mime="application/pdf",
-                            key="dl_audit_pdf",
-                        )
+                        pdf_content = f.read()
+                    st.download_button(
+                        label="Download Audit PDF",
+                        data=pdf_content,
+                        file_name="accessibility_audit.pdf",
+                        mime="application/pdf",
+                        key="dl_audit_pdf",
+                    )
 
     with col2:
         if st.button("Generate VPAT PDF", key="gen_vpat_pdf", use_container_width=True):
@@ -271,13 +271,14 @@ def create_pdf_download_section(
                 pdf_path = _generate_pdf_report(audit_data, "vpat", temp_dir, product_info)
                 if pdf_path and os.path.exists(pdf_path):
                     with open(pdf_path, "rb") as f:
-                        st.download_button(
-                            label="Download VPAT PDF",
-                            data=f.read(),
-                            file_name="vpat_report.pdf",
-                            mime="application/pdf",
-                            key="dl_vpat_pdf",
-                        )
+                        pdf_content = f.read()
+                    st.download_button(
+                        label="Download VPAT PDF",
+                        data=pdf_content,
+                        file_name="vpat_report.pdf",
+                        mime="application/pdf",
+                        key="dl_vpat_pdf",
+                    )
 
     with col3:
         if st.button("Generate ACR PDF", key="gen_acr_pdf", use_container_width=True):
@@ -285,13 +286,14 @@ def create_pdf_download_section(
                 pdf_path = _generate_pdf_report(audit_data, "acr", temp_dir, product_info)
                 if pdf_path and os.path.exists(pdf_path):
                     with open(pdf_path, "rb") as f:
-                        st.download_button(
-                            label="Download ACR PDF",
-                            data=f.read(),
-                            file_name="acr_report.pdf",
-                            mime="application/pdf",
-                            key="dl_acr_pdf",
-                        )
+                        pdf_content = f.read()
+                    st.download_button(
+                        label="Download ACR PDF",
+                        data=pdf_content,
+                        file_name="acr_report.pdf",
+                        mime="application/pdf",
+                        key="dl_acr_pdf",
+                    )
 
 
 def create_download_section_for_reports(temp_dir: str) -> None:

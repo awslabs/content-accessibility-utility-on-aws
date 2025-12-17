@@ -15,11 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional
 
 from content_accessibility_utility_on_aws.audit.standards import (
-    WCAG_CRITERIA,
-    WCAG_LEVELS,
-    get_criterion_info,
     get_criteria_for_level,
-    get_criteria_by_principle,
 )
 from content_accessibility_utility_on_aws.report.scoring import (
     calculate_accessibility_score,
@@ -247,10 +243,9 @@ class ACRGenerator:
 
         if has_critical or len([i for i in unremediated if i.get("severity") == "major"]) > 2:
             return "does_not_conform"
-        elif has_major or unremediated:
+        else:
+            # Has unremediated issues but not critical/many major - partial conformance
             return "partial"
-
-        return "conforms"
 
     def _get_remediation_guidance(
         self, criterion_id: str, issues: List[Dict[str, Any]]

@@ -8,7 +8,7 @@ This module provides comprehensive information about WCAG 2.1 success criteria,
 including support for filtering by conformance level (A, AA, AAA).
 """
 
-from typing import Dict, List, Optional
+from typing import Dict
 
 # Severity levels (higher number = more severe)
 SEVERITY_LEVELS = {

@@ -5,7 +5,6 @@
 Unit tests for the AccessibilityAuditor class.
 """
 
-import pytest
 from content_accessibility_utility_on_aws.audit.auditor import AccessibilityAuditor
 
 

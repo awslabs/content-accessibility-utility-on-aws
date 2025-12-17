@@ -371,42 +371,42 @@ class ColorContrastCheck(AccessibilityCheck):
             r, g, b = map(int, rgba_match.groups())
             return f"#{r:02X}{g:02X}{b:02X}"
 
-        # Handle hsl() colors
+        # Handle hsl() colors (supports decimal values for h, s, l)
         hsl_match = re.match(
-            r"hsl\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*\)",
+            r"hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*\)",
             color
         )
         if hsl_match:
-            h, s, l = map(int, hsl_match.groups())
+            h, s, l = map(float, hsl_match.groups())
             rgb = self._hsl_to_rgb(h, s / 100, l / 100)
             return f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
 
-        # Handle hsla() colors (ignore alpha)
+        # Handle hsla() colors (ignore alpha, supports decimal values)
         hsla_match = re.match(
-            r"hsla\(\s*(\d+)\s*,\s*(\d+)%?\s*,\s*(\d+)%?\s*,\s*[\d.]+\s*\)",
+            r"hsla\(\s*([\d.]+)\s*,\s*([\d.]+)%?\s*,\s*([\d.]+)%?\s*,\s*[\d.]+\s*\)",
             color
         )
         if hsla_match:
-            h, s, l = map(int, hsla_match.groups())
+            h, s, l = map(float, hsla_match.groups())
             rgb = self._hsl_to_rgb(h, s / 100, l / 100)
             return f"#{rgb[0]:02X}{rgb[1]:02X}{rgb[2]:02X}"
 
         # If we can't parse the color, return None
         return None
 
-    def _hsl_to_rgb(self, h: int, s: float, l: float) -> Tuple[int, int, int]:
+    def _hsl_to_rgb(self, h: float, s: float, l: float) -> Tuple[int, int, int]:
         """
         Convert HSL color values to RGB.
 
         Args:
-            h: Hue (0-360)
+            h: Hue (0-360, can be decimal)
             s: Saturation (0-1)
             l: Lightness (0-1)
 
         Returns:
             Tuple of (r, g, b) values (0-255)
         """
-        h = h / 360
+        h = h / 360.0
 
         if s == 0:
             # Achromatic (gray)

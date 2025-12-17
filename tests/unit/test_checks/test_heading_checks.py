@@ -6,7 +6,6 @@ Unit tests for heading accessibility checks.
 """
 
 import pytest
-from bs4 import BeautifulSoup
 from content_accessibility_utility_on_aws.audit.checks.heading_checks import (
     HeadingHierarchyCheck,
     HeadingContentCheck,

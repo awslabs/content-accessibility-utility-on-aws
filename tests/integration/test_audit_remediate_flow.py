@@ -5,7 +5,6 @@
 Integration tests for the audit and remediate workflow.
 """
 
-import pytest
 from content_accessibility_utility_on_aws.audit.auditor import AccessibilityAuditor
 from content_accessibility_utility_on_aws.remediate.remediator import Remediator
 
