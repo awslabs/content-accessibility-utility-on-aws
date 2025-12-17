@@ -3,7 +3,10 @@
 
 name: Publish Python 🐍 distribution 📦 to PyPI and TestPyPI
 
-on: push
+on:
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -83,7 +86,7 @@ jobs:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
     needs: [build, validate-tag]
-    if: needs.validate-tag.outputs.is_production_tag == 'true'
+    if: github.ref_type == 'tag' && needs.validate-tag.outputs.is_production_tag == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -103,7 +106,7 @@ jobs:
   publish-to-testpypi:
     name: Publish Python 🐍 distribution 📦 to TestPyPI
     needs: [build, validate-tag]
-    if: needs.validate-tag.outputs.is_rc_tag == 'true'
+    if: github.ref_type == 'tag' && needs.validate-tag.outputs.is_rc_tag == 'true'
     runs-on: ubuntu-latest
 
     environment:
