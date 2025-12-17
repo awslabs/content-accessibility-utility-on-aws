@@ -7,6 +7,9 @@ HTML Accessibility Standards.
 This module provides constants and utilities for working with WCAG 2.1 accessibility standards.
 """
 
+# WCAG conformance levels
+WCAG_LEVELS = ["A", "AA", "AAA"]
+
 # Define severity levels for accessibility issues
 # Higher value = more severe
 SEVERITY_LEVELS = {
@@ -138,6 +141,56 @@ def get_criterion_info(criterion_id):
         Dictionary with criterion information, or empty dict if not found.
     """
     return WCAG_CRITERIA.get(criterion_id, {})
+
+
+def get_criteria_for_level(target_level: str = "AA") -> dict:
+    """
+    Get all WCAG criteria up to and including the specified conformance level.
+
+    Args:
+        target_level: Target WCAG conformance level ("A", "AA", or "AAA")
+
+    Returns:
+        Dictionary of criteria IDs to criterion info (including name, level, etc.)
+    """
+    # Determine which levels to include
+    levels_to_include = ["A"]
+    if target_level.upper() in ["AA", "AAA"]:
+        levels_to_include.append("AA")
+    if target_level.upper() == "AAA":
+        levels_to_include.append("AAA")
+
+    # Map WCAG principles
+    principle_map = {
+        "1": "Perceivable",
+        "2": "Operable",
+        "3": "Understandable",
+        "4": "Robust",
+    }
+
+    result = {}
+    for criterion_id, info in WCAG_CRITERIA.items():
+        if info.get("level") in levels_to_include:
+            # Determine principle from criterion ID
+            principle_num = criterion_id.split(".")[0]
+            principle = principle_map.get(principle_num, "Unknown")
+
+            # Determine guideline
+            parts = criterion_id.split(".")
+            if len(parts) >= 2:
+                guideline = f"{parts[0]}.{parts[1]}"
+            else:
+                guideline = criterion_id
+
+            result[criterion_id] = {
+                "name": info["name"],
+                "level": info["level"],
+                "principle": principle,
+                "guideline": guideline,
+                "description": info.get("description", f"WCAG {info['level']} criterion {criterion_id}"),
+            }
+
+    return result
 
 
 # Import issue types
