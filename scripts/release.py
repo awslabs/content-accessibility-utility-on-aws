@@ -4,33 +4,33 @@
 """
 Release management script for content-accessibility-utility-on-aws.
 
-This script handles the full release workflow: bump version, generate changelog,
-commit changes, and create a git tag. Push is done separately.
+Production releases: bump version, generate changelog, commit, and tag.
+RC releases: just create a tag on the current commit (no file changes).
 
 Usage:
-    # Bump patch version and release
+    # Production release - bump patch version
     uv run scripts/release.py patch
 
-    # Bump minor version and release
+    # Production release - bump minor version
     uv run scripts/release.py minor
 
-    # Bump major version and release
+    # Production release - bump major version
     uv run scripts/release.py major
 
-    # Release candidate (bumps patch and adds RC suffix)
-    uv run scripts/release.py patch --rc 1
-
-    # Specify exact version
+    # Production release - exact version
     uv run scripts/release.py --version 1.2.3
 
-    # Specify exact RC version
-    uv run scripts/release.py --version 1.2.3-RC1
+    # RC release - just tag current commit (no file changes)
+    uv run scripts/release.py --rc 1.0.0-RC1
 
     # Dry run (show what would happen)
     uv run scripts/release.py patch --dry-run
 
 After running, push the tag to trigger the workflow:
     git push origin v{version}
+
+Note: RC releases don't modify any files. The GitHub Action injects the
+version into the package during build before publishing to TestPyPI.
 """
 # /// script
 # requires-python = ">=3.11"
@@ -54,7 +54,6 @@ CLIFF_CONFIG = PROJECT_ROOT / "cliff.toml"
 
 # Regex patterns
 VERSION_PATTERN = re.compile(r'^__version__\s*=\s*["\']([^"\']+)["\']', re.MULTILINE)
-SEMVER_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:-RC(\d+))?$")
 
 
 def get_current_version() -> str:
@@ -66,38 +65,32 @@ def get_current_version() -> str:
     return match.group(1)
 
 
-def parse_version(version: str) -> tuple[int, int, int, int | None]:
-    """Parse version string into components (major, minor, patch, rc)."""
+def parse_version(version: str) -> tuple[int, int, int]:
+    """Parse version string into components (major, minor, patch)."""
     # Strip RC suffix for base parsing
     base = version.split("-RC")[0]
     base_match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", base)
     if not base_match:
         raise ValueError(f"Invalid version format: {version}")
 
-    major = int(base_match.group(1))
-    minor = int(base_match.group(2))
-    patch = int(base_match.group(3))
-
-    rc = None
-    if "-RC" in version:
-        rc_match = re.search(r"-RC(\d+)$", version)
-        if rc_match:
-            rc = int(rc_match.group(1))
-
-    return major, minor, patch, rc
+    return int(base_match.group(1)), int(base_match.group(2)), int(base_match.group(3))
 
 
-def format_version(major: int, minor: int, patch: int, rc: int | None = None) -> str:
-    """Format version components into a version string."""
-    version = f"{major}.{minor}.{patch}"
-    if rc is not None:
-        version += f"-RC{rc}"
-    return version
+def validate_rc_version(version: str) -> None:
+    """Validate RC version format."""
+    if not re.match(r"^\d+\.\d+\.\d+-RC\d+$", version):
+        raise ValueError(f"Invalid RC version format: {version}. Expected: X.Y.Z-RCN")
 
 
-def bump_version(current: str, bump_type: str, rc: int | None = None) -> str:
+def validate_prod_version(version: str) -> None:
+    """Validate production version format."""
+    if not re.match(r"^\d+\.\d+\.\d+$", version):
+        raise ValueError(f"Invalid version format: {version}. Expected: X.Y.Z")
+
+
+def bump_version(current: str, bump_type: str) -> str:
     """Calculate the new version based on bump type."""
-    major, minor, patch, _ = parse_version(current)
+    major, minor, patch = parse_version(current)
 
     if bump_type == "major":
         major += 1
@@ -109,7 +102,7 @@ def bump_version(current: str, bump_type: str, rc: int | None = None) -> str:
     elif bump_type == "patch":
         patch += 1
 
-    return format_version(major, minor, patch, rc)
+    return f"{major}.{minor}.{patch}"
 
 
 def update_version_file(new_version: str) -> None:
@@ -175,47 +168,122 @@ def create_tag(version: str) -> None:
     print(f"  Created tag: {tag_name}")
 
 
-def is_rc_version(version: str) -> bool:
-    """Check if version is a release candidate."""
-    return "-RC" in version
+def do_rc_release(version: str, dry_run: bool) -> int:
+    """Handle RC release - just tag, no file changes."""
+    validate_rc_version(version)
+
+    print(f"\n{'=' * 50}")
+    print(f"RC Release: v{version}")
+    print("(No file changes - just tagging current commit)")
+    print(f"{'=' * 50}\n")
+
+    if dry_run:
+        print("[DRY RUN] Would perform the following:")
+        print(f"  1. Create tag: v{version}")
+        print(f"\nAfter running (without --dry-run):")
+        print(f"  git push origin v{version}")
+        return 0
+
+    # Just create the tag
+    print("Creating tag...")
+    create_tag(version)
+
+    print(f"\n{'=' * 50}")
+    print("RC release prepared successfully!")
+    print(f"\nTo publish to TestPyPI, push the tag:")
+    print(f"  git push origin v{version}")
+    print(f"\nThe GitHub Action will inject the version during build.")
+    print(f"{'=' * 50}\n")
+
+    return 0
+
+
+def do_prod_release(version: str, dry_run: bool) -> int:
+    """Handle production release - bump, changelog, commit, tag."""
+    validate_prod_version(version)
+    current = get_current_version()
+
+    print(f"\n{'=' * 50}")
+    print(f"Production Release: {current} -> {version}")
+    print(f"{'=' * 50}\n")
+
+    if dry_run:
+        print("[DRY RUN] Would perform the following:")
+        print(f"  1. Update version in {VERSION_FILE.name}")
+        print(f"  2. Generate changelog in {CHANGELOG_FILE.name}")
+        print(f"  3. Commit changes")
+        print(f"  4. Create tag: v{version}")
+        print(f"\nAfter running (without --dry-run):")
+        print(f"  git push origin v{version}")
+        return 0
+
+    # Step 1: Update version
+    print("Step 1: Updating version...")
+    update_version_file(version)
+
+    # Step 2: Generate changelog
+    print("\nStep 2: Generating changelog...")
+    generate_changelog()
+
+    # Step 3: Commit
+    print("\nStep 3: Committing changes...")
+    git_commit(version)
+
+    # Step 4: Create tag
+    print("\nStep 4: Creating tag...")
+    create_tag(version)
+
+    print(f"\n{'=' * 50}")
+    print("Production release prepared successfully!")
+    print(f"\nTo publish to PyPI and create GitHub Release, push the tag:")
+    print(f"  git push origin v{version}")
+    print(f"{'=' * 50}\n")
+
+    return 0
 
 
 def main() -> int:
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="Release tool - bumps version, updates changelog, commits, and tags",
+        description="Release tool for content-accessibility-utility-on-aws",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  uv run scripts/release.py patch           # Bump patch: 0.6.2 -> 0.6.3
-  uv run scripts/release.py minor           # Bump minor: 0.6.2 -> 0.7.0
-  uv run scripts/release.py major           # Bump major: 0.6.2 -> 1.0.0
-  uv run scripts/release.py patch --rc 1    # RC release: 0.6.2 -> 0.6.3-RC1
-  uv run scripts/release.py --version 1.0.0 # Set exact version
+  # Production releases (modifies files, commits, tags)
+  uv run scripts/release.py patch           # 0.6.2 -> 0.6.3
+  uv run scripts/release.py minor           # 0.6.2 -> 0.7.0
+  uv run scripts/release.py major           # 0.6.2 -> 1.0.0
+  uv run scripts/release.py --version 1.0.0 # Exact version
+
+  # RC releases (just tags current commit, no file changes)
+  uv run scripts/release.py --rc 0.7.0-RC1
 
 After running, push the tag:
   git push origin v{version}
 """,
     )
 
+    # Production release options
     parser.add_argument(
         "bump_type",
         nargs="?",
         choices=["major", "minor", "patch"],
-        help="Version bump type (required unless --version is specified)",
+        help="Version bump type for production release",
     )
     parser.add_argument(
         "--version", "-v",
         dest="exact_version",
         metavar="VERSION",
-        help="Set exact version (e.g., 1.2.3 or 1.2.3-RC1)",
+        help="Exact version for production release (e.g., 1.2.3)",
     )
+
+    # RC release option
     parser.add_argument(
         "--rc",
-        type=int,
-        metavar="N",
-        help="Release candidate number (e.g., --rc 1 for RC1)",
+        metavar="VERSION",
+        help="Create RC release tag (e.g., --rc 1.0.0-RC1). No file changes.",
     )
+
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -225,77 +293,27 @@ After running, push the tag:
     args = parser.parse_args()
 
     # Validate arguments
-    if not args.exact_version and not args.bump_type:
-        parser.error("Either bump_type (major/minor/patch) or --version is required")
-
-    if args.exact_version and args.bump_type:
-        parser.error("Cannot specify both bump_type and --version")
-
-    if args.exact_version and args.rc:
-        parser.error("Cannot specify both --version and --rc (include RC in version string)")
+    if args.rc:
+        # RC release - can't combine with other version options
+        if args.bump_type or args.exact_version:
+            parser.error("--rc cannot be combined with bump_type or --version")
+    else:
+        # Production release - need either bump_type or --version
+        if not args.exact_version and not args.bump_type:
+            parser.error("Specify bump_type (major/minor/patch), --version, or --rc")
+        if args.exact_version and args.bump_type:
+            parser.error("Cannot specify both bump_type and --version")
 
     try:
-        current = get_current_version()
-
-        # Determine new version
-        if args.exact_version:
-            new_version = args.exact_version
-            # Validate format
-            parse_version(new_version)
+        if args.rc:
+            return do_rc_release(args.rc, args.dry_run)
         else:
-            new_version = bump_version(current, args.bump_type, args.rc)
-
-        is_rc = is_rc_version(new_version)
-
-        print(f"\n{'=' * 50}")
-        print(f"Release: {current} -> {new_version}")
-        print(f"Type: {'Release Candidate' if is_rc else 'Production'}")
-        print(f"{'=' * 50}\n")
-
-        if args.dry_run:
-            print("[DRY RUN] Would perform the following:")
-            print(f"  1. Update version in {VERSION_FILE.name}")
-            if not is_rc:
-                print(f"  2. Generate changelog in {CHANGELOG_FILE.name}")
+            if args.exact_version:
+                version = args.exact_version
             else:
-                print("  2. Skip changelog (RC release)")
-            print(f"  3. Commit changes")
-            print(f"  4. Create tag: v{new_version}")
-            print(f"\nAfter running (without --dry-run):")
-            print(f"  git push origin v{new_version}")
-            return 0
-
-        # Step 1: Update version
-        print("Step 1: Updating version...")
-        update_version_file(new_version)
-
-        # Step 2: Generate changelog (skip for RC releases)
-        if not is_rc:
-            print("\nStep 2: Generating changelog...")
-            generate_changelog()
-        else:
-            print("\nStep 2: Skipping changelog (RC release)")
-
-        # Step 3: Commit
-        print("\nStep 3: Committing changes...")
-        git_commit(new_version)
-
-        # Step 4: Create tag
-        print("\nStep 4: Creating tag...")
-        create_tag(new_version)
-
-        # Done
-        print(f"\n{'=' * 50}")
-        print("Release prepared successfully!")
-        print(f"\nTo publish, push the tag:")
-        print(f"  git push origin v{new_version}")
-        if is_rc:
-            print(f"\nThis will publish to TestPyPI")
-        else:
-            print(f"\nThis will publish to PyPI and create a GitHub Release")
-        print(f"{'=' * 50}\n")
-
-        return 0
+                current = get_current_version()
+                version = bump_version(current, args.bump_type)
+            return do_prod_release(version, args.dry_run)
 
     except Exception as e:
         print(f"\nError: {e}", file=sys.stderr)

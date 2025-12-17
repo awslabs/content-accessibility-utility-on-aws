@@ -20,6 +20,19 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: "3.x"
+    - name: Inject RC version from tag
+      if: github.ref_type == 'tag' && contains(github.ref_name, '-RC')
+      run: |
+        # Extract version from tag (remove 'v' prefix)
+        VERSION="${GITHUB_REF_NAME#v}"
+        echo "Injecting RC version: $VERSION"
+
+        # Update __init__.py with the RC version (not committed, just for build)
+        sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" \
+          content_accessibility_utility_on_aws/__init__.py
+
+        # Verify the change
+        grep "__version__" content_accessibility_utility_on_aws/__init__.py
     - name: Install pypa/build
       run: >-
         python3 -m
