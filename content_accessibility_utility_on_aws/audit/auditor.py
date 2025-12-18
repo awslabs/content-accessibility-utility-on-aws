@@ -245,7 +245,9 @@ class AccessibilityAuditor:
             self._audit_page(self.soup, None, file_path)
 
         # Generate and return the report
-        logger.info("Audit completed. Total issues found: %d", len(self.issues))
+        # Count only actual issues (exclude "compliant-*" entries which are positive markers)
+        actual_issues = [i for i in self.issues if not i.get("type", "").startswith("compliant-")]
+        logger.info("Audit completed. Total issues found: %d", len(actual_issues))
         
         # Ensure all issues have a valid location field
         for issue in self.issues:
@@ -389,6 +391,11 @@ class AccessibilityAuditor:
         # Track the number of issues before running checks on this page
         current_issues_count = len(self.issues)
 
+        # Check if we should skip navigation landmark check (multi-page PDF mode)
+        skip_navigation = self.options.get("multi_page", False)
+        if skip_navigation:
+            logger.debug("Multi-page mode: skipping navigation landmark check")
+
         # Initialize and run all checks
         checks = [
             HeadingHierarchyCheck(self.soup, self._add_issue),
@@ -397,7 +404,7 @@ class AccessibilityAuditor:
             DocumentLanguageCheck(self.soup, self._add_issue),
             MainLandmarkCheck(self.soup, self._add_issue),
             SkipLinkCheck(self.soup, self._add_issue),
-            LandmarksCheck(self.soup, self._add_issue),
+            LandmarksCheck(self.soup, self._add_issue, skip_navigation=skip_navigation),
             AltTextCheck(self.soup, self._add_issue),
             FigureStructureCheck(self.soup, self._add_issue),
             LinkTextCheck(self.soup, self._add_issue),

@@ -17,6 +17,10 @@ from typing import Dict, Any
 
 from content_accessibility_utility_on_aws import __version__
 from content_accessibility_utility_on_aws.api import generate_remediation_report
+from content_accessibility_utility_on_aws.report import calculate_accessibility_score
+from content_accessibility_utility_on_aws.report.vpat_generator import generate_vpat
+from content_accessibility_utility_on_aws.report.acr_generator import generate_acr
+from content_accessibility_utility_on_aws.report.pdf_exporter import export_pdf, FPDF2_AVAILABLE
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.table_remediation_direct import (
     ensure_table_structure,
 )
@@ -184,6 +188,11 @@ def _add_audit_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--checks", help="Comma-separated list of checks to run")
     parser.add_argument(
+        "--multi-page",
+        action="store_true",
+        help="Skip navigation landmark check (for multi-page PDF content)",
+    )
+    parser.add_argument(
         "--severity",
         choices=["minor", "major", "critical"],
         default="minor",
@@ -199,6 +208,101 @@ def _add_audit_arguments(parser: argparse.ArgumentParser) -> None:
         "--summary-only",
         action="store_true",
         help="Only include summary information in report",
+    )
+
+    # Report generation options
+    parser.add_argument(
+        "--generate-vpat",
+        action="store_true",
+        help="Generate a VPAT 2.4 report alongside the audit",
+    )
+    parser.add_argument(
+        "--generate-acr",
+        action="store_true",
+        help="Generate an Accessibility Conformance Report (ACR)",
+    )
+    parser.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF versions of reports",
+    )
+    parser.add_argument(
+        "--wcag-level",
+        choices=["A", "AA", "AAA"],
+        default="AA",
+        help="Target WCAG conformance level for reports",
+    )
+    parser.add_argument(
+        "--product-name",
+        help="Product name for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--product-version",
+        help="Product version for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--vendor-name",
+        help="Vendor/organization name for VPAT/ACR reports",
+    )
+
+
+def _add_report_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add report generation arguments to the report command parser."""
+    # Input argument (audit JSON file)
+    parser.add_argument(
+        "--input", "-i", required=True,
+        help="Input audit report JSON file"
+    )
+    parser.add_argument(
+        "--output", "-o",
+        help="Output directory for reports (default: current directory)"
+    )
+
+    # Report type selection
+    parser.add_argument(
+        "--type", "-t",
+        choices=["vpat", "acr", "all"],
+        default="all",
+        help="Type of report to generate",
+    )
+    parser.add_argument(
+        "--format", "-f",
+        choices=["html", "json", "markdown", "pdf"],
+        default="html",
+        help="Output format for reports",
+    )
+    parser.add_argument(
+        "--wcag-level",
+        choices=["A", "AA", "AAA"],
+        default="AA",
+        help="Target WCAG conformance level",
+    )
+
+    # Product/organization information
+    parser.add_argument(
+        "--product-name",
+        default="Product",
+        help="Product name for reports",
+    )
+    parser.add_argument(
+        "--product-version",
+        default="1.0",
+        help="Product version for reports",
+    )
+    parser.add_argument(
+        "--vendor-name",
+        help="Vendor/organization name for reports",
+    )
+    parser.add_argument(
+        "--product-description",
+        help="Product description for reports",
+    )
+
+    # Common options
+    parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--quiet", "-q", action="store_true",
+        help="Only output reports, suppress other output"
     )
 
 
@@ -252,7 +356,41 @@ def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
         default="html",
         help="Format for the remediation report",
     )
-    # Unified reports are now the default, no need for a flag
+
+    # Report generation options for remediated output
+    parser.add_argument(
+        "--generate-vpat",
+        action="store_true",
+        help="Generate a VPAT 2.4 report on the remediated HTML",
+    )
+    parser.add_argument(
+        "--generate-acr",
+        action="store_true",
+        help="Generate an ACR report on the remediated HTML",
+    )
+    parser.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF versions of reports",
+    )
+    parser.add_argument(
+        "--wcag-level",
+        choices=["A", "AA", "AAA"],
+        default="AA",
+        help="Target WCAG conformance level for reports",
+    )
+    parser.add_argument(
+        "--product-name",
+        help="Product name for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--product-version",
+        help="Product version for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--vendor-name",
+        help="Vendor/organization name for VPAT/ACR reports",
+    )
 
 
 def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
@@ -364,6 +502,46 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         help="Generate a unified report that combines audit and remediation data",
     )
 
+    # Report generation options
+    parser.add_argument(
+        "--generate-vpat",
+        action="store_true",
+        help="Generate a VPAT 2.4 report after processing",
+    )
+    parser.add_argument(
+        "--generate-acr",
+        action="store_true",
+        help="Generate an Accessibility Conformance Report (ACR) after processing",
+    )
+    parser.add_argument(
+        "--generate-pdf",
+        action="store_true",
+        help="Generate PDF versions of reports",
+    )
+    parser.add_argument(
+        "--wcag-level",
+        choices=["A", "AA", "AAA"],
+        default="AA",
+        help="Target WCAG conformance level for reports",
+    )
+    parser.add_argument(
+        "--product-name",
+        help="Product name for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--product-version",
+        help="Product version for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--vendor-name",
+        help="Vendor/organization name for VPAT/ACR reports",
+    )
+    parser.add_argument(
+        "--report-on-remediated",
+        action="store_true",
+        help="Generate VPAT/ACR reports based on remediated HTML (re-audits after remediation)",
+    )
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
@@ -406,6 +584,14 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_process_arguments(process_parser)
+
+    # Report command
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Generate VPAT/ACR reports from audit results",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_report_arguments(report_parser)
 
     # Version information
     parser.add_argument(
@@ -628,6 +814,7 @@ def run_audit_command(args: Dict[str, Any]) -> int:
             "detailed": args.get("detailed", True),
             "report_format": report_format,
             "summary_only": args.get("summary_only", False),
+            "multi_page": args.get("multi_page", False),  # Skip nav check in multi-page mode
         }
 
         if args.get("checks"):
@@ -664,6 +851,65 @@ def run_audit_command(args: Dict[str, Any]) -> int:
         if not args.get("quiet"):
             print("\nAudit Results:")
             print(result["report"])
+
+        # Generate additional reports if requested
+        generated_reports = []
+        wcag_level = args.get("wcag_level", "AA")
+
+        # Build product/organization info from arguments
+        product_info = {
+            "name": args.get("product_name") or os.path.basename(args["input"]),
+            "version": args.get("product_version") or "1.0",
+            "vendor": args.get("vendor_name") or "",
+        }
+        organization_info = {
+            "name": args.get("vendor_name") or "",
+            "product": args.get("product_name") or os.path.basename(args["input"]),
+        }
+
+        # Generate VPAT if requested
+        if args.get("generate_vpat"):
+            if not args.get("quiet"):
+                logger.info("Generating VPAT report...")
+            vpat_path = os.path.join(output_dir or ".", "vpat_report.html")
+            generate_vpat(result, vpat_path, "html", product_info, wcag_level)
+            generated_reports.append(f"VPAT: {vpat_path}")
+
+            # Also generate PDF if requested
+            if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                vpat_data = generate_vpat(result, product_info=product_info, target_level=wcag_level)
+                vpat_pdf_path = os.path.join(output_dir or ".", "vpat_report.pdf")
+                export_pdf(vpat_data, vpat_pdf_path, report_type="vpat")
+                generated_reports.append(f"VPAT PDF: {vpat_pdf_path}")
+
+        # Generate ACR if requested
+        if args.get("generate_acr"):
+            if not args.get("quiet"):
+                logger.info("Generating ACR report...")
+            acr_path = os.path.join(output_dir or ".", "acr_report.html")
+            generate_acr(result, acr_path, "html", organization_info, wcag_level)
+            generated_reports.append(f"ACR: {acr_path}")
+
+            # Also generate PDF if requested
+            if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                acr_data = generate_acr(result, organization_info=organization_info, target_level=wcag_level)
+                acr_pdf_path = os.path.join(output_dir or ".", "acr_report.pdf")
+                export_pdf(acr_data, acr_pdf_path, report_type="acr")
+                generated_reports.append(f"ACR PDF: {acr_pdf_path}")
+
+        # Generate audit PDF if only PDF is requested (without VPAT/ACR)
+        if args.get("generate_pdf") and not args.get("generate_vpat") and not args.get("generate_acr"):
+            if FPDF2_AVAILABLE:
+                audit_pdf_path = os.path.join(output_dir or ".", "audit_report.pdf")
+                export_pdf(result, audit_pdf_path, report_type="audit")
+                generated_reports.append(f"Audit PDF: {audit_pdf_path}")
+            else:
+                print("Warning: PDF export not available. Install fpdf2 for PDF support.")
+
+        if generated_reports and not args.get("quiet"):
+            print("\nAdditional Reports Generated:")
+            for report in generated_reports:
+                print(f"  {report}")
 
         return 0
 
@@ -799,6 +1045,84 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
             if result.get("report_path"):
                 print(f"  Remediation report: {result['report_path']}")
 
+        # Generate VPAT/ACR reports on remediated HTML if requested
+        if (args.get("generate_vpat") or args.get("generate_acr")) and result.get("remediated_html_path"):
+            remediated_path = result.get("remediated_html_path")
+            if os.path.exists(remediated_path):
+                if not args.get("quiet"):
+                    logger.info("Auditing remediated HTML for report generation...")
+
+                # Audit the remediated HTML
+                output_dir = os.path.dirname(args["output"]) or "."
+                remediated_audit_options = {
+                    "severity_threshold": args.get("severity_threshold", "minor"),
+                    "detailed": True,
+                    "multi_page": args.get("multi_page", False),  # Skip nav check in multi-page mode
+                }
+                remediated_audit_output = os.path.join(output_dir, "remediated_audit_report.json")
+
+                remediated_audit_result = audit_html_accessibility(
+                    html_path=remediated_path,
+                    options=remediated_audit_options,
+                    output_path=remediated_audit_output,
+                )
+
+                # Compare with original audit if available
+                if not args.get("quiet") and audit_report:
+                    # Count only actual issues (exclude "compliant-*" entries)
+                    original_issues = len([i for i in audit_report.get("issues", []) if not i.get("type", "").startswith("compliant-")])
+                    remediated_issues = len([i for i in remediated_audit_result.get("issues", []) if not i.get("type", "").startswith("compliant-")])
+                    print(f"\nRemediation Impact:")
+                    print(f"  Original issues: {original_issues}")
+                    print(f"  Remaining issues: {remediated_issues}")
+                    print(f"  Issues resolved: {original_issues - remediated_issues}")
+
+                # Generate reports
+                generated_reports = []
+                wcag_level = args.get("wcag_level", "AA")
+                input_basename = os.path.splitext(os.path.basename(args["input"]))[0]
+
+                product_info = {
+                    "name": args.get("product_name") or input_basename,
+                    "version": args.get("product_version") or "1.0",
+                    "vendor": args.get("vendor_name") or "",
+                }
+                organization_info = {
+                    "name": args.get("vendor_name") or "",
+                    "product": args.get("product_name") or input_basename,
+                }
+
+                if args.get("generate_vpat"):
+                    if not args.get("quiet"):
+                        logger.info("Generating VPAT report on remediated HTML...")
+                    vpat_path = os.path.join(output_dir, "vpat_remediated_report.html")
+                    generate_vpat(remediated_audit_result, vpat_path, "html", product_info, wcag_level)
+                    generated_reports.append(f"VPAT: {vpat_path}")
+
+                    if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                        vpat_data = generate_vpat(remediated_audit_result, product_info=product_info, target_level=wcag_level)
+                        vpat_pdf_path = os.path.join(output_dir, "vpat_remediated_report.pdf")
+                        export_pdf(vpat_data, vpat_pdf_path, report_type="vpat")
+                        generated_reports.append(f"VPAT PDF: {vpat_pdf_path}")
+
+                if args.get("generate_acr"):
+                    if not args.get("quiet"):
+                        logger.info("Generating ACR report on remediated HTML...")
+                    acr_path = os.path.join(output_dir, "acr_remediated_report.html")
+                    generate_acr(remediated_audit_result, acr_path, "html", organization_info, wcag_level)
+                    generated_reports.append(f"ACR: {acr_path}")
+
+                    if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                        acr_data = generate_acr(remediated_audit_result, organization_info=organization_info, target_level=wcag_level)
+                        acr_pdf_path = os.path.join(output_dir, "acr_remediated_report.pdf")
+                        export_pdf(acr_data, acr_pdf_path, report_type="acr")
+                        generated_reports.append(f"ACR PDF: {acr_pdf_path}")
+
+                if generated_reports and not args.get("quiet"):
+                    print("\nGenerated Reports (on remediated HTML):")
+                    for report in generated_reports:
+                        print(f"  {report}")
+
         return 0
 
     except Exception as e:
@@ -846,11 +1170,20 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
         html_path = convert_result["html_path"]
 
+        # Auto-detect multi-page mode from conversion result
+        # If we have multiple HTML files, treat it as multi-page mode
+        html_files = convert_result.get('html_files', [])
+        is_multi_page = args.get("multi_page", False) or len(html_files) > 1
+        if is_multi_page and not args.get("multi_page", False):
+            logger.debug(f"Auto-detected multi-page mode: {len(html_files)} HTML files")
+
         if not args.get("quiet"):
             print("\nConversion Results:")
             print(f"  Main HTML: {html_path}")
-            print(f"  Total HTML files: {len(convert_result.get('html_files', []))}")
+            print(f"  Total HTML files: {len(html_files)}")
             print(f"  Total image files: {len(convert_result.get('image_files', []))}")
+            if is_multi_page:
+                print(f"  Mode: Multi-page (navigation landmark check skipped)")
 
         # Step 2: Audit HTML (unless skipped)
         if not args.get("skip_audit"):
@@ -864,6 +1197,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 "detailed": args.get("detailed", True),
                 "report_format": audit_format,
                 "summary_only": args.get("summary_only", False),
+                "multi_page": is_multi_page,  # Skip nav check in multi-page mode (auto-detected)
             }
 
             # Add issue types if specified
@@ -882,6 +1216,52 @@ def run_process_command(args: Dict[str, Any]) -> int:
             if not args.get("quiet"):
                 print("\nAudit Results:")
                 print(audit_result["report"])
+
+            # Generate VPAT/ACR reports if requested
+            generated_reports = []
+            wcag_level = args.get("wcag_level", "AA")
+            input_basename = os.path.splitext(os.path.basename(args["input"]))[0]
+
+            product_info = {
+                "name": args.get("product_name") or input_basename,
+                "version": args.get("product_version") or "1.0",
+                "vendor": args.get("vendor_name") or "",
+            }
+            organization_info = {
+                "name": args.get("vendor_name") or "",
+                "product": args.get("product_name") or input_basename,
+            }
+
+            if args.get("generate_vpat"):
+                if not args.get("quiet"):
+                    logger.info("Generating VPAT report...")
+                vpat_path = os.path.join(output_dir, "vpat_report.html")
+                generate_vpat(audit_result, vpat_path, "html", product_info, wcag_level)
+                generated_reports.append(f"VPAT: {vpat_path}")
+
+                if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                    vpat_data = generate_vpat(audit_result, product_info=product_info, target_level=wcag_level)
+                    vpat_pdf_path = os.path.join(output_dir, "vpat_report.pdf")
+                    export_pdf(vpat_data, vpat_pdf_path, report_type="vpat")
+                    generated_reports.append(f"VPAT PDF: {vpat_pdf_path}")
+
+            if args.get("generate_acr"):
+                if not args.get("quiet"):
+                    logger.info("Generating ACR report...")
+                acr_path = os.path.join(output_dir, "acr_report.html")
+                generate_acr(audit_result, acr_path, "html", organization_info, wcag_level)
+                generated_reports.append(f"ACR: {acr_path}")
+
+                if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                    acr_data = generate_acr(audit_result, organization_info=organization_info, target_level=wcag_level)
+                    acr_pdf_path = os.path.join(output_dir, "acr_report.pdf")
+                    export_pdf(acr_data, acr_pdf_path, report_type="acr")
+                    generated_reports.append(f"ACR PDF: {acr_pdf_path}")
+
+            if generated_reports and not args.get("quiet"):
+                print("\nGenerated Reports:")
+                for report in generated_reports:
+                    print(f"  {report}")
         else:
             audit_result = None
             if not args.get("quiet"):
@@ -903,11 +1283,11 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 "max_issues": args.get("max_issues"),
                 "model_id": args.get("model_id"),
                 "single_page": args.get("single_page", False),
-                "multi_page": args.get("multi_page", False),
+                "multi_page": is_multi_page,  # Use auto-detected multi-page mode
                 "profile": profile,  # Add profile to remediation options
             }
 
-            if args.get("multi_page", False):
+            if is_multi_page:
                 remediate_output = os.path.join(output_dir, "remediated_html")
             else:
                 base_name = os.path.splitext(os.path.basename(html_path))[0]
@@ -1067,6 +1447,82 @@ def run_process_command(args: Dict[str, Any]) -> int:
             if not args.get("quiet"):
                 logger.info("Remediation step skipped as requested")
 
+        # Generate reports on remediated data if requested
+        if args.get("report_on_remediated") and remediate_result.get("remediated_html_path"):
+            remediated_path = remediate_result.get("remediated_html_path")
+            if os.path.exists(remediated_path):
+                if not args.get("quiet"):
+                    logger.info("Re-auditing remediated HTML for report generation...")
+
+                # Re-audit the remediated HTML
+                remediated_audit_options = {
+                    "severity_threshold": args.get("severity", "minor"),
+                    "detailed": True,
+                    "multi_page": is_multi_page,  # Skip nav check in multi-page mode (auto-detected)
+                }
+                remediated_audit_output = os.path.join(output_dir, "remediated_audit_report.json")
+
+                remediated_audit_result = audit_html_accessibility(
+                    html_path=remediated_path,
+                    options=remediated_audit_options,
+                    output_path=remediated_audit_output,
+                )
+
+                if not args.get("quiet"):
+                    # Count only actual issues (exclude "compliant-*" entries)
+                    original_issues = len([i for i in audit_result.get("issues", []) if not i.get("type", "").startswith("compliant-")]) if audit_result else 0
+                    remediated_issues = len([i for i in remediated_audit_result.get("issues", []) if not i.get("type", "").startswith("compliant-")])
+                    print(f"\nRemediation Impact:")
+                    print(f"  Original issues: {original_issues}")
+                    print(f"  Remaining issues: {remediated_issues}")
+                    print(f"  Issues resolved: {original_issues - remediated_issues}")
+
+                # Generate reports from remediated audit
+                generated_reports = []
+                wcag_level = args.get("wcag_level", "AA")
+                input_basename = os.path.splitext(os.path.basename(args["input"]))[0]
+
+                product_info = {
+                    "name": args.get("product_name") or input_basename,
+                    "version": args.get("product_version") or "1.0",
+                    "vendor": args.get("vendor_name") or "",
+                }
+                organization_info = {
+                    "name": args.get("vendor_name") or "",
+                    "product": args.get("product_name") or input_basename,
+                }
+
+                if args.get("generate_vpat"):
+                    if not args.get("quiet"):
+                        logger.info("Generating VPAT report on remediated HTML...")
+                    vpat_path = os.path.join(output_dir, "vpat_remediated_report.html")
+                    generate_vpat(remediated_audit_result, vpat_path, "html", product_info, wcag_level)
+                    generated_reports.append(f"VPAT (remediated): {vpat_path}")
+
+                    if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                        vpat_data = generate_vpat(remediated_audit_result, product_info=product_info, target_level=wcag_level)
+                        vpat_pdf_path = os.path.join(output_dir, "vpat_remediated_report.pdf")
+                        export_pdf(vpat_data, vpat_pdf_path, report_type="vpat")
+                        generated_reports.append(f"VPAT PDF (remediated): {vpat_pdf_path}")
+
+                if args.get("generate_acr"):
+                    if not args.get("quiet"):
+                        logger.info("Generating ACR report on remediated HTML...")
+                    acr_path = os.path.join(output_dir, "acr_remediated_report.html")
+                    generate_acr(remediated_audit_result, acr_path, "html", organization_info, wcag_level)
+                    generated_reports.append(f"ACR (remediated): {acr_path}")
+
+                    if args.get("generate_pdf") and FPDF2_AVAILABLE:
+                        acr_data = generate_acr(remediated_audit_result, organization_info=organization_info, target_level=wcag_level)
+                        acr_pdf_path = os.path.join(output_dir, "acr_remediated_report.pdf")
+                        export_pdf(acr_data, acr_pdf_path, report_type="acr")
+                        generated_reports.append(f"ACR PDF (remediated): {acr_pdf_path}")
+
+                if generated_reports and not args.get("quiet"):
+                    print("\nRemediated Reports Generated:")
+                    for report in generated_reports:
+                        print(f"  {report}")
+
         if not args.get("quiet"):
             print("\nProcess completed successfully!")
             print(f"All output files are in: {output_dir}")
@@ -1075,6 +1531,117 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
     except Exception as e:
         logger.error(f"Error in processing pipeline: {e}")
+        if not args.get("quiet"):
+            print(f"Error: {e}")
+        return 1
+
+
+def run_report_command(args: Dict[str, Any]) -> int:
+    """Run the report generation command."""
+    try:
+        # Load audit report
+        audit_path = args["input"]
+        if not os.path.exists(audit_path):
+            print(f"Error: Audit file not found: {audit_path}")
+            return 1
+
+        with open(audit_path, "r", encoding="utf-8") as f:
+            audit_report = json.load(f)
+
+        # Set up output directory
+        output_dir = args.get("output") or "."
+        os.makedirs(output_dir, exist_ok=True)
+
+        # Build product/organization info
+        product_info = {
+            "name": args.get("product_name") or "Product",
+            "version": args.get("product_version") or "1.0",
+            "vendor": args.get("vendor_name") or "",
+            "description": args.get("product_description") or "",
+        }
+
+        organization_info = {
+            "name": args.get("vendor_name") or "Organization",
+            "product": args.get("product_name") or "Product",
+        }
+
+        wcag_level = args.get("wcag_level", "AA")
+        output_format = args.get("format", "html")
+        report_type = args.get("type", "all")
+
+        generated_reports = []
+
+        # Calculate and display conformance summary
+        if not args.get("quiet"):
+            conformance = calculate_accessibility_score(audit_report.get("issues", []))
+            summary = conformance.get("summary", {})
+            print(f"\nVPAT Conformance Summary:")
+            print(f"  Supports: {summary.get('Supports', 0)} criteria")
+            print(f"  Partially Supports: {summary.get('Partially Supports', 0)} criteria")
+            print(f"  Does Not Support: {summary.get('Does Not Support', 0)} criteria")
+            print(f"Issues: {conformance['details']['critical_issues']} critical, "
+                  f"{conformance['details']['major_issues']} major, "
+                  f"{conformance['details']['minor_issues']} minor\n")
+
+        # Generate VPAT
+        if report_type in ["vpat", "all"]:
+            if not args.get("quiet"):
+                logger.info("Generating VPAT report...")
+
+            if output_format == "pdf":
+                # Generate HTML first, then PDF
+                vpat_data = generate_vpat(
+                    audit_report, product_info=product_info, target_level=wcag_level
+                )
+                if FPDF2_AVAILABLE:
+                    pdf_path = os.path.join(output_dir, "vpat_report.pdf")
+                    export_pdf(vpat_data, pdf_path, report_type="vpat")
+                    generated_reports.append(f"VPAT PDF: {pdf_path}")
+                else:
+                    print("Warning: PDF export not available. Install fpdf2 for PDF support.")
+                    # Fall back to HTML
+                    html_path = os.path.join(output_dir, "vpat_report.html")
+                    generate_vpat(audit_report, html_path, "html", product_info, wcag_level)
+                    generated_reports.append(f"VPAT HTML: {html_path}")
+            else:
+                ext = "md" if output_format == "markdown" else output_format
+                vpat_path = os.path.join(output_dir, f"vpat_report.{ext}")
+                generate_vpat(audit_report, vpat_path, output_format, product_info, wcag_level)
+                generated_reports.append(f"VPAT: {vpat_path}")
+
+        # Generate ACR
+        if report_type in ["acr", "all"]:
+            if not args.get("quiet"):
+                logger.info("Generating ACR report...")
+
+            if output_format == "pdf":
+                acr_data = generate_acr(
+                    audit_report, organization_info=organization_info, target_level=wcag_level
+                )
+                if FPDF2_AVAILABLE:
+                    pdf_path = os.path.join(output_dir, "acr_report.pdf")
+                    export_pdf(acr_data, pdf_path, report_type="acr")
+                    generated_reports.append(f"ACR PDF: {pdf_path}")
+                else:
+                    print("Warning: PDF export not available. Install fpdf2 for PDF support.")
+                    html_path = os.path.join(output_dir, "acr_report.html")
+                    generate_acr(audit_report, html_path, "html", organization_info, wcag_level)
+                    generated_reports.append(f"ACR HTML: {html_path}")
+            else:
+                ext = "md" if output_format == "markdown" else output_format
+                acr_path = os.path.join(output_dir, f"acr_report.{ext}")
+                generate_acr(audit_report, acr_path, output_format, organization_info, wcag_level)
+                generated_reports.append(f"ACR: {acr_path}")
+
+        if not args.get("quiet"):
+            print("\nGenerated Reports:")
+            for report in generated_reports:
+                print(f"  {report}")
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Error generating reports: {e}")
         if not args.get("quiet"):
             print(f"Error: {e}")
         return 1
@@ -1096,6 +1663,8 @@ def main() -> int:
             return run_remediate_command(args)
         elif args["command"] == "process":
             return run_process_command(args)
+        elif args["command"] == "report":
+            return run_report_command(args)
         else:
             print("No command specified")
             return 1

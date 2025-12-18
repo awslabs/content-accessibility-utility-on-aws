@@ -184,6 +184,12 @@ class RemediationManager:
         """
         issue_type = issue.get("type")
 
+        # Skip navigation landmark remediation in multi-page mode
+        # (PDF pages don't have traditional navigation - this is expected, not a failure)
+        if issue_type == "missing-navigation-landmark" and self.options.get("multi_page", False):
+            logger.debug("Skipping navigation landmark remediation in multi-page mode (not applicable)")
+            return "Skipped: Navigation landmark not applicable for multi-page PDF content"
+
         # Check if we have a remediation strategy for this issue type
         if issue_type in self.remediation_strategies:
             try:

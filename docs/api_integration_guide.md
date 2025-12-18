@@ -13,6 +13,7 @@ This guide provides detailed instructions for integrating the Document Accessibi
 - [Core Concepts](#core-concepts)
 - [Basic Usage](#basic-usage)
 - [Advanced Integration](#advanced-integration)
+- [Accessibility Reporting](#accessibility-reporting)
 - [Error Handling](#error-handling)
 - [Configuration Management](#configuration-management)
 - [AWS Integration](#aws-integration)
@@ -477,6 +478,116 @@ with ThreadPoolExecutor(max_workers=4) as executor:
     results = list(executor.map(process_document, pdf_files))
 ```
 
+## Accessibility Reporting
+
+The Report module provides comprehensive accessibility reporting capabilities including scoring, VPAT generation, ACR reports, and PDF export.
+
+### Accessibility Scoring
+
+Calculate accessibility scores based on audit results:
+
+```python
+from content_accessibility_utility_on_aws.report import (
+    calculate_accessibility_score,
+    calculate_wcag_compliance,
+    get_score_summary,
+)
+
+# Get audit results first
+audit_result = audit_html_accessibility(html_path="document.html")
+
+# Calculate overall accessibility score
+score_result = calculate_accessibility_score(audit_result["issues"])
+
+print(f"Score: {score_result['score']}/100")
+print(f"Grade: {score_result['grade']}")
+print(f"Compliance Status: {score_result['compliance_status']}")
+
+# Check WCAG compliance at specific level
+compliance_aa = calculate_wcag_compliance(audit_result["issues"], target_level="AA")
+print(f"Level AA Compliant: {compliance_aa['compliant']}")
+print(f"Failing criteria: {compliance_aa['failing_criteria']}")
+```
+
+### VPAT Generation
+
+Generate VPAT (Voluntary Product Accessibility Template) 2.4 format reports:
+
+```python
+from content_accessibility_utility_on_aws.report.vpat_generator import generate_vpat
+
+# Generate VPAT report
+vpat_data = generate_vpat(
+    audit_report=audit_result,
+    output_path="reports/vpat_report.html",
+    output_format="html",  # Also supports "json" and "markdown"
+    product_info={
+        "name": "My Web Application",
+        "version": "2.0",
+        "vendor": "My Company Inc.",
+    },
+    target_level="AA"
+)
+
+print(f"Overall Status: {vpat_data['summary']['overall_status']}")
+print(f"Conformance Rate: {vpat_data['summary']['conformance_percentage']}%")
+```
+
+### ACR (Accessibility Conformance Report) Generation
+
+Generate detailed Accessibility Conformance Reports:
+
+```python
+from content_accessibility_utility_on_aws.report.acr_generator import generate_acr
+
+# Generate ACR report
+acr_data = generate_acr(
+    audit_report=audit_result,
+    output_path="reports/acr_report.html",
+    output_format="html",
+    organization_info={
+        "name": "My Organization",
+        "product": "Enterprise Portal",
+    },
+    target_level="AA",
+    include_remediation_guidance=True
+)
+
+# Access executive summary
+exec_summary = acr_data["executive_summary"]
+print(f"Overall Status: {exec_summary['overall_status']}")
+print(f"Score: {exec_summary['score']}, Grade: {exec_summary['grade']}")
+```
+
+### PDF Export
+
+Export reports to professional PDF format:
+
+```python
+from content_accessibility_utility_on_aws.report.pdf_exporter import export_pdf
+
+# Export audit report to PDF
+export_pdf(
+    report_data=audit_result,
+    output_path="reports/audit_report.pdf",
+    report_type="audit"
+)
+
+# Export VPAT to PDF
+export_pdf(
+    report_data=vpat_data,
+    output_path="reports/vpat_report.pdf",
+    report_type="vpat"
+)
+
+# Export ACR to PDF
+export_pdf(
+    report_data=acr_data,
+    output_path="reports/acr_report.pdf",
+    report_type="acr"
+)
+```
+
 ## Common Integration Patterns
 
 ### Web Application Integration
@@ -717,3 +828,17 @@ if __name__ == "__main__":
 | `BatchPDFConverter` | Process multiple PDFs in batch |
 | `BatchAuditor` | Audit multiple HTML documents |
 | `BatchRemediator` | Remediate multiple HTML documents |
+
+### Report Module
+
+| Class/Function | Description |
+|----------------|-------------|
+| `calculate_accessibility_score()` | Calculate accessibility score (0-100) with letter grade |
+| `calculate_wcag_compliance()` | Check WCAG compliance at specific level (A, AA, AAA) |
+| `get_score_summary()` | Get comprehensive score summary with compliance data |
+| `VPATGenerator` | Class for generating VPAT 2.4 format reports |
+| `generate_vpat()` | Generate VPAT report (convenience function) |
+| `ACRGenerator` | Class for generating Accessibility Conformance Reports |
+| `generate_acr()` | Generate ACR report (convenience function) |
+| `PDFExporter` | Class for exporting reports to PDF format |
+| `export_pdf()` | Export report to PDF (convenience function) |

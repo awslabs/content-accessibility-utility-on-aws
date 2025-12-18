@@ -148,6 +148,19 @@ class SkipLinkCheck(AccessibilityCheck):
 class LandmarksCheck(AccessibilityCheck):
     """Check for proper landmarks (WCAG 1.3.1, 2.4.1)."""
 
+    def __init__(self, soup, add_issue_callback, skip_navigation: bool = False):
+        """
+        Initialize the landmarks check.
+
+        Args:
+            soup: BeautifulSoup object of the HTML document
+            add_issue_callback: Function to call to add an issue
+            skip_navigation: If True, skip the navigation landmark check
+                            (useful for multi-page PDF content)
+        """
+        super().__init__(soup, add_issue_callback)
+        self.skip_navigation = skip_navigation
+
     def check(self) -> None:
         """
         Check if the document has proper landmarks for navigation.
@@ -160,31 +173,32 @@ class LandmarksCheck(AccessibilityCheck):
             - compliant-header-landmark: When there is a header element or role="banner"
             - compliant-footer-landmark: When there is a footer element or role="contentinfo"
         """
-        # Check for navigation landmark
-        nav_element = self.soup.find("nav")
-        nav_role = self.soup.find(attrs={"role": "navigation"})
+        # Check for navigation landmark (skip if in multi-page PDF mode)
+        if not self.skip_navigation:
+            nav_element = self.soup.find("nav")
+            nav_role = self.soup.find(attrs={"role": "navigation"})
 
-        if not nav_element and not nav_role:
-            self.add_issue(
-                "missing-navigation-landmark",
-                "1.3.1",
-                "minor",
-                element=self.soup.find("body"),
-                description="Document missing navigation landmark "
-                + "(nav element or role='navigation')",
-                status="needs_remediation",
-            )
-        else:
-            # Document has a navigation landmark - mark as compliant
-            element = nav_element if nav_element else nav_role
-            self.add_issue(
-                "compliant-navigation-landmark",
-                "1.3.1",
-                "minor",
-                element=element,
-                description="Document has proper navigation landmark",
-                status="compliant",
-            )
+            if not nav_element and not nav_role:
+                self.add_issue(
+                    "missing-navigation-landmark",
+                    "1.3.1",
+                    "minor",
+                    element=self.soup.find("body"),
+                    description="Document missing navigation landmark "
+                    + "(nav element or role='navigation')",
+                    status="needs_remediation",
+                )
+            else:
+                # Document has a navigation landmark - mark as compliant
+                element = nav_element if nav_element else nav_role
+                self.add_issue(
+                    "compliant-navigation-landmark",
+                    "1.3.1",
+                    "minor",
+                    element=element,
+                    description="Document has proper navigation landmark",
+                    status="compliant",
+                )
 
         # Check for header landmark
         header_element = self.soup.find("header")

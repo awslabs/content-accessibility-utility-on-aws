@@ -17,6 +17,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
   - [PDF2HTML](#pdf2html)
   - [Audit](#audit)
   - [Remediate](#remediate)
+  - [Report](#report)
   - [Batch](#batch)
 - [Command Line Interface](#command-line-interface)
 - [Python API](#python-api)
@@ -28,7 +29,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Convert PDF documents to accessible HTML
 - Preserve layout and visual appearance
 - Extract and embed images
-- Audit HTML for WCAG 2.1 accessibility compliance
+- Audit HTML for WCAG 2.1 accessibility compliance (all 78 success criteria)
 - Remediate common accessibility issues using Bedrock models
 - Advanced table remediation strategies
 - Support for single-page and multi-page output formats
@@ -36,6 +37,13 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Detailed usage tracking for BDA pages and Bedrock tokens
 - Cost analysis tools for resource usage monitoring
 - Streamlit sample web interface with usage visualization
+- **Comprehensive reporting capabilities:**
+  - Accessibility scoring with letter grades (A-F)
+  - VPAT 2.4 (Voluntary Product Accessibility Template) generation
+  - ACR (Accessibility Conformance Report) generation
+  - PDF report export
+  - Multiple output formats (HTML, JSON, Markdown, PDF)
+  - WCAG compliance tracking by level (A, AA, AAA)
 
 ## Prerequisites
 
@@ -133,7 +141,7 @@ aws:
 
 ## Architecture
 
-The package consists of four main modules working together to convert, audit, remediate, and batch process documents:
+The package consists of five main modules working together to convert, audit, remediate, report, and batch process documents:
 
 ```mermaid
 graph TD
@@ -142,12 +150,17 @@ graph TD
     D[Audit] --> E[Check Accessibility Issues]
     F[Remediate] --> G[Fix Accessibility Problems]
     F --> H[Generate Remediation Reports]
+    R[Report] --> S[Generate VPAT/ACR Reports]
+    R --> T[Calculate Accessibility Scores]
+    R --> U[Export to PDF]
     I[Batch] --> J[Orchestrate Large-scale Processing]
     I --> K[Track Jobs & Handle AWS Integration]
-    
+
     A --> I
     D --> I
+    D --> R
     F --> I
+    F --> R
 ```
 
 ## Core Packages
@@ -221,6 +234,35 @@ Key components:
 - Image accessibility enhancements
 - Remediation reporting
 
+### Report
+
+The Report module generates comprehensive accessibility reports in multiple formats.
+
+```mermaid
+graph TD
+    A[Audit Results] --> B[Report Module]
+    B --> C[Accessibility Score]
+    B --> D[VPAT Generator]
+    B --> E[ACR Generator]
+    B --> F[PDF Exporter]
+    C --> G[Score & Grade]
+    D --> H[VPAT 2.4 Report]
+    E --> I[Conformance Report]
+    F --> J[PDF Document]
+```
+
+Key components:
+- **Scoring**: Calculate accessibility scores (0-100) with letter grades and compliance status
+- **VPAT Generator**: Generate VPAT 2.4 WCAG format reports for vendor disclosure
+- **ACR Generator**: Create detailed Accessibility Conformance Reports with executive summaries
+- **PDF Exporter**: Export reports to professional PDF documents using ReportLab
+
+Supported output formats:
+- HTML (interactive reports with styling)
+- JSON (machine-readable data)
+- Markdown (documentation-friendly)
+- PDF (professional print-ready reports)
+
 ### Batch
 
 The Batch module provides orchestration for processing documents at scale.
@@ -279,12 +321,31 @@ For HTML report:
 content-accessibilty-utility-on-aws audit --input path/to/document.html --output accessibility-report.html --format html
 ```
 
+Generate VPAT/ACR reports during audit:
+
+```bash
+# Audit with VPAT report
+content-accessibilty-utility-on-aws audit --input document.html --generate-vpat --product-name "My Product"
+
+# Audit with both VPAT and ACR reports plus PDFs
+content-accessibilty-utility-on-aws audit --input document.html \
+    --generate-vpat --generate-acr --generate-pdf \
+    --product-name "My Product" --vendor-name "My Company"
+```
+
 Options:
 - `--format`, `-f [json|html|text]`: Output format for audit report
 - `--checks`: Comma-separated list of checks to run
 - `--severity [minor|major|critical]`: Minimum severity level to include in report
 - `--detailed`: Include detailed context information in report (default: True)
 - `--summary-only`: Only include summary information in report
+- `--generate-vpat`: Generate VPAT 2.4 report alongside audit
+- `--generate-acr`: Generate ACR report alongside audit
+- `--generate-pdf`: Generate PDF versions of reports
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
 - `--config`: Path to configuration file
 
 ### Remediation
@@ -315,6 +376,20 @@ This command runs the full workflow:
 1. Converts PDF to HTML
 2. Audits the HTML for accessibility issues
 3. Remediates the issues found
+4. Generates VPAT/ACR reports (if requested)
+
+Process with report generation:
+
+```bash
+# Full workflow with VPAT and ACR reports
+content-accessibilty-utility-on-aws process --input document.pdf --output ./output \
+    --generate-vpat --generate-acr \
+    --product-name "My Document" --vendor-name "My Organization"
+
+# Full workflow with PDF reports
+content-accessibilty-utility-on-aws process --input document.pdf --output ./output \
+    --generate-vpat --generate-acr --generate-pdf
+```
 
 Options:
 - `--skip-audit`: Skip the audit step
@@ -322,8 +397,42 @@ Options:
 - `--audit-format [json|html|text]`: Format for the audit report
 - `--severity [minor|major|critical]`: Minimum severity level for audit and remediation
 - `--auto-fix`: Automatically fix issues where possible
+- `--generate-vpat`: Generate VPAT 2.4 report after processing
+- `--generate-acr`: Generate ACR report after processing
+- `--generate-pdf`: Generate PDF versions of reports
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
 - Plus all options available in the individual commands
 - `--config`: Path to configuration file
+
+### Generate Reports
+
+Generate VPAT/ACR reports from an existing audit JSON file:
+
+```bash
+# Generate all reports (VPAT + ACR) in HTML format
+content-accessibilty-utility-on-aws report --input audit_report.json --output ./reports
+
+# Generate only VPAT as PDF
+content-accessibilty-utility-on-aws report --input audit_report.json --type vpat --format pdf
+
+# Generate ACR with custom product info
+content-accessibilty-utility-on-aws report --input audit_report.json --type acr \
+    --product-name "My App" --vendor-name "My Company"
+```
+
+Options:
+- `--input`, `-i`: Input audit report JSON file (required)
+- `--output`, `-o`: Output directory for reports
+- `--type`, `-t [vpat|acr|all]`: Report type to generate (default: all)
+- `--format`, `-f [html|json|markdown|pdf]`: Output format (default: html)
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
+- `--product-description`: Product description for reports
 
 ### Use a configuration file
 
@@ -372,7 +481,12 @@ output-directory/
 ├── html/                        # Directory with HTML files
 ├── images/                      # Directory with extracted images
 ├── audit_report.[json|html|txt] # Audit report
-└── remediated_document.html     # Final remediated HTML file
+├── remediated_document.html     # Final remediated HTML file
+├── remediation_report.html      # Remediation report
+├── vpat_report.html             # VPAT report (if --generate-vpat)
+├── vpat_report.pdf              # VPAT PDF (if --generate-pdf)
+├── acr_report.html              # ACR report (if --generate-acr)
+└── acr_report.pdf               # ACR PDF (if --generate-pdf)
 ```
 
 ## Streamlit Sample Web Interface
@@ -445,6 +559,68 @@ remediation_result = remediate_html_accessibility(
         "model_id": "amazon.nova-lite-v1:0",
         "auto_fix": True
     }
+)
+```
+
+### Accessibility Reporting
+
+```python
+from content_accessibility_utility_on_aws.report import (
+    calculate_accessibility_score,
+    calculate_wcag_compliance,
+    get_score_summary,
+)
+from content_accessibility_utility_on_aws.report.vpat_generator import generate_vpat
+from content_accessibility_utility_on_aws.report.acr_generator import generate_acr
+from content_accessibility_utility_on_aws.report.pdf_exporter import export_pdf
+
+# Calculate accessibility score from audit results
+score_result = calculate_accessibility_score(audit_result["issues"])
+print(f"Score: {score_result['score']}, Grade: {score_result['grade']}")
+print(f"Status: {score_result['compliance_status']}")
+
+# Check WCAG compliance at specific level
+compliance = calculate_wcag_compliance(audit_result["issues"], target_level="AA")
+print(f"AA Compliant: {compliance['compliant']}")
+
+# Generate VPAT report
+vpat_data = generate_vpat(
+    audit_report=audit_result,
+    output_path="reports/vpat.html",
+    output_format="html",
+    product_info={
+        "name": "My Product",
+        "version": "1.0",
+        "vendor": "My Company"
+    },
+    target_level="AA"
+)
+
+# Generate ACR (Accessibility Conformance Report)
+acr_data = generate_acr(
+    audit_report=audit_result,
+    output_path="reports/acr.html",
+    output_format="html",
+    organization_info={
+        "name": "My Organization",
+        "product": "My Product"
+    },
+    target_level="AA",
+    include_remediation_guidance=True
+)
+
+# Export audit report to PDF
+export_pdf(
+    report_data=audit_result,
+    output_path="reports/audit_report.pdf",
+    report_type="audit"
+)
+
+# Export VPAT to PDF
+export_pdf(
+    report_data=vpat_data,
+    output_path="reports/vpat.pdf",
+    report_type="vpat"
 )
 ```
 

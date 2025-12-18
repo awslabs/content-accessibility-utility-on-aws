@@ -66,9 +66,8 @@ class DocumentLanguageCheck(AccessibilityCheck):
             self.add_issue(
                 "compliant-document-language",
                 "3.1.1",
-                "critical",
+                "minor",
                 element=html_tag,
                 description=f"Document has valid language attribute: '{lang}'",
                 status="compliant",
             )
-            logger.debug("Added compliant issue for document language")
