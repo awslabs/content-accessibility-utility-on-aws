@@ -7,8 +7,8 @@ HTML Accessibility Standards.
 This module provides constants and utilities for working with WCAG 2.1 accessibility standards.
 """
 
-# WCAG conformance levels
-WCAG_LEVELS = ["A", "AA", "AAA"]
+# WCAG conformance levels (maps level to numeric value for comparison)
+WCAG_LEVELS = {"A": 1, "AA": 2, "AAA": 3}
 
 # Define severity levels for accessibility issues
 # Higher value = more severe

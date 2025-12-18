@@ -300,19 +300,19 @@ class PDFExporter:
         )
         self._add_paragraph(pdf, summary_text)
 
-        # Score section
-        self._add_heading1(pdf, "Accessibility Score")
-        score_data = calculate_accessibility_score(issues)
+        # Conformance section
+        self._add_heading1(pdf, "VPAT Conformance Summary")
+        conformance_data = calculate_accessibility_score(issues, target_level="AA")
 
         self._add_data_table(
             pdf,
-            headers=["Score", "Grade", "Compliance Status"],
-            data=[[
-                str(score_data["score"]),
-                score_data["grade"],
-                score_data["compliance_status"],
-            ]],
-            col_widths=[50, 40, 90],
+            headers=["Conformance Level", "Criteria Count"],
+            data=[
+                ["Supports", str(conformance_data.get("summary", {}).get("Supports", 0))],
+                ["Partially Supports", str(conformance_data.get("summary", {}).get("Partially Supports", 0))],
+                ["Does Not Support", str(conformance_data.get("summary", {}).get("Does Not Support", 0))],
+            ],
+            col_widths=[90, 50],
         )
 
         # Issues by severity

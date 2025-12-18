@@ -11,17 +11,23 @@ in various formats including VPAT, ACR, and PDF.
 from content_accessibility_utility_on_aws.report.scoring import (
     calculate_accessibility_score,
     calculate_wcag_compliance,
-    get_score_summary,
-    SEVERITY_WEIGHTS,
-    LEVEL_WEIGHTS,
+    get_conformance_summary,
+    calculate_conformance_summary,
+    get_criterion_conformance,
+    CONFORMANCE_LEVELS,
 )
+
+# Backwards compatibility alias
+get_score_summary = get_conformance_summary
 
 __all__ = [
     "calculate_accessibility_score",
     "calculate_wcag_compliance",
-    "get_score_summary",
-    "SEVERITY_WEIGHTS",
-    "LEVEL_WEIGHTS",
+    "get_conformance_summary",
+    "get_score_summary",  # Backwards compatibility
+    "calculate_conformance_summary",
+    "get_criterion_conformance",
+    "CONFORMANCE_LEVELS",
 ]
 
 # Lazy imports for optional components

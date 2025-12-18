@@ -80,16 +80,7 @@ class AltTextCheck(AccessibilityCheck):
                         description=f"Image has generic alt text: '{alt_text}'",
                         status="needs_remediation",
                     )
-                else:
-                    # Image has non-empty, non-generic alt text
-                    self.add_issue(
-                        "compliant-alt-text",
-                        "1.1.1",
-                        "critical",
-                        element=img,
-                        description="Image has proper alt text",
-                        status="compliant",
-                    )
+                # else: Image has proper alt text - no issue to report
 
 
 class FigureStructureCheck(AccessibilityCheck):

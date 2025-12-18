@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Accessibility scoring module.
+Accessibility conformance module.
 
-This module provides functionality to calculate accessibility compliance scores
-based on audit results and issue severity.
+This module provides functionality to calculate VPAT/ACR conformance levels
+based on audit results, using standard VPAT 2.4 conformance terminology.
+
+Standard VPAT Conformance Levels:
+- Supports: The functionality fully meets the criterion
+- Partially Supports: Some functionality does not meet the criterion
+- Does Not Support: Most functionality does not meet the criterion
+- Not Applicable: The criterion is not relevant to the product
+- Not Evaluated: The product has not been evaluated against the criterion
 """
 
 from typing import Dict, List, Any
@@ -15,165 +22,193 @@ from content_accessibility_utility_on_aws.audit.standards import (
 )
 
 
-# Severity weights for score calculation
-SEVERITY_WEIGHTS = {
-    "critical": 15,  # Critical issues have maximum impact
-    "major": 8,      # Major issues have significant impact
-    "minor": 3,      # Minor issues have moderate impact
-    "info": 0,       # Informational issues don't affect score
-}
-
-# WCAG level weights for enhanced scoring
-LEVEL_WEIGHTS = {
-    "A": 1.5,    # Level A issues are most important
-    "AA": 1.2,  # Level AA issues are important
-    "AAA": 1.0, # Level AAA issues are less critical for compliance
+# Standard VPAT 2.4 Conformance Levels
+CONFORMANCE_LEVELS = {
+    "supports": "Supports",
+    "partially_supports": "Partially Supports",
+    "does_not_support": "Does Not Support",
+    "not_applicable": "Not Applicable",
+    "not_evaluated": "Not Evaluated",
 }
 
 
-def calculate_accessibility_score(
+def get_criterion_conformance(issues_for_criterion: List[Dict[str, Any]]) -> str:
+    """
+    Determine VPAT conformance level for a single criterion based on its issues.
+
+    Uses standard VPAT 2.4 conformance terminology.
+
+    Args:
+        issues_for_criterion: List of issues for this specific criterion
+
+    Returns:
+        Standard VPAT conformance level string
+    """
+    if not issues_for_criterion:
+        return CONFORMANCE_LEVELS["supports"]
+
+    # Count issues by severity
+    severities = [i.get("severity", "minor").lower() for i in issues_for_criterion]
+    critical_count = severities.count("critical")
+    major_count = severities.count("major")
+    minor_count = severities.count("minor")
+
+    # Determine conformance based on severity
+    if critical_count > 0:
+        return CONFORMANCE_LEVELS["does_not_support"]
+    elif major_count > 0:
+        return CONFORMANCE_LEVELS["does_not_support"]
+    elif minor_count > 0:
+        return CONFORMANCE_LEVELS["partially_supports"]
+    else:
+        return CONFORMANCE_LEVELS["supports"]
+
+
+def calculate_conformance_summary(
     issues: List[Dict[str, Any]],
-    max_score: int = 100,
-    include_remediated: bool = False,
+    target_level: str = "AA",
 ) -> Dict[str, Any]:
     """
-    Calculate an accessibility compliance score based on issues found.
+    Calculate VPAT conformance summary for all evaluated criteria.
 
-    The score starts at max_score (100) and deductions are made based on
-    the severity and WCAG level of each issue. The score cannot go below 0.
+    This replaces the non-standard numeric scoring with standard VPAT
+    conformance levels per criterion.
 
     Args:
         issues: List of accessibility issues from an audit
-        max_score: Maximum possible score (default 100)
-        include_remediated: Whether to include remediated issues in calculation
+        target_level: Target WCAG level (A, AA, or AAA)
 
     Returns:
         Dictionary containing:
-            - score: Numeric score (0-100)
-            - grade: Letter grade (A, B, C, D, F)
-            - max_score: Maximum possible score
-            - deductions: Total points deducted
-            - breakdown: Detailed breakdown by severity and level
-            - compliance_status: Compliance status description
+            - conformance_by_criterion: Conformance level for each criterion
+            - summary: Count of criteria at each conformance level
+            - issues_by_severity: Count of issues by severity
+            - evaluated_criteria: List of criteria that were evaluated
     """
-    # Filter issues to only count those needing remediation (unless include_remediated)
-    if include_remediated:
-        scored_issues = issues
-    else:
-        scored_issues = [
-            i for i in issues
-            if i.get("remediation_status", "needs_remediation") == "needs_remediation"
-        ]
+    # Filter out "compliant-*" entries which are positive markers
+    active_issues = [
+        i for i in issues
+        if i.get("remediation_status", "needs_remediation") == "needs_remediation"
+        and not i.get("type", "").startswith("compliant-")
+    ]
 
-    # Calculate deductions
-    total_deductions = 0
-    severity_breakdown = {"critical": 0, "major": 0, "minor": 0, "info": 0}
-    level_breakdown = {"A": 0, "AA": 0, "AAA": 0}
+    # Group issues by WCAG criterion
+    issues_by_criterion: Dict[str, List[Dict[str, Any]]] = {}
+    severity_counts = {"critical": 0, "major": 0, "minor": 0, "info": 0}
 
-    for issue in scored_issues:
+    for issue in active_issues:
+        criterion = issue.get("wcag_criterion", "")
         severity = issue.get("severity", "minor").lower()
-        wcag_criterion = issue.get("wcag_criterion", "")
 
-        # Get severity weight
-        base_weight = SEVERITY_WEIGHTS.get(severity, 3)
+        if criterion and criterion != "unknown":
+            if criterion not in issues_by_criterion:
+                issues_by_criterion[criterion] = []
+            issues_by_criterion[criterion].append(issue)
 
-        # Get WCAG level multiplier
-        criterion_info = get_criterion_info(wcag_criterion)
-        level = criterion_info.get("level", "AA")
-        level_multiplier = LEVEL_WEIGHTS.get(level, 1.0)
+        if severity in severity_counts:
+            severity_counts[severity] += 1
 
-        # Calculate deduction for this issue
-        deduction = base_weight * level_multiplier
-        total_deductions += deduction
+    # Calculate conformance for each criterion with issues
+    conformance_by_criterion = {}
+    for criterion, criterion_issues in issues_by_criterion.items():
+        conformance_by_criterion[criterion] = {
+            "conformance_level": get_criterion_conformance(criterion_issues),
+            "issue_count": len(criterion_issues),
+            "max_severity": max(
+                [i.get("severity", "minor") for i in criterion_issues],
+                key=lambda s: {"critical": 4, "major": 3, "minor": 2, "info": 1}.get(s.lower(), 0)
+            ),
+            "criterion_info": get_criterion_info(criterion),
+        }
 
-        # Track breakdown
-        severity_breakdown[severity] = severity_breakdown.get(severity, 0) + 1
-        if level in level_breakdown:
-            level_breakdown[level] += 1
+    # Count criteria at each conformance level
+    conformance_summary = {
+        "Supports": 0,
+        "Partially Supports": 0,
+        "Does Not Support": 0,
+        "Not Applicable": 0,
+        "Not Evaluated": 0,
+    }
 
-    # Calculate final score (minimum 0)
-    score = max(0, max_score - total_deductions)
+    for criterion_data in conformance_by_criterion.values():
+        level = criterion_data["conformance_level"]
+        if level in conformance_summary:
+            conformance_summary[level] += 1
 
-    # Determine letter grade
-    grade = _calculate_grade(score)
-
-    # Determine compliance status
-    compliance_status = _get_compliance_status(
-        score, severity_breakdown["critical"], severity_breakdown["major"]
-    )
+    # Criteria without issues are "Supports"
+    criteria_with_issues = len(conformance_by_criterion)
 
     return {
-        "score": round(score, 1),
-        "grade": grade,
-        "max_score": max_score,
-        "deductions": round(total_deductions, 1),
-        "issues_counted": len(scored_issues),
-        "breakdown": {
-            "by_severity": severity_breakdown,
-            "by_level": level_breakdown,
-        },
-        "compliance_status": compliance_status,
-        "details": {
-            "critical_issues": severity_breakdown["critical"],
-            "major_issues": severity_breakdown["major"],
-            "minor_issues": severity_breakdown["minor"],
-            "info_issues": severity_breakdown["info"],
-        }
+        "target_level": target_level.upper(),
+        "conformance_by_criterion": conformance_by_criterion,
+        "summary": conformance_summary,
+        "criteria_with_issues": criteria_with_issues,
+        "total_issues": len(active_issues),
+        "issues_by_severity": severity_counts,
+        "failing_criteria": list(issues_by_criterion.keys()),
     }
 
 
-def _calculate_grade(score: float) -> str:
+# Keep this function for backwards compatibility but mark as using standard levels
+def calculate_accessibility_score(
+    issues: List[Dict[str, Any]],
+    target_level: str = "AA",
+    include_remediated: bool = False,
+) -> Dict[str, Any]:
     """
-    Convert a numeric score to a letter grade.
+    Calculate accessibility conformance summary.
+
+    Note: This function name is kept for backwards compatibility.
+    It now returns VPAT-standard conformance data instead of arbitrary scores.
 
     Args:
-        score: Numeric score (0-100)
+        issues: List of accessibility issues from an audit
+        target_level: Target WCAG level (A, AA, or AAA)
+        include_remediated: Whether to include remediated issues
 
     Returns:
-        Letter grade (A, B, C, D, or F)
+        Dictionary containing conformance summary with standard VPAT levels
     """
-    if score >= 90:
-        return "A"
-    elif score >= 80:
-        return "B"
-    elif score >= 70:
-        return "C"
-    elif score >= 60:
-        return "D"
+    # Filter issues based on remediation status
+    if include_remediated:
+        filtered_issues = [
+            i for i in issues
+            if not i.get("type", "").startswith("compliant-")
+        ]
     else:
-        return "F"
+        filtered_issues = [
+            i for i in issues
+            if i.get("remediation_status", "needs_remediation") == "needs_remediation"
+            and not i.get("type", "").startswith("compliant-")
+        ]
 
+    conformance = calculate_conformance_summary(filtered_issues, target_level)
 
-def _get_compliance_status(
-    score: float,
-    critical_count: int,
-    major_count: int,
-) -> str:
-    """
-    Determine compliance status based on score and issue counts.
+    # Add fields expected by existing code (for backwards compatibility)
+    return {
+        # Standard conformance data
+        "conformance_by_criterion": conformance["conformance_by_criterion"],
+        "summary": conformance["summary"],
+        "target_level": target_level.upper(),
 
-    Args:
-        score: Numeric score
-        critical_count: Number of critical issues
-        major_count: Number of major issues
+        # Issue counts (factual, not made-up scores)
+        "total_issues": conformance["total_issues"],
+        "criteria_with_issues": conformance["criteria_with_issues"],
+        "issues_by_severity": conformance["issues_by_severity"],
+        "failing_criteria": conformance["failing_criteria"],
 
-    Returns:
-        Compliance status description
-    """
-    if critical_count > 0:
-        return "Non-compliant (critical issues present)"
-    elif major_count > 5:
-        return "Non-compliant (multiple major issues)"
-    elif score >= 90:
-        return "Fully compliant"
-    elif score >= 80:
-        return "Substantially compliant"
-    elif score >= 70:
-        return "Partially compliant"
-    elif score >= 50:
-        return "Minimally compliant"
-    else:
-        return "Non-compliant"
+        # Backwards compatibility fields (deprecated)
+        "issues_counted": conformance["total_issues"],
+        "breakdown": {
+            "by_severity": conformance["issues_by_severity"],
+        },
+        "details": {
+            "critical_issues": conformance["issues_by_severity"]["critical"],
+            "major_issues": conformance["issues_by_severity"]["major"],
+            "minor_issues": conformance["issues_by_severity"]["minor"],
+            "info_issues": conformance["issues_by_severity"]["info"],
+        },
+    }
 
 
 def calculate_wcag_compliance(
@@ -184,7 +219,7 @@ def calculate_wcag_compliance(
     Calculate WCAG compliance status for a specific conformance level.
 
     WCAG compliance requires ALL criteria at or below the target level
-    to be met. This function checks which criteria have issues.
+    to have no critical or major issues.
 
     Args:
         issues: List of accessibility issues from an audit
@@ -194,18 +229,18 @@ def calculate_wcag_compliance(
         Dictionary containing:
             - compliant: Boolean indicating full compliance
             - target_level: The target level checked
-            - criteria_checked: Number of criteria evaluated
             - criteria_with_issues: Number of criteria with issues
             - issues_by_criterion: Issues grouped by WCAG criterion
     """
-    # Only consider issues needing remediation
+    # Only consider issues needing remediation, excluding "compliant-*" entries
     active_issues = [
         i for i in issues
         if i.get("remediation_status", "needs_remediation") == "needs_remediation"
+        and not i.get("type", "").startswith("compliant-")
     ]
 
     # Group issues by WCAG criterion
-    issues_by_criterion = {}
+    issues_by_criterion: Dict[str, List[Dict[str, Any]]] = {}
     for issue in active_issues:
         criterion = issue.get("wcag_criterion", "unknown")
         if criterion not in issues_by_criterion:
@@ -222,8 +257,19 @@ def calculate_wcag_compliance(
         <= max_level_value
     }
 
-    # Calculate compliance
-    is_compliant = len(criteria_at_level) == 0
+    # Check for critical/major issues (these mean non-compliance)
+    has_blocking_issues = False
+    for criterion, criterion_issues in criteria_at_level.items():
+        for issue in criterion_issues:
+            severity = issue.get("severity", "minor").lower()
+            if severity in ["critical", "major"]:
+                has_blocking_issues = True
+                break
+        if has_blocking_issues:
+            break
+
+    # Calculate compliance - no critical/major issues at target level
+    is_compliant = len(criteria_at_level) == 0 or not has_blocking_issues
 
     return {
         "compliant": is_compliant,
@@ -237,20 +283,20 @@ def calculate_wcag_compliance(
     }
 
 
-def get_score_summary(audit_report: Dict[str, Any]) -> Dict[str, Any]:
+def get_conformance_summary(audit_report: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Generate a comprehensive score summary from an audit report.
+    Generate a comprehensive conformance summary from an audit report.
 
     Args:
         audit_report: Complete audit report dictionary
 
     Returns:
-        Dictionary with score, grades, and compliance information
+        Dictionary with conformance levels and compliance information
     """
     issues = audit_report.get("issues", [])
 
-    # Calculate overall score
-    score_result = calculate_accessibility_score(issues)
+    # Calculate conformance summary
+    conformance = calculate_conformance_summary(issues)
 
     # Check compliance at each level
     level_a_compliance = calculate_wcag_compliance(issues, "A")
@@ -258,33 +304,36 @@ def get_score_summary(audit_report: Dict[str, Any]) -> Dict[str, Any]:
     level_aaa_compliance = calculate_wcag_compliance(issues, "AAA")
 
     return {
-        "score": score_result,
+        "conformance": conformance,
         "compliance": {
             "level_a": level_a_compliance,
             "level_aa": level_aa_compliance,
             "level_aaa": level_aaa_compliance,
         },
-        "recommendation": _get_recommendation(score_result, level_aa_compliance),
+        "recommendation": _get_recommendation(conformance, level_aa_compliance),
     }
 
 
+# Backwards compatibility alias
+get_score_summary = get_conformance_summary
+
+
 def _get_recommendation(
-    score_result: Dict[str, Any],
+    conformance: Dict[str, Any],
     level_aa_compliance: Dict[str, Any],
 ) -> str:
     """
-    Generate a recommendation based on score and compliance results.
+    Generate a recommendation based on conformance results.
 
     Args:
-        score_result: Score calculation result
+        conformance: Conformance calculation result
         level_aa_compliance: Level AA compliance result
 
     Returns:
         Recommendation string
     """
-    critical = score_result["details"]["critical_issues"]
-    major = score_result["details"]["major_issues"]
-    score = score_result["score"]
+    critical = conformance["issues_by_severity"]["critical"]
+    major = conformance["issues_by_severity"]["major"]
 
     if critical > 0:
         return (
@@ -299,16 +348,11 @@ def _get_recommendation(
     elif not level_aa_compliance["compliant"]:
         failing = len(level_aa_compliance["failing_criteria"])
         return (
-            f"Fix {failing} failing criteria to achieve WCAG AA compliance. "
-            "Review the issues_by_criterion breakdown for details."
-        )
-    elif score < 80:
-        return (
-            "Continue improving accessibility by addressing remaining issues. "
-            "Consider WCAG AAA criteria for enhanced accessibility."
+            f"Address issues in {failing} WCAG criteria to improve conformance. "
+            "Review the conformance_by_criterion breakdown for details."
         )
     else:
         return (
-            "Good accessibility score! Monitor for regressions and "
-            "consider WCAG AAA compliance for best-in-class accessibility."
+            "Good conformance status. Monitor for regressions and "
+            "consider addressing any remaining minor issues."
         )

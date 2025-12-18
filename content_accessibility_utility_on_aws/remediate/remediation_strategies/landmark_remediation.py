@@ -169,8 +169,8 @@ def remediate_missing_footer_landmark(
     body.append(footer)
     logger.debug("Added footer landmark")
 
-    # Continue remediation with skip link
-    remediate_missing_skip_link(soup, issue, *args)
+    # Note: Skip link remediation is handled separately to avoid cascade effects
+    # that can create more issues than they solve
 
     return "Added footer landmark to document"
 
@@ -231,8 +231,8 @@ def remediate_missing_header_landmark(
 
     logger.debug("Added header landmark")
 
-    # Continue remediation with footer
-    remediate_missing_footer_landmark(soup, issue, *args)
+    # Note: Footer remediation is handled separately to avoid cascade effects
+    # that can create more issues than they solve
 
     return "Added header landmark to document"
 
@@ -298,10 +298,10 @@ def remediate_missing_navigation_landmark(
 
             nav.append(ul)
         else:
-            # Create a simple navigation
-            ul = soup.new_tag("ul")
-
-            nav.append(ul)
+            # No navigation content found - skip creating empty nav
+            # An empty navigation list creates accessibility issues
+            logger.debug("No navigation content found - skipping empty nav creation")
+            return "No navigation content available to create navigation landmark"
     else:
         # Move existing list to nav
         nav_list.extract()
@@ -320,8 +320,8 @@ def remediate_missing_navigation_landmark(
 
     logger.debug("Added navigation landmark")
 
-    # Continue remediation with header
-    remediate_missing_header_landmark(soup, issue, *args)
+    # Note: Header remediation is handled separately to avoid cascade effects
+    # that can create more issues than they solve
 
     return "Added navigation landmark to document"
 
@@ -422,14 +422,7 @@ def remediate_missing_main_landmark(
 
     logger.debug("Added main landmark")
 
-    # First check if we need navigation since we just added main
-    if not (soup.find("nav") or soup.find(attrs={"role": "navigation"})):
-        # Track that we want to avoid chain reactions
-        issue["child_remediations"] = issue.get("child_remediations", set())
-        if "navigation" not in issue["child_remediations"]:
-            issue["child_remediations"].add("navigation")
-            # Add navigation landmark
-            nav_result = remediate_missing_navigation_landmark(soup, issue, *args)
-            logger.debug(f"Navigation remediation result: {nav_result}")
+    # Note: Navigation remediation is handled separately to avoid cascade effects
+    # that can create more issues than they solve
 
     return "Added main landmark to document"

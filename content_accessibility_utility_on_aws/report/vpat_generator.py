@@ -119,13 +119,13 @@ class VPATGenerator:
     def _get_product_info(self) -> Dict[str, str]:
         """Get product information with defaults."""
         return {
-            "name": self.product_info.get("name", "Product Name"),
-            "version": self.product_info.get("version", "1.0"),
-            "vendor": self.product_info.get("vendor", ""),
-            "contact": self.product_info.get("contact", ""),
-            "website": self.product_info.get("website", ""),
-            "description": self.product_info.get("description", ""),
-            "date": self.product_info.get("date", datetime.now().strftime("%Y-%m-%d")),
+            "name": self.product_info.get("name") or "Product Name",
+            "version": self.product_info.get("version") or "1.0",
+            "vendor": self.product_info.get("vendor") or "",
+            "contact": self.product_info.get("contact") or "",
+            "website": self.product_info.get("website") or "",
+            "description": self.product_info.get("description") or "",
+            "date": self.product_info.get("date") or datetime.now().strftime("%Y-%m-%d"),
         }
 
     def _build_conformance_data(
@@ -232,7 +232,7 @@ class VPATGenerator:
         # Group issues by type
         issue_types = {}
         for issue in issues:
-            issue_type = issue.get("type", "unknown")
+            issue_type = issue.get("type") or "unknown"
             if issue_type not in issue_types:
                 issue_types[issue_type] = 0
             issue_types[issue_type] += 1
@@ -240,10 +240,11 @@ class VPATGenerator:
         # Build remarks
         remarks_parts = []
         for issue_type, count in issue_types.items():
+            type_name = (issue_type or "unknown").replace("-", " ")
             if count == 1:
-                remarks_parts.append(f"1 {issue_type.replace('-', ' ')} issue")
+                remarks_parts.append(f"1 {type_name} issue")
             else:
-                remarks_parts.append(f"{count} {issue_type.replace('-', ' ')} issues")
+                remarks_parts.append(f"{count} {type_name} issues")
 
         return "Found: " + ", ".join(remarks_parts) + "."
 
@@ -375,7 +376,8 @@ class VPATGenerator:
                     f'<strong>{principle}</strong></td></tr>'
                 )
                 for c in criteria:
-                    level_class = c["conformance_level"].replace("_", "-")
+                    conformance_level = c.get("conformance_level") or "not_evaluated"
+                    level_class = conformance_level.replace("_", "-")
                     table_rows.append(
                         f'<tr class="{level_class}">'
                         f'<td>{c["criterion"]} {c["name"]} (Level {c["level"]})</td>'

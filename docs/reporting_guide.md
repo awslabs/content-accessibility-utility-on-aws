@@ -10,6 +10,11 @@ This guide provides comprehensive documentation for the Report module, which ena
 ## Table of Contents
 
 - [Overview](#overview)
+- [CLI Usage](#cli-usage)
+  - [Report Command](#report-command)
+  - [Audit with Reports](#audit-with-reports)
+  - [Process with Reports](#process-with-reports)
+  - [Reports on Remediated Data](#reports-on-remediated-data)
 - [Accessibility Scoring](#accessibility-scoring)
   - [Score Calculation](#score-calculation)
   - [Letter Grades](#letter-grades)
@@ -36,6 +41,185 @@ The Report module provides tools for generating comprehensive accessibility repo
 - **PDF Export**: Export reports to professional PDF documents
 
 All report generators work with audit results from the Audit module and can output in multiple formats (HTML, JSON, Markdown, PDF).
+
+## CLI Usage
+
+The CLI provides multiple ways to generate reports from the command line.
+
+### Report Command
+
+The `report` command generates VPAT/ACR reports from an existing audit JSON file:
+
+```bash
+# Generate all reports (VPAT + ACR) in HTML format
+accessibility report -i audit_report.json -o ./reports
+
+# Generate only VPAT report
+accessibility report -i audit_report.json -t vpat -o ./reports
+
+# Generate only ACR report
+accessibility report -i audit_report.json -t acr -o ./reports
+
+# Generate reports in different formats
+accessibility report -i audit_report.json -f json -o ./reports
+accessibility report -i audit_report.json -f markdown -o ./reports
+accessibility report -i audit_report.json -f pdf -o ./reports
+
+# Customize product information
+accessibility report -i audit_report.json \
+    --product-name "My Application" \
+    --product-version "2.0" \
+    --vendor-name "My Company" \
+    -o ./reports
+
+# Target different WCAG conformance levels
+accessibility report -i audit_report.json --wcag-level AAA -o ./reports
+```
+
+#### Report Command Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-i, --input` | Input audit report JSON file (required) | - |
+| `-o, --output` | Output directory for reports | Current directory |
+| `-t, --type` | Report type: `vpat`, `acr`, or `all` | `all` |
+| `-f, --format` | Output format: `html`, `json`, `markdown`, `pdf` | `html` |
+| `--wcag-level` | Target WCAG level: `A`, `AA`, `AAA` | `AA` |
+| `--product-name` | Product name for reports | `Product` |
+| `--product-version` | Product version | `1.0` |
+| `--vendor-name` | Vendor/organization name | - |
+| `--product-description` | Product description | - |
+
+### Audit with Reports
+
+Generate reports directly during an audit:
+
+```bash
+# Audit and generate VPAT report
+accessibility audit -i document.html --generate-vpat
+
+# Audit and generate ACR report
+accessibility audit -i document.html --generate-acr
+
+# Audit and generate both VPAT and ACR
+accessibility audit -i document.html --generate-vpat --generate-acr
+
+# Also generate PDF versions
+accessibility audit -i document.html --generate-vpat --generate-acr --generate-pdf
+
+# Customize product info during audit
+accessibility audit -i document.html \
+    --generate-vpat \
+    --generate-acr \
+    --product-name "My Product" \
+    --product-version "1.0" \
+    --vendor-name "My Company" \
+    --wcag-level AA
+```
+
+#### Audit Report Options
+
+| Option | Description |
+|--------|-------------|
+| `--generate-vpat` | Generate VPAT 2.4 report alongside audit |
+| `--generate-acr` | Generate ACR report alongside audit |
+| `--generate-pdf` | Generate PDF versions of reports |
+| `--wcag-level` | Target WCAG level for reports (`A`, `AA`, `AAA`) |
+| `--product-name` | Product name for reports |
+| `--product-version` | Product version for reports |
+| `--vendor-name` | Vendor/organization name for reports |
+
+### Process with Reports
+
+Generate reports as part of the full PDF processing pipeline:
+
+```bash
+# Full workflow: convert PDF, audit, remediate, and generate VPAT
+accessibility process -i document.pdf -o ./output --generate-vpat
+
+# Full workflow with both VPAT and ACR reports
+accessibility process -i document.pdf -o ./output \
+    --generate-vpat \
+    --generate-acr
+
+# Full workflow with all reports including PDFs
+accessibility process -i document.pdf -o ./output \
+    --generate-vpat \
+    --generate-acr \
+    --generate-pdf \
+    --product-name "My Document" \
+    --vendor-name "My Organization"
+```
+
+#### Output Files
+
+When using the process command with report options, the following files are generated:
+
+```
+output/
+├── html/                    # Converted HTML files
+│   └── document.html
+├── audit_report.json        # Audit results
+├── remediated_document.html # Remediated HTML
+├── remediation_report.html  # Remediation report
+├── vpat_report.html         # VPAT report (if --generate-vpat)
+├── vpat_report.pdf          # VPAT PDF (if --generate-pdf)
+├── acr_report.html          # ACR report (if --generate-acr)
+└── acr_report.pdf           # ACR PDF (if --generate-pdf)
+```
+
+### Reports on Remediated Data
+
+Generate reports that reflect the accessibility state after remediation. This is useful for showing improvement in accessibility compliance.
+
+#### Process Command with Remediated Reports
+
+```bash
+# Generate reports based on remediated HTML (shows improved state)
+accessibility process -i document.pdf -o ./output \
+    --generate-vpat \
+    --generate-acr \
+    --report-on-remediated \
+    --product-name "My Document" \
+    --vendor-name "My Organization"
+```
+
+#### Remediate Command with Reports
+
+```bash
+# Remediate and generate reports on the improved HTML
+accessibility remediate -i document.html -o remediated.html \
+    --generate-vpat \
+    --generate-acr \
+    --product-name "My Document" \
+    --vendor-name "My Organization"
+```
+
+#### Output Files with Remediated Reports
+
+When using `--report-on-remediated` with process or the report options with remediate:
+
+```
+output/
+├── html/                          # Converted HTML files
+├── audit_report.json              # Initial audit results
+├── remediated_document.html       # Remediated HTML
+├── remediation_report.html        # Remediation details
+├── remediated_audit_report.json   # Re-audit of remediated HTML
+├── vpat_remediated_report.html    # VPAT based on remediated state
+├── vpat_remediated_report.pdf     # VPAT PDF (if --generate-pdf)
+├── acr_remediated_report.html     # ACR based on remediated state
+└── acr_remediated_report.pdf      # ACR PDF (if --generate-pdf)
+```
+
+The CLI will show the remediation impact:
+
+```
+Remediation Impact:
+  Original issues: 25
+  Remaining issues: 8
+  Issues resolved: 17
+```
 
 ## Accessibility Scoring
 

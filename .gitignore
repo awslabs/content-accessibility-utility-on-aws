@@ -14,3 +14,4 @@ app/static/*  # Streamlit static files that get dynamically added there.
 dist/*
 test_files/*
 misc/
+.DS_Store

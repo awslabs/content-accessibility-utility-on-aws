@@ -190,6 +190,29 @@ def find_image_by_issue(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[
     element_str = issue.get("element", "")
     element_selector = issue.get("selector", "")
 
+    # If element is just a tag name, try context.html_snippet instead
+    if element_str and not element_str.startswith("<"):
+        context = issue.get("context", {})
+        if context and context.get("html_snippet"):
+            element_str = context.get("html_snippet")
+
+    # Strategy 0: Try to find by src from context.attributes (most reliable for PDF-converted HTML)
+    context = issue.get("context", {})
+    if context and context.get("attributes"):
+        src = context.get("attributes", {}).get("src")
+        if src:
+            # Try exact src match first
+            img = soup.find("img", src=src)
+            if img:
+                logger.debug(f"Found image using context.attributes src: {src}")
+                return img
+            # Try filename match
+            filename = os.path.basename(src)
+            for image in soup.find_all("img"):
+                if image.get("src") and os.path.basename(image["src"]) == filename:
+                    logger.debug(f"Found image using context.attributes filename: {filename}")
+                    return image
+
     # Strategy 1: Try to use the selector if available
     if element_selector:
         try:
@@ -339,10 +362,29 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
     """
     # Extract the alt text from the issue if available
     generic_alt = None
+
+    # Try to get element string from multiple sources
     element_str = issue.get("element", "")
+
+    # If element is just a tag name, try context.html_snippet instead
+    if element_str and not element_str.startswith("<"):
+        context = issue.get("context", {})
+        if context and context.get("html_snippet"):
+            element_str = context.get("html_snippet")
+        elif context and context.get("attributes"):
+            # Build element string from attributes
+            attrs = context.get("attributes", {})
+            generic_alt = attrs.get("alt")
+
     alt_match = re.search(r'alt="([^"]*)"', element_str) if element_str else None
     if alt_match:
         generic_alt = alt_match.group(1)
+
+    # Also try to get alt from context.attributes if not found
+    if not generic_alt:
+        context = issue.get("context", {})
+        if context and context.get("attributes"):
+            generic_alt = context.get("attributes", {}).get("alt")
 
     # Define generic alt text patterns
     generic_patterns = [

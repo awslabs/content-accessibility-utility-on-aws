@@ -48,10 +48,30 @@ The following table shows the standardized parameter names used across the tool:
 | Audit Report | `--audit-report` | `audit_report` | No | None | Path to audit report JSON file |
 | Generate Report | `--generate-report` | `generate_report` | No | Enabled | Generate a remediation report |
 | Report Format | `--report-format` | `report_format` | No | `html` | Format for the remediation report |
+| Generate VPAT | `--generate-vpat` | `generate_vpat` | No | Disabled | Generate VPAT on remediated HTML |
+| Generate ACR | `--generate-acr` | `generate_acr` | No | Disabled | Generate ACR on remediated HTML |
+| Generate PDF | `--generate-pdf` | `generate_pdf` | No | Disabled | Generate PDF versions of reports |
+| WCAG Level | `--wcag-level` | `wcag_level` | No | `AA` | Target WCAG level for reports |
+| Product Name | `--product-name` | `product_name` | No | Input filename | Product name for reports |
+| Product Version | `--product-version` | `product_version` | No | `1.0` | Product version for reports |
+| Vendor Name | `--vendor-name` | `vendor_name` | No | None | Vendor name for reports |
+| **Accessibility Reports** |
+| Generate VPAT | `--generate-vpat` | `generate_vpat` | No | Disabled | Generate VPAT 2.4 report |
+| Generate ACR | `--generate-acr` | `generate_acr` | No | Disabled | Generate ACR report |
+| Generate PDF | `--generate-pdf` | `generate_pdf` | No | Disabled | Generate PDF versions of reports |
+| WCAG Level | `--wcag-level` | `target_level` | No | `AA` | Target WCAG conformance level (A, AA, AAA) |
+| Product Name | `--product-name` | `product_info["name"]` | No | Input filename | Product name for reports |
+| Product Version | `--product-version` | `product_info["version"]` | No | `1.0` | Product version for reports |
+| Vendor Name | `--vendor-name` | `organization_info["name"]` | No | None | Vendor/organization name for reports |
+| Product Description | `--product-description` | `product_info["description"]` | No | None | Product description for reports |
 | **Process Command** |
 | Skip Audit | `--skip-audit` | `perform_audit=False` | No | Disabled | Skip the audit step |
 | Skip Remediation | `--skip-remediation` | `perform_remediation=False` | No | Disabled | Skip the remediation step |
 | Audit Format | `--audit-format` | `audit_format` | No | `json` | Format for the audit report |
+| Report on Remediated | `--report-on-remediated` | `report_on_remediated` | No | Disabled | Generate VPAT/ACR reports based on remediated HTML |
+| **Report Command** |
+| Report Type | `--type`, `-t` | `report_type` | No | `all` | Report type to generate (vpat, acr, all) |
+| Report Format | `--format`, `-f` | `output_format` | No | `html` | Output format (html, json, markdown, pdf) |
 
 ## CLI Usage Examples
 
@@ -71,6 +91,39 @@ document-accessibility audit --input document.html --output audit_report.json --
 
 ```bash
 document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id amazon.nova-lite-v1:0
+```
+
+### Generate VPAT/ACR Reports
+
+```bash
+# Generate all reports from existing audit JSON
+document-accessibility report --input audit_report.json --output ./reports
+
+# Generate VPAT only
+document-accessibility report --input audit_report.json --type vpat --output ./reports
+
+# Generate ACR as PDF
+document-accessibility report --input audit_report.json --type acr --format pdf --output ./reports
+
+# Generate reports with product info
+document-accessibility report --input audit_report.json \
+    --product-name "My Product" \
+    --product-version "2.0" \
+    --vendor-name "My Company" \
+    --wcag-level AA \
+    --output ./reports
+```
+
+### Audit with Report Generation
+
+```bash
+# Audit and generate VPAT
+document-accessibility audit --input document.html --generate-vpat --product-name "My Product"
+
+# Audit with VPAT, ACR, and PDF reports
+document-accessibility audit --input document.html \
+    --generate-vpat --generate-acr --generate-pdf \
+    --product-name "My Product" --vendor-name "My Company"
 ```
 
 ## Process Command (Full Pipeline)
@@ -95,6 +148,19 @@ document-accessibility process --input document.pdf --output output_dir/ --skip-
 
 # Full processing with custom settings
 document-accessibility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id amazon.nova-lite-v1:0
+```
+
+### Remediate with Report Generation
+
+```bash
+# Remediate and generate VPAT/ACR on the remediated output
+document-accessibility remediate --input document.html --output remediated.html \
+    --generate-vpat --generate-acr --product-name "My Product"
+
+# Process with reports on remediated data (shows improvement)
+document-accessibility process --input document.pdf --output output_dir/ \
+    --generate-vpat --generate-acr --report-on-remediated \
+    --product-name "My Product" --vendor-name "My Company"
 ```
 
 ## Parameter Value Standards

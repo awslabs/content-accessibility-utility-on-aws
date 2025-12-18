@@ -126,11 +126,90 @@ def remediate_missing_headings(
         '[class*="title"], [class*="heading"], [id*="title"], [id*="heading"]'
     )
 
-    # Combine all potential headings
-    potential_headings = bold_paras + short_divs + title_elements
+    # PDF-specific: Check for spans with large font sizes (common in PDF-to-HTML conversion)
+    large_text_spans = []
+    for span in soup.find_all("span"):
+        style = span.get("style", "")
+        text = span.get_text(strip=True)
+        # Check if short text with large font or bold styling
+        if text and len(text) < 100 and len(text) > 2:
+            is_large = False
+            is_bold = False
 
-    # If no potential headings found, we can't remediate
+            # Check for font-size in style
+            font_size_match = re.search(r'font-size:\s*(\d+(?:\.\d+)?)(px|pt|em)', style.lower())
+            if font_size_match:
+                size = float(font_size_match.group(1))
+                unit = font_size_match.group(2)
+                # Consider large if >= 16pt, >= 20px, or >= 1.2em
+                if (unit == 'pt' and size >= 16) or (unit == 'px' and size >= 20) or (unit == 'em' and size >= 1.2):
+                    is_large = True
+
+            # Check for bold in style
+            if 'font-weight' in style.lower():
+                if 'bold' in style.lower() or re.search(r'font-weight:\s*[6-9]\d\d', style.lower()):
+                    is_bold = True
+
+            # Also check for inline bold tags
+            if span.find(["b", "strong"]):
+                is_bold = True
+
+            if is_large or is_bold:
+                # Verify it's not inside an existing heading or a paragraph
+                if not span.find_parent(["h1", "h2", "h3", "h4", "h5", "h6", "p"]):
+                    large_text_spans.append(span)
+
+    # PDF-specific: Check for divs that contain only spans with text (common structure)
+    pdf_text_divs = []
+    for div in soup.find_all("div"):
+        children = list(div.children)
+        # Single child that's a span with short text
+        if len(children) == 1:
+            child = children[0]
+            if isinstance(child, Tag) and child.name == "span":
+                text = child.get_text(strip=True)
+                if text and 3 < len(text) < 80:
+                    # Check if it looks like a title (all caps, ends with colon, etc.)
+                    if text.isupper() or text.endswith(':') or text[0].isupper():
+                        style = child.get("style", "")
+                        # Prefer styled spans
+                        if 'font-size' in style.lower() or 'font-weight' in style.lower():
+                            pdf_text_divs.append(div)
+
+    # Combine all potential headings, prioritizing styled content
+    potential_headings = large_text_spans + bold_paras + pdf_text_divs + short_divs + title_elements
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_headings = []
+    for elem in potential_headings:
+        elem_id = id(elem)
+        if elem_id not in seen:
+            seen.add(elem_id)
+            unique_headings.append(elem)
+    potential_headings = unique_headings
+
+    # If no potential headings found, try to create one from document title or first text
     if not potential_headings:
+        # Try to use document title
+        title_tag = soup.find("title")
+        if title_tag:
+            title_text = title_tag.get_text(strip=True)
+            if title_text:
+                # Find the body or main content area
+                body = soup.find("body")
+                if body:
+                    h1 = soup.new_tag("h1")
+                    h1.string = title_text
+                    # Insert at the beginning of body
+                    first_child = next(iter(body.children), None)
+                    if first_child:
+                        first_child.insert_before(h1)
+                    else:
+                        body.append(h1)
+                    logger.debug(f"Created h1 from document title: {title_text}")
+                    return f"Added h1 heading from document title: '{title_text}'"
+
         logger.warning("No potential headings found to convert")
         return None
 

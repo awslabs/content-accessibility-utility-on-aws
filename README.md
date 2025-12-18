@@ -321,12 +321,31 @@ For HTML report:
 content-accessibilty-utility-on-aws audit --input path/to/document.html --output accessibility-report.html --format html
 ```
 
+Generate VPAT/ACR reports during audit:
+
+```bash
+# Audit with VPAT report
+content-accessibilty-utility-on-aws audit --input document.html --generate-vpat --product-name "My Product"
+
+# Audit with both VPAT and ACR reports plus PDFs
+content-accessibilty-utility-on-aws audit --input document.html \
+    --generate-vpat --generate-acr --generate-pdf \
+    --product-name "My Product" --vendor-name "My Company"
+```
+
 Options:
 - `--format`, `-f [json|html|text]`: Output format for audit report
 - `--checks`: Comma-separated list of checks to run
 - `--severity [minor|major|critical]`: Minimum severity level to include in report
 - `--detailed`: Include detailed context information in report (default: True)
 - `--summary-only`: Only include summary information in report
+- `--generate-vpat`: Generate VPAT 2.4 report alongside audit
+- `--generate-acr`: Generate ACR report alongside audit
+- `--generate-pdf`: Generate PDF versions of reports
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
 - `--config`: Path to configuration file
 
 ### Remediation
@@ -357,6 +376,20 @@ This command runs the full workflow:
 1. Converts PDF to HTML
 2. Audits the HTML for accessibility issues
 3. Remediates the issues found
+4. Generates VPAT/ACR reports (if requested)
+
+Process with report generation:
+
+```bash
+# Full workflow with VPAT and ACR reports
+content-accessibilty-utility-on-aws process --input document.pdf --output ./output \
+    --generate-vpat --generate-acr \
+    --product-name "My Document" --vendor-name "My Organization"
+
+# Full workflow with PDF reports
+content-accessibilty-utility-on-aws process --input document.pdf --output ./output \
+    --generate-vpat --generate-acr --generate-pdf
+```
 
 Options:
 - `--skip-audit`: Skip the audit step
@@ -364,8 +397,42 @@ Options:
 - `--audit-format [json|html|text]`: Format for the audit report
 - `--severity [minor|major|critical]`: Minimum severity level for audit and remediation
 - `--auto-fix`: Automatically fix issues where possible
+- `--generate-vpat`: Generate VPAT 2.4 report after processing
+- `--generate-acr`: Generate ACR report after processing
+- `--generate-pdf`: Generate PDF versions of reports
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
 - Plus all options available in the individual commands
 - `--config`: Path to configuration file
+
+### Generate Reports
+
+Generate VPAT/ACR reports from an existing audit JSON file:
+
+```bash
+# Generate all reports (VPAT + ACR) in HTML format
+content-accessibilty-utility-on-aws report --input audit_report.json --output ./reports
+
+# Generate only VPAT as PDF
+content-accessibilty-utility-on-aws report --input audit_report.json --type vpat --format pdf
+
+# Generate ACR with custom product info
+content-accessibilty-utility-on-aws report --input audit_report.json --type acr \
+    --product-name "My App" --vendor-name "My Company"
+```
+
+Options:
+- `--input`, `-i`: Input audit report JSON file (required)
+- `--output`, `-o`: Output directory for reports
+- `--type`, `-t [vpat|acr|all]`: Report type to generate (default: all)
+- `--format`, `-f [html|json|markdown|pdf]`: Output format (default: html)
+- `--wcag-level [A|AA|AAA]`: Target WCAG conformance level (default: AA)
+- `--product-name`: Product name for reports
+- `--product-version`: Product version for reports
+- `--vendor-name`: Vendor/organization name for reports
+- `--product-description`: Product description for reports
 
 ### Use a configuration file
 
@@ -414,7 +481,12 @@ output-directory/
 ├── html/                        # Directory with HTML files
 ├── images/                      # Directory with extracted images
 ├── audit_report.[json|html|txt] # Audit report
-└── remediated_document.html     # Final remediated HTML file
+├── remediated_document.html     # Final remediated HTML file
+├── remediation_report.html      # Remediation report
+├── vpat_report.html             # VPAT report (if --generate-vpat)
+├── vpat_report.pdf              # VPAT PDF (if --generate-pdf)
+├── acr_report.html              # ACR report (if --generate-acr)
+└── acr_report.pdf               # ACR PDF (if --generate-pdf)
 ```
 
 ## Streamlit Sample Web Interface

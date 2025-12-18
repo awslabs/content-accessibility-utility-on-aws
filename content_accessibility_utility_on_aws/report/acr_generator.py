@@ -92,7 +92,10 @@ class ACRGenerator:
         logger.info(f"Generating ACR for WCAG {self.target_level}")
 
         # Calculate score and compliance
-        score_data = calculate_accessibility_score(audit_report.get("issues", []))
+        score_data = calculate_accessibility_score(
+            audit_report.get("issues", []),
+            target_level=self.target_level
+        )
         compliance_data = calculate_wcag_compliance(
             audit_report.get("issues", []), self.target_level
         )
@@ -146,16 +149,12 @@ class ACRGenerator:
     def _get_organization_info(self) -> Dict[str, str]:
         """Get organization information with defaults."""
         return {
-            "name": self.organization_info.get("name", "Organization Name"),
-            "product": self.organization_info.get("product", "Product/Website Name"),
-            "url": self.organization_info.get("url", ""),
-            "evaluator": self.organization_info.get(
-                "evaluator", "Content Accessibility Utility on AWS"
-            ),
-            "contact": self.organization_info.get("contact", ""),
-            "scope": self.organization_info.get(
-                "scope", "Full accessibility audit of content"
-            ),
+            "name": self.organization_info.get("name") or "Organization Name",
+            "product": self.organization_info.get("product") or "Product/Website Name",
+            "url": self.organization_info.get("url") or "",
+            "evaluator": self.organization_info.get("evaluator") or "Content Accessibility Utility on AWS",
+            "contact": self.organization_info.get("contact") or "",
+            "scope": self.organization_info.get("scope") or "Full accessibility audit of content",
         }
 
     def _build_findings(self, audit_report: Dict[str, Any]) -> Dict[str, List[Dict]]:
@@ -328,8 +327,6 @@ class ACRGenerator:
         return {
             "overall_status": overall_status,
             "overall_description": overall_description,
-            "score": score_data["score"],
-            "grade": score_data["grade"],
             "total_criteria_evaluated": total_criteria,
             "conforming_criteria": conforming,
             "partial_conformance": partial,
@@ -338,6 +335,8 @@ class ACRGenerator:
             "major_issues": score_data["details"]["major_issues"],
             "minor_issues": score_data["details"]["minor_issues"],
             "key_findings": self._get_key_findings(findings),
+            # Standard VPAT conformance summary
+            "conformance_summary": score_data.get("summary", {}),
         }
 
     def _get_key_findings(self, findings: Dict[str, List[Dict]]) -> List[str]:
@@ -560,7 +559,8 @@ class ACRGenerator:
                         <tbody>
                 ''')
                 for f in principle_findings:
-                    status_class = f["status"].replace("_", "-")
+                    status = f.get("status") or "not_evaluated"
+                    status_class = status.replace("_", "-")
                     findings_html.append(f'''
                             <tr class="{status_class}">
                                 <td>
@@ -822,31 +822,41 @@ class ACRGenerator:
 
         <div class="executive-summary">
             <h2>Executive Summary</h2>
-            <div class="status-badge {summary["overall_status"].lower().replace(" ", "-")}">
-                {summary["overall_status"]}
+            <div class="status-badge {(summary.get("overall_status") or "Unknown").lower().replace(" ", "-")}">
+                {summary.get("overall_status", "Unknown")}
             </div>
             <p>{summary["overall_description"]}</p>
 
-            <div class="score-display">
-                <div class="score-card">
-                    <div class="value">{summary["score"]}</div>
-                    <div class="label">Score</div>
+            <div class="conformance-summary">
+                <h3>VPAT Conformance Summary</h3>
+                <div class="score-display">
+                    <div class="score-card">
+                        <div class="value">{summary["conforming_criteria"]}</div>
+                        <div class="label">Supports</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="value">{summary["partial_conformance"]}</div>
+                        <div class="label">Partially Supports</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="value">{summary["non_conforming_criteria"]}</div>
+                        <div class="label">Does Not Support</div>
+                    </div>
                 </div>
-                <div class="score-card">
-                    <div class="value">{summary["grade"]}</div>
-                    <div class="label">Grade</div>
-                </div>
-                <div class="score-card">
-                    <div class="value">{summary["conforming_criteria"]}/{summary["total_criteria_evaluated"]}</div>
-                    <div class="label">Conforming</div>
-                </div>
-                <div class="score-card">
-                    <div class="value">{summary["critical_issues"]}</div>
-                    <div class="label">Critical Issues</div>
-                </div>
-                <div class="score-card">
-                    <div class="value">{summary["major_issues"]}</div>
-                    <div class="label">Major Issues</div>
+                <h3>Issue Summary</h3>
+                <div class="score-display">
+                    <div class="score-card">
+                        <div class="value">{summary["critical_issues"]}</div>
+                        <div class="label">Critical</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="value">{summary["major_issues"]}</div>
+                        <div class="label">Major</div>
+                    </div>
+                    <div class="score-card">
+                        <div class="value">{summary["minor_issues"]}</div>
+                        <div class="label">Minor</div>
+                    </div>
                 </div>
             </div>
 
@@ -907,17 +917,21 @@ class ACRGenerator:
             f"",
             f"{summary['overall_description']}",
             f"",
-            f"| Metric | Value |",
-            f"|--------|-------|",
-            f"| Score | {summary['score']} |",
-            f"| Grade | {summary['grade']} |",
-            f"| Criteria Evaluated | {summary['total_criteria_evaluated']} |",
-            f"| Conforming | {summary['conforming_criteria']} |",
-            f"| Partial Conformance | {summary['partial_conformance']} |",
-            f"| Non-Conforming | {summary['non_conforming_criteria']} |",
-            f"| Critical Issues | {summary['critical_issues']} |",
-            f"| Major Issues | {summary['major_issues']} |",
-            f"| Minor Issues | {summary['minor_issues']} |",
+            f"### VPAT Conformance Summary",
+            f"",
+            f"| Conformance Level | Criteria Count |",
+            f"|-------------------|----------------|",
+            f"| Supports | {summary['conforming_criteria']} |",
+            f"| Partially Supports | {summary['partial_conformance']} |",
+            f"| Does Not Support | {summary['non_conforming_criteria']} |",
+            f"",
+            f"### Issue Summary",
+            f"",
+            f"| Severity | Count |",
+            f"|----------|-------|",
+            f"| Critical | {summary['critical_issues']} |",
+            f"| Major | {summary['major_issues']} |",
+            f"| Minor | {summary['minor_issues']} |",
             f"",
             f"### Key Findings",
             f"",
