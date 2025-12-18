@@ -280,10 +280,10 @@ class PDFExporter:
 
         # Executive summary
         self._add_heading1(pdf, "Executive Summary")
-        total_issues = audit_report.get(
-            "total_issues", len(audit_report.get("issues", []))
-        )
-        issues = audit_report.get("issues", [])
+        # Filter out compliant-* entries - these are positive markers, not issues
+        all_issues = audit_report.get("issues", [])
+        issues = [i for i in all_issues if not i.get("type", "").startswith("compliant-")]
+        total_issues = audit_report.get("total_issues", len(issues))
 
         severity_counts = {"critical": 0, "major": 0, "minor": 0, "info": 0}
         for issue in issues:

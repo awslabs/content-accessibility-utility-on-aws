@@ -128,7 +128,7 @@ class FigureStructureCheck(AccessibilityCheck):
                     self.add_issue(
                         "compliant-figure-structure",
                         "1.1.1",
-                        "major",
+                        "minor",
                         element=figure,
                         description="Figure has proper structure and caption",
                         status="compliant",

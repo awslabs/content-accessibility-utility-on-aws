@@ -174,9 +174,12 @@ class ACRGenerator:
             "Robust": [],
         }
 
-        # Group issues by WCAG criterion
+        # Group issues by WCAG criterion (excluding compliant-* entries)
         issues_by_criterion = {}
         for issue in audit_report.get("issues", []):
+            # Skip compliant-* entries - these are positive markers, not issues
+            if issue.get("type", "").startswith("compliant-"):
+                continue
             criterion = issue.get("wcag_criterion", "unknown")
             if criterion not in issues_by_criterion:
                 issues_by_criterion[criterion] = []

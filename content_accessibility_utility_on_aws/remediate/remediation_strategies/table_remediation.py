@@ -34,18 +34,27 @@ def get_table_from_issue(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional
     Returns:
         The specific table element if found, None otherwise
     """
-    logger.debug(f"Finding table element for issue: {issue}")
+    logger.debug(f"Finding table element for issue: {issue.get('id', 'unknown')}")
     element_str = issue.get("element", "")
     element_selector = issue.get("selector", "")
-    context = issue.get("context", {})
+    context = issue.get("context", {}) or {}
     file_path = issue.get("location", {}).get("file_path", "")
 
     logger.debug(f"Searching for table with selector: {element_selector}")
-    logger.debug(f"Element string: {element_str[:100]}...")
-    logger.debug(f"Context data: {json.dumps(context, indent=2)}")
     logger.debug(f"File path from issue: {file_path}")
 
-    # First try direct selector match
+    # STRATEGY 0: Use position index from context (most reliable for multi-table docs)
+    position = context.get("position", {})
+    if position and "index" in position:
+        table_index = position.get("index", -1)
+        tables = soup.find_all("table")
+        if 0 <= table_index < len(tables):
+            logger.debug(f"Found table via position index: {table_index}")
+            return tables[table_index]
+        else:
+            logger.debug(f"Position index {table_index} out of range for {len(tables)} tables")
+
+    # STRATEGY 1: Try direct selector match
     if element_selector:
         try:
             logger.debug(f"Attempting selector match: {element_selector}")
@@ -100,11 +109,31 @@ def get_table_from_issue(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional
                 return table
             elif issue_type == "table-missing-tbody" and not table.find("tbody"):
                 return table
-            elif issue_type == "table-irregular-headers" and table.find("th"):
-                # Check for irregular header structure
-                headers = table.find_all("th")
-                if any(not h.get("scope") for h in headers):
-                    return table
+            elif issue_type == "table-irregular-headers":
+                # Check for ACTUAL irregular header structure (mixed th/td in first row or column)
+                rows = table.find_all("tr")
+                if rows:
+                    first_row = rows[0]
+                    first_row_cells = first_row.find_all(["td", "th"])
+                    has_th = any(c.name == "th" for c in first_row_cells)
+                    has_td = any(c.name == "td" for c in first_row_cells)
+                    if has_th and has_td:
+                        # Mixed th/td in first row - this is irregular
+                        return table
+                    # Also check first column for irregularity
+                    if len(rows) > 1:
+                        first_col_th = 0
+                        first_col_td = 0
+                        for row in rows[1:]:
+                            cells = row.find_all(["td", "th"])
+                            if cells:
+                                if cells[0].name == "th":
+                                    first_col_th += 1
+                                else:
+                                    first_col_td += 1
+                        if first_col_th > 0 and first_col_td > 0:
+                            # Mixed th/td in first column - this is irregular
+                            return table
 
     # If all else fails, try finding all tables and adding scope to all headers
     if issue_type and issue_type.startswith("table-"):
@@ -219,6 +248,7 @@ def remediate_table_missing_headers(
     logger.debug("Remediating missing header cells in table")
     table = get_table_from_issue(soup, issue)
     if not table:
+        logger.warning("Could not find table element for table-missing-headers remediation")
         return None
 
     # Check if the table has any th elements
@@ -226,10 +256,15 @@ def remediate_table_missing_headers(
         # Get the first row
         first_row = table.find("tr")
         if first_row:
-            # Convert all td elements in the first row to th
+            # Convert all td elements in the first row to th with scope
+            converted = 0
             for td in first_row.find_all("td"):
                 td.name = "th"
-            return "Converted first row cells to header cells"
+                td["scope"] = "col"  # First row headers are column headers
+                converted += 1
+            if converted > 0:
+                logger.debug(f"Converted {converted} cells to header cells")
+                return f"Converted {converted} first row cells to header cells with scope"
 
     return None
 
@@ -446,7 +481,7 @@ def remediate_table_missing_scope(
     if not headers:
         logger.debug("Table already has proper scope attributes")
         # No headers without scope, nothing to do
-        return "Table already has proper scope attributes"
+        return None  # No remediation needed
 
     # Extract the BedrockClient if provided
     bedrock_client = None
@@ -750,7 +785,7 @@ def remediate_table_missing_thead(
     # Check if table already has thead
     if table.find("thead"):
         logger.debug("Table already has thead element")
-        return "Table already has thead element"
+        return None  # No remediation needed
 
     # Extract the BedrockClient if provided
     bedrock_client = None
@@ -878,7 +913,7 @@ def remediate_table_missing_tbody(
     # Check if table already has tbody
     if table.find("tbody"):
         logger.debug("Table already has tbody element")
-        return "Table already has tbody element"
+        return None  # No remediation needed
 
     # Create tbody element
     tbody = soup.new_tag("tbody")
@@ -912,6 +947,10 @@ def remediate_table_irregular_headers(
     """
     Remediate tables with irregular or inconsistent header structures.
 
+    This fixes the structural issue where the first row or first column has
+    mixed <th> and <td> elements. All cells in the first row should be <th>
+    (column headers) and/or all first cells in each row should be <th> (row headers).
+
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
@@ -919,5 +958,70 @@ def remediate_table_irregular_headers(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # This is essentially a wrapper around remediate_table_missing_scope which handles irregular headers
-    return remediate_table_missing_scope(soup, issue, *args)
+    logger.debug("Remediating irregular header structure in table")
+    table = get_table_from_issue(soup, issue)
+    if not table:
+        logger.warning("Could not find table element for remediation")
+        return None
+
+    modified = False
+    changes = []
+
+    rows = table.find_all("tr")
+    if not rows:
+        return None
+
+    # Check first row - if it has ANY th elements, convert ALL cells to th
+    first_row = rows[0]
+    first_row_cells = first_row.find_all(["td", "th"])
+    first_row_has_th = any(cell.name == "th" for cell in first_row_cells)
+    first_row_has_td = any(cell.name == "td" for cell in first_row_cells)
+
+    if first_row_has_th and first_row_has_td:
+        # Mixed headers in first row - convert all to th
+        for cell in first_row_cells:
+            if cell.name == "td":
+                cell.name = "th"
+                if not cell.get("scope"):
+                    cell["scope"] = "col"
+                modified = True
+        changes.append("Converted all first row cells to headers")
+
+    # Check first column - if it has ANY th elements (excluding first row),
+    # convert all first cells to th
+    first_col_has_th = False
+    first_col_has_td = False
+
+    for row in rows[1:]:  # Skip first row
+        cells = row.find_all(["td", "th"])
+        if cells:
+            first_cell = cells[0]
+            if first_cell.name == "th":
+                first_col_has_th = True
+            else:
+                first_col_has_td = True
+
+    if first_col_has_th and first_col_has_td:
+        # Mixed headers in first column - convert all first cells to th
+        for row in rows[1:]:
+            cells = row.find_all(["td", "th"])
+            if cells and cells[0].name == "td":
+                cells[0].name = "th"
+                if not cells[0].get("scope"):
+                    cells[0]["scope"] = "row"
+                modified = True
+        changes.append("Converted all first column cells to row headers")
+
+    # Also ensure all th elements have scope attributes
+    for th in table.find_all("th"):
+        if not th.get("scope"):
+            scope_value = infer_scope_from_position(table, th)
+            th["scope"] = scope_value
+            modified = True
+
+    if modified:
+        message = "Fixed irregular header structure: " + "; ".join(changes) if changes else "Added scope to headers"
+        logger.debug(message)
+        return message
+
+    return None

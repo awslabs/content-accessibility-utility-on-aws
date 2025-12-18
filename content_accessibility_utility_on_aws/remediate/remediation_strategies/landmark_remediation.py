@@ -36,7 +36,7 @@ def remediate_missing_skip_link(
             "skip" in link.get("class", [""])[0].lower() if link.get("class") else False
         ):
             logger.debug("Skip link already exists")
-            return "Skip link already exists - no remediation needed"
+            return None  # No remediation needed - skip link exists
 
     # Find main content area
     main = soup.find("main") or soup.find(attrs={"role": "main"})
@@ -146,7 +146,7 @@ def remediate_missing_footer_landmark(
     # Check if footer landmark already exists
     if soup.find("footer") or soup.find(attrs={"role": "contentinfo"}):
         logger.debug("Footer landmark already exists")
-        return "Footer landmark already exists - no remediation needed"
+        return None  # No remediation needed - landmark exists
 
     logger.debug("Starting footer landmark remediation")
 
@@ -191,7 +191,7 @@ def remediate_missing_header_landmark(
     # Check if header landmark already exists
     if soup.find("header") or soup.find(attrs={"role": "banner"}):
         logger.debug("Header landmark already exists")
-        return "Header landmark already exists - no remediation needed"
+        return None  # No remediation needed - landmark exists
 
     logger.debug("Starting header landmark remediation")
 
@@ -253,7 +253,7 @@ def remediate_missing_navigation_landmark(
     # Check if navigation landmark already exists
     if soup.find("nav") or soup.find(attrs={"role": "navigation"}):
         logger.debug("Navigation landmark already exists")
-        return "Navigation landmark already exists - no remediation needed"
+        return None  # No remediation needed - landmark exists
 
     logger.debug("Starting navigation landmark remediation")
 
@@ -268,11 +268,37 @@ def remediate_missing_navigation_landmark(
     nav["role"] = "navigation"
     nav["aria-label"] = "Main navigation"
 
-    # Try to find existing navigation lists
-    nav_list = soup.find("ul", class_=lambda c: c and ("nav" in c or "menu" in c))
+    # Strategy 1: Look for navigation lists with nav/menu class
+    nav_list = soup.find("ul", class_=lambda c: c and ("nav" in c.lower() or "menu" in c.lower()))
 
     if not nav_list:
-        # Look for a series of links that might be a navigation
+        # Strategy 2: Look for any ul containing multiple links (likely navigation)
+        for ul in soup.find_all("ul"):
+            links_in_ul = ul.find_all("a")
+            if len(links_in_ul) >= 2:
+                # Found a list with multiple links - likely navigation
+                nav_list = ul
+                logger.debug(f"Found ul with {len(links_in_ul)} links")
+                break
+
+    if not nav_list:
+        # Strategy 3: Look for links in header element
+        header = soup.find("header") or soup.find(attrs={"role": "banner"})
+        if header:
+            header_links = header.find_all("a")
+            if len(header_links) >= 2:
+                # Create a list from header links
+                ul = soup.new_tag("ul")
+                for link in header_links:
+                    li = soup.new_tag("li")
+                    link_copy = link.extract()
+                    li.append(link_copy)
+                    ul.append(li)
+                nav.append(ul)
+                logger.debug(f"Created nav from {len(header_links)} header links")
+
+    if not nav_list and len(nav.contents) == 0:
+        # Strategy 4: Look for grouped links in any container
         links = soup.find_all("a")
         potential_navs = []
 
@@ -281,28 +307,34 @@ def remediate_missing_navigation_landmark(
                 "div",
                 "p",
                 "header",
+                "span",
+                "section",
             ]:
                 potential_navs.append(links[i].parent)
 
         if potential_navs:
-            # Use the first potential navigation container
-            nav_container = potential_navs[0]
+            # Use the container with the most links
+            nav_container = max(potential_navs, key=lambda c: len(c.find_all("a")))
+            container_links = nav_container.find_all("a")
 
-            # Create a list from the links
-            ul = soup.new_tag("ul")
-            for link in nav_container.find_all("a"):
-                li = soup.new_tag("li")
-                link_copy = link.extract()
-                li.append(link_copy)
-                ul.append(li)
+            if len(container_links) >= 2:
+                # Create a list from the links
+                ul = soup.new_tag("ul")
+                for link in container_links:
+                    li = soup.new_tag("li")
+                    link_copy = link.extract()
+                    li.append(link_copy)
+                    ul.append(li)
+                nav.append(ul)
+                logger.debug(f"Created nav from {len(container_links)} grouped links")
 
-            nav.append(ul)
-        else:
-            # No navigation content found - skip creating empty nav
-            # An empty navigation list creates accessibility issues
-            logger.debug("No navigation content found - skipping empty nav creation")
-            return "No navigation content available to create navigation landmark"
-    else:
+    if not nav_list and len(nav.contents) == 0:
+        # No navigation content found - skip creating empty nav
+        # An empty navigation list creates accessibility issues
+        logger.debug("No navigation content found - skipping empty nav creation")
+        return None  # Return None to indicate no remediation was performed
+
+    if nav_list and len(nav.contents) == 0:
         # Move existing list to nav
         nav_list.extract()
         nav.append(nav_list)
@@ -342,7 +374,7 @@ def remediate_missing_main_landmark(
     # Check if main landmark already exists
     if soup.find("main") or soup.find(attrs={"role": "main"}):
         logger.debug("Main landmark already exists")
-        return "Main landmark already exists - no remediation needed"
+        return None  # No remediation needed - landmark exists
 
     logger.debug("Starting main landmark remediation")
 

@@ -188,6 +188,11 @@ def _add_audit_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--checks", help="Comma-separated list of checks to run")
     parser.add_argument(
+        "--multi-page",
+        action="store_true",
+        help="Skip navigation landmark check (for multi-page PDF content)",
+    )
+    parser.add_argument(
         "--severity",
         choices=["minor", "major", "critical"],
         default="minor",
@@ -809,6 +814,7 @@ def run_audit_command(args: Dict[str, Any]) -> int:
             "detailed": args.get("detailed", True),
             "report_format": report_format,
             "summary_only": args.get("summary_only", False),
+            "multi_page": args.get("multi_page", False),  # Skip nav check in multi-page mode
         }
 
         if args.get("checks"):
@@ -1051,6 +1057,7 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
                 remediated_audit_options = {
                     "severity_threshold": args.get("severity_threshold", "minor"),
                     "detailed": True,
+                    "multi_page": args.get("multi_page", False),  # Skip nav check in multi-page mode
                 }
                 remediated_audit_output = os.path.join(output_dir, "remediated_audit_report.json")
 
@@ -1163,11 +1170,20 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
         html_path = convert_result["html_path"]
 
+        # Auto-detect multi-page mode from conversion result
+        # If we have multiple HTML files, treat it as multi-page mode
+        html_files = convert_result.get('html_files', [])
+        is_multi_page = args.get("multi_page", False) or len(html_files) > 1
+        if is_multi_page and not args.get("multi_page", False):
+            logger.debug(f"Auto-detected multi-page mode: {len(html_files)} HTML files")
+
         if not args.get("quiet"):
             print("\nConversion Results:")
             print(f"  Main HTML: {html_path}")
-            print(f"  Total HTML files: {len(convert_result.get('html_files', []))}")
+            print(f"  Total HTML files: {len(html_files)}")
             print(f"  Total image files: {len(convert_result.get('image_files', []))}")
+            if is_multi_page:
+                print(f"  Mode: Multi-page (navigation landmark check skipped)")
 
         # Step 2: Audit HTML (unless skipped)
         if not args.get("skip_audit"):
@@ -1181,6 +1197,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 "detailed": args.get("detailed", True),
                 "report_format": audit_format,
                 "summary_only": args.get("summary_only", False),
+                "multi_page": is_multi_page,  # Skip nav check in multi-page mode (auto-detected)
             }
 
             # Add issue types if specified
@@ -1266,11 +1283,11 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 "max_issues": args.get("max_issues"),
                 "model_id": args.get("model_id"),
                 "single_page": args.get("single_page", False),
-                "multi_page": args.get("multi_page", False),
+                "multi_page": is_multi_page,  # Use auto-detected multi-page mode
                 "profile": profile,  # Add profile to remediation options
             }
 
-            if args.get("multi_page", False):
+            if is_multi_page:
                 remediate_output = os.path.join(output_dir, "remediated_html")
             else:
                 base_name = os.path.splitext(os.path.basename(html_path))[0]
@@ -1441,6 +1458,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 remediated_audit_options = {
                     "severity_threshold": args.get("severity", "minor"),
                     "detailed": True,
+                    "multi_page": is_multi_page,  # Skip nav check in multi-page mode (auto-detected)
                 }
                 remediated_audit_output = os.path.join(output_dir, "remediated_audit_report.json")
 
@@ -1553,13 +1571,17 @@ def run_report_command(args: Dict[str, Any]) -> int:
 
         generated_reports = []
 
-        # Calculate and display score
+        # Calculate and display conformance summary
         if not args.get("quiet"):
-            score = calculate_accessibility_score(audit_report.get("issues", []))
-            print(f"\nAccessibility Score: {score['score']}/100 (Grade: {score['grade']})")
-            print(f"Issues: {score['details']['critical_issues']} critical, "
-                  f"{score['details']['major_issues']} major, "
-                  f"{score['details']['minor_issues']} minor\n")
+            conformance = calculate_accessibility_score(audit_report.get("issues", []))
+            summary = conformance.get("summary", {})
+            print(f"\nVPAT Conformance Summary:")
+            print(f"  Supports: {summary.get('Supports', 0)} criteria")
+            print(f"  Partially Supports: {summary.get('Partially Supports', 0)} criteria")
+            print(f"  Does Not Support: {summary.get('Does Not Support', 0)} criteria")
+            print(f"Issues: {conformance['details']['critical_issues']} critical, "
+                  f"{conformance['details']['major_issues']} major, "
+                  f"{conformance['details']['minor_issues']} minor\n")
 
         # Generate VPAT
         if report_type in ["vpat", "all"]:
