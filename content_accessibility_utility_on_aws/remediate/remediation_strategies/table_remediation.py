@@ -43,9 +43,30 @@ def get_table_from_issue(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional
     logger.debug(f"Searching for table with selector: {element_selector}")
     logger.debug(f"File path from issue: {file_path}")
 
-    # STRATEGY 0: Use position index from context (most reliable for multi-table docs)
+    # STRATEGY 0: If issue element is a th, find its parent table
+    # This handles table-missing-scope issues where the element is a header, not a table
+    element_name = context.get("element_name", "")
     position = context.get("position", {})
-    if position and "index" in position:
+
+    if element_name == "th":
+        logger.debug("Issue element is a th - finding parent table")
+        if position and "index" in position:
+            th_index = position.get("index", -1)
+            all_th = soup.find_all("th")
+            if 0 <= th_index < len(all_th):
+                th_element = all_th[th_index]
+                # Find parent table by traversing up the DOM
+                parent = th_element.parent
+                while parent:
+                    if parent.name == "table":
+                        logger.debug(f"Found parent table for th at index {th_index}")
+                        return parent
+                    parent = parent.parent
+            else:
+                logger.debug(f"th index {th_index} out of range for {len(all_th)} th elements")
+
+    # STRATEGY 1: Use position index from context for table elements (most reliable for multi-table docs)
+    if position and "index" in position and element_name != "th":
         table_index = position.get("index", -1)
         tables = soup.find_all("table")
         if 0 <= table_index < len(tables):
@@ -54,7 +75,7 @@ def get_table_from_issue(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional
         else:
             logger.debug(f"Position index {table_index} out of range for {len(tables)} tables")
 
-    # STRATEGY 1: Try direct selector match
+    # STRATEGY 2: Try direct selector match
     if element_selector:
         try:
             logger.debug(f"Attempting selector match: {element_selector}")
@@ -473,15 +494,15 @@ def remediate_table_missing_scope(
             )
             return f"Added scope attributes to {fallback_total} header cells across {tables_modified} tables using fallback method"
         else:
-            logger.warning("No header cells were modified during scope remediation")
-            return None
+            logger.debug("All tables already have proper scope attributes")
+            return "Already remediated: All table headers have scope attributes"
 
     # Find all header cells (th) without scope attributes
     headers = table.find_all("th", scope=False)
     if not headers:
         logger.debug("Table already has proper scope attributes")
-        # No headers without scope, nothing to do
-        return None  # No remediation needed
+        # No headers without scope, nothing to do - but this is success, not failure
+        return "Already remediated: Table headers already have scope attributes"
 
     # Extract the BedrockClient if provided
     bedrock_client = None
@@ -969,7 +990,8 @@ def remediate_table_irregular_headers(
 
     rows = table.find_all("tr")
     if not rows:
-        return None
+        logger.debug("Table has no rows")
+        return "No remediation needed: Table has no rows"
 
     # Check first row - if it has ANY th elements, convert ALL cells to th
     first_row = rows[0]
@@ -1024,4 +1046,6 @@ def remediate_table_irregular_headers(
         logger.debug(message)
         return message
 
-    return None
+    # No modifications needed - table structure is already correct
+    logger.debug("Table already has consistent header structure")
+    return "Already remediated: Table has consistent header structure"
