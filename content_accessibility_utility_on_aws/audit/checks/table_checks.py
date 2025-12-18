@@ -272,16 +272,31 @@ class TableStructureCheck(AccessibilityCheck):
             return
 
         # Check if headers are consistently in the first row or first column
-        first_row_headers = len(rows[0].find_all("th"))
-        first_col_headers = sum(
-            1 for row in rows if row.find_all(["td", "th"])[0].name == "th"
-        )
+        first_row = rows[0]
+        first_row_cells = first_row.find_all(["td", "th"])
+        first_row_headers = len(first_row.find_all("th"))
 
-        # If we have some headers but they're not consistently in first row or column
-        if first_row_headers > 0 and first_row_headers < len(
-            rows[0].find_all(["td", "th"])
-        ):
-            # Check if there are non-header cells mixed with headers in the first row
+        # Count row headers (th in first cell position, excluding the header row)
+        # Only count data rows (rows after the first if first row is all headers)
+        first_row_all_headers = first_row_headers == len(first_row_cells)
+
+        # Get cells for each row's first position
+        first_col_cells = []
+        for row in rows:
+            cells = row.find_all(["td", "th"])
+            if cells:
+                first_col_cells.append(cells[0])
+
+        # Count how many rows have th in first column (excluding header row if it's all th)
+        data_rows_start = 1 if first_row_all_headers else 0
+        first_col_headers_in_data = sum(
+            1 for cell in first_col_cells[data_rows_start:] if cell.name == "th"
+        )
+        total_data_rows = len(first_col_cells) - data_rows_start
+
+        # If we have some headers but they're not consistently in first row
+        # (mixed th/td in the first row)
+        if first_row_headers > 0 and first_row_headers < len(first_row_cells):
             self.add_issue(
                 "table-irregular-headers",
                 "1.3.1",
@@ -290,8 +305,10 @@ class TableStructureCheck(AccessibilityCheck):
                 description="Table has irregular header structure in the first row",
             )
 
-        if first_col_headers > 0 and first_col_headers < len(rows):
-            # Check if there are rows without headers in the first column
+        # If we have SOME row headers in data rows but not ALL data rows have them
+        # This catches tables that have inconsistent row header usage
+        # (some data rows have th in first column, others don't)
+        if first_col_headers_in_data > 0 and first_col_headers_in_data < total_data_rows:
             self.add_issue(
                 "table-irregular-headers",
                 "1.3.1",
