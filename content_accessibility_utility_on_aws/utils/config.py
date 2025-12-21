@@ -301,5 +301,27 @@ config_manager = ConfigManager(
             "bda_project_name": None,
             "bda_profile_name": None,
         },
+        # pdf2htmlEX converter defaults
+        "pdf2htmlex": {
+            "docker_image": "pdf2htmlex/pdf2htmlex:0.18.8.rc2-master-20200820-ubuntu-20.04-x86_64",
+            "zoom": 1.0,
+            "embed_font": True,
+            "embed_css": True,
+            "embed_image": True,
+            "embed_javascript": True,
+            "embed_outline": True,
+            "split_pages": False,
+            "process_outline": True,
+            "bg_format": "png",
+            "dpi": 144,
+            "fit_width": None,
+            "fit_height": None,
+            "use_cropbox": True,
+            "optimize_text": False,
+            "fallback": False,
+            "first_page": None,
+            "last_page": None,
+            "no_drm": True,
+        },
     }
 )

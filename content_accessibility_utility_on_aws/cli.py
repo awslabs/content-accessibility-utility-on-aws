@@ -95,7 +95,7 @@ def _add_standardized_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--config", "-c", help="Path to configuration file")
     # Add save-config parameter to save current configuration
     parser.add_argument(
-        "--save-config", 
+        "--save-config",
         metavar="CONFIG_PATH",
         help="Save current configuration to the specified file path"
     )
@@ -103,6 +103,14 @@ def _add_standardized_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", help="AWS profile name to use for credentials")
     # Add S3 bucket parameter as a standardized parameter
     parser.add_argument("--s3-bucket", help="Name of an existing S3 bucket to use")
+
+    # Converter selection
+    parser.add_argument(
+        "--converter",
+        choices=["bda", "pdf2htmlex"],
+        default="bda",
+        help="PDF to HTML converter backend (default: bda)",
+    )
 
     # AWS/BDA options
     parser.add_argument(
@@ -166,6 +174,78 @@ def _add_convert_arguments(parser: argparse.ArgumentParser) -> None:
         "--exclude-images",
         action="store_true",
         help="Do not include images in the output",
+    )
+
+    # pdf2htmlEX-specific options
+    pdf2htmlex_group = parser.add_argument_group(
+        "pdf2htmlEX Options",
+        "Options specific to the pdf2htmlEX converter (--converter pdf2htmlex)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--docker-image",
+        default="pdf2htmlex/pdf2htmlex:0.18.8.rc2-master-20200820-ubuntu-20.04-x86_64",
+        help="Docker image for pdf2htmlEX",
+    )
+    pdf2htmlex_group.add_argument(
+        "--zoom",
+        type=float,
+        default=1.0,
+        help="Zoom ratio for pdf2htmlEX output",
+    )
+    pdf2htmlex_group.add_argument(
+        "--embed-font",
+        action="store_true",
+        default=True,
+        help="Embed fonts in output (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--no-embed-font",
+        action="store_false",
+        dest="embed_font",
+        help="Do not embed fonts (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--split-pages",
+        action="store_true",
+        help="Split pages into separate HTML files (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--process-outline",
+        action="store_true",
+        default=True,
+        help="Process PDF outline/bookmarks (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--bg-format",
+        choices=["png", "jpg", "svg"],
+        default="png",
+        help="Background image format (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--dpi",
+        type=int,
+        default=144,
+        help="Resolution DPI for graphics (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--fit-width",
+        type=int,
+        help="Fit to width in pixels (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--fit-height",
+        type=int,
+        help="Fit to height in pixels (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--first-page",
+        type=int,
+        help="First page to convert (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--last-page",
+        type=int,
+        help="Last page to convert (pdf2htmlEX)",
     )
 
 
@@ -316,6 +396,78 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         "--exclude-images",
         action="store_true",
         help="Do not include images in the output",
+    )
+
+    # pdf2htmlEX-specific options for process command
+    pdf2htmlex_group = parser.add_argument_group(
+        "pdf2htmlEX Options",
+        "Options specific to the pdf2htmlEX converter (--converter pdf2htmlex)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--docker-image",
+        default="pdf2htmlex/pdf2htmlex:0.18.8.rc2-master-20200820-ubuntu-20.04-x86_64",
+        help="Docker image for pdf2htmlEX",
+    )
+    pdf2htmlex_group.add_argument(
+        "--zoom",
+        type=float,
+        default=1.0,
+        help="Zoom ratio for pdf2htmlEX output",
+    )
+    pdf2htmlex_group.add_argument(
+        "--embed-font",
+        action="store_true",
+        default=True,
+        help="Embed fonts in output (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--no-embed-font",
+        action="store_false",
+        dest="embed_font",
+        help="Do not embed fonts (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--split-pages",
+        action="store_true",
+        help="Split pages into separate HTML files (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--process-outline",
+        action="store_true",
+        default=True,
+        help="Process PDF outline/bookmarks (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--bg-format",
+        choices=["png", "jpg", "svg"],
+        default="png",
+        help="Background image format (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--dpi",
+        type=int,
+        default=144,
+        help="Resolution DPI for graphics (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--fit-width",
+        type=int,
+        help="Fit to width in pixels (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--fit-height",
+        type=int,
+        help="Fit to height in pixels (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--first-page",
+        type=int,
+        help="First page to convert (pdf2htmlEX)",
+    )
+    pdf2htmlex_group.add_argument(
+        "--last-page",
+        type=int,
+        help="Last page to convert (pdf2htmlEX)",
     )
 
     # Add audit options
@@ -577,7 +729,10 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
 def run_convert_command(args: Dict[str, Any]) -> int:
     """Run the PDF conversion command."""
     try:
-        # Prepare options
+        # Determine converter
+        converter = args.get("converter", "bda")
+
+        # Prepare base options
         options = {
             "extract_images": args.get("extract_images", True),
             "image_format": args.get("image_format", "png"),
@@ -589,23 +744,43 @@ def run_convert_command(args: Dict[str, Any]) -> int:
             "exclude_images": args.get("exclude_images", False),
         }
 
+        # Add pdf2htmlEX-specific options if using that converter
+        if converter == "pdf2htmlex":
+            options["pdf2htmlex"] = {
+                "zoom": args.get("zoom", 1.0),
+                "embed_font": args.get("embed_font", True),
+                "split_pages": args.get("split_pages", False),
+                "process_outline": args.get("process_outline", True),
+                "bg_format": args.get("bg_format", "png"),
+                "dpi": args.get("dpi", 144),
+                "fit_width": args.get("fit_width"),
+                "fit_height": args.get("fit_height"),
+                "first_page": args.get("first_page"),
+                "last_page": args.get("last_page"),
+            }
+
         if not args.get("quiet"):
-            logger.info("Converting PDF to HTML: %s", args["input"])
+            logger.info("Converting PDF to HTML using %s: %s", converter, args["input"])
 
         result = convert_pdf_to_html(
             pdf_path=args["input"],
             output_dir=args["output"],
             options=options,
-            bda_project_arn=args.get("bda_project_arn"),
-            create_bda_project=args.get("create_bda_project", False),
-            s3_bucket=args.get("s3_bucket"),
+            converter=converter,
+            bda_project_arn=args.get("bda_project_arn") if converter == "bda" else None,
+            create_bda_project=args.get("create_bda_project", False) if converter == "bda" else False,
+            s3_bucket=args.get("s3_bucket") if converter == "bda" else None,
+            docker_image=args.get("docker_image") if converter == "pdf2htmlex" else None,
         )
 
         if not args.get("quiet"):
             print("\nConversion Results:")
+            print(f"  Converter: {converter}")
             print(f"  Main HTML: {result['html_path']}")
             print(f"  Total HTML files: {len(result.get('html_files', []))}")
             print(f"  Total image files: {len(result.get('image_files', []))}")
+            if result.get("page_count"):
+                print(f"  Page count: {result['page_count']}")
 
         return 0
 
@@ -811,8 +986,9 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
 def run_process_command(args: Dict[str, Any]) -> int:
     """Run the full processing pipeline command."""
     try:
-        # Extract profile if provided
+        # Extract profile and converter if provided
         profile = args.get("profile")
+        converter = args.get("converter", "bda")
 
         # Create output directory
         output_dir = args["output"]
@@ -820,7 +996,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
         # Step 1: Convert PDF to HTML
         if not args.get("quiet"):
-            logger.info("Step 1/3: Converting PDF to HTML: %s", args["input"])
+            logger.info("Step 1/3: Converting PDF to HTML using %s: %s", converter, args["input"])
 
         convert_options = {
             "extract_images": args.get("extract_images", True),
@@ -834,23 +1010,43 @@ def run_process_command(args: Dict[str, Any]) -> int:
             "profile": profile,  # Add profile to conversion options
         }
 
+        # Add pdf2htmlEX-specific options if using that converter
+        if converter == "pdf2htmlex":
+            convert_options["pdf2htmlex"] = {
+                "zoom": args.get("zoom", 1.0),
+                "embed_font": args.get("embed_font", True),
+                "split_pages": args.get("split_pages", False),
+                "process_outline": args.get("process_outline", True),
+                "bg_format": args.get("bg_format", "png"),
+                "dpi": args.get("dpi", 144),
+                "fit_width": args.get("fit_width"),
+                "fit_height": args.get("fit_height"),
+                "first_page": args.get("first_page"),
+                "last_page": args.get("last_page"),
+            }
+
         convert_result = convert_pdf_to_html(
             pdf_path=args["input"],
             output_dir=os.path.join(output_dir, "html"),
             options=convert_options,
-            bda_project_arn=args.get("bda_project_arn"),
-            create_bda_project=args.get("create_bda_project", False),
-            s3_bucket=args.get("s3_bucket"),
-            profile=profile,
+            converter=converter,
+            bda_project_arn=args.get("bda_project_arn") if converter == "bda" else None,
+            create_bda_project=args.get("create_bda_project", False) if converter == "bda" else False,
+            s3_bucket=args.get("s3_bucket") if converter == "bda" else None,
+            profile=profile if converter == "bda" else None,
+            docker_image=args.get("docker_image") if converter == "pdf2htmlex" else None,
         )
 
         html_path = convert_result["html_path"]
 
         if not args.get("quiet"):
             print("\nConversion Results:")
+            print(f"  Converter: {converter}")
             print(f"  Main HTML: {html_path}")
             print(f"  Total HTML files: {len(convert_result.get('html_files', []))}")
             print(f"  Total image files: {len(convert_result.get('image_files', []))}")
+            if convert_result.get("page_count"):
+                print(f"  Page count: {convert_result['page_count']}")
 
         # Step 2: Audit HTML (unless skipped)
         if not args.get("skip_audit"):

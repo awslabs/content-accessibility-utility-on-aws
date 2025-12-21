@@ -49,6 +49,16 @@ class AIRemediationRequiredError(DocumentAccessibilityError):
 
 
 
+class DockerError(DocumentAccessibilityError):
+    """Raised when there's an error with Docker operations."""
+
+
+
+class ConverterNotAvailableError(DocumentAccessibilityError):
+    """Raised when a requested converter is not available or configured."""
+
+
+
 # Configure module-level logger
 logger = logging.getLogger(__name__)
 

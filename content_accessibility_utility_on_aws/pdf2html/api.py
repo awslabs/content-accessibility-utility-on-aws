@@ -4,7 +4,8 @@
 """
 PDF to HTML conversion API.
 
-This module provides functionality for converting PDF documents to HTML.
+This module provides functionality for converting PDF documents to HTML
+using multiple converter backends (BDA, pdf2htmlEX).
 """
 
 import os
@@ -24,6 +25,10 @@ from content_accessibility_utility_on_aws.pdf2html.services.bedrock_client impor
     resolve_bda_project,
 )
 from content_accessibility_utility_on_aws.pdf2html.utils.pdf_utils import is_image_only_pdf
+from content_accessibility_utility_on_aws.pdf2html.converters import (
+    ConverterType,
+    ConverterFactory,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -113,25 +118,31 @@ def convert_pdf_to_html(
     pdf_path: str,
     output_dir: Optional[str] = None,
     options: Optional[Dict[str, Any]] = None,
+    converter: str = "bda",
     bda_project_arn: Optional[str] = None,
     create_bda_project: bool = False,
     s3_bucket: Optional[str] = None,
     profile: Optional[str] = None,
+    docker_image: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Convert a PDF document to HTML using Bedrock Data Automation.
+    Convert a PDF document to HTML using the specified converter backend.
 
     Args:
         pdf_path: Path to the PDF file.
         output_dir: Directory to save HTML files. If None, a temporary
             directory will be used and the path will be returned.
-        options: Conversion options. Available options:
+        options: Conversion options. Available options depend on the converter:
+            Common options:
+            - single_file (bool): Create a single HTML file. Default: False.
+            - multi_page (bool): Create multiple HTML files per page. Default: True.
+
+            BDA-specific options:
             - extract_images (bool): Whether to extract and embed images. Default: True.
             - image_format (str): Format for extracted images ('jpg', 'png'). Default: 'png'.
             - embed_fonts (bool): Whether to embed fonts. Default: False.
             - single_html (bool): Whether to create a single HTML file. Default: False.
             - page_range (tuple): Range of pages to convert (start, end). Default: All pages.
-            - single_file (bool): Create a single HTML file instead of multiple files. Default: False.
             - continuous (bool): For single-file mode, use continuous scrolling. Default: True.
             - inline_css (bool): Use inline styling instead of external stylesheet. Default: False.
             - embed_images (bool): Embed images as data URIs in HTML. Default: Based on single_file.
@@ -141,10 +152,27 @@ def convert_pdf_to_html(
             - audit_accessibility (bool): Whether to perform an accessibility audit. Default: False.
             - audit_options (dict): Options for accessibility auditing. Default: {}.
             - cleanup_bda_output (bool): Whether to remove BDA output files after processing. Default: False.
-        bda_project_arn: ARN of an existing BDA project to use.
-        create_bda_project: Whether to create a new BDA project.
-        s3_bucket: Name of an existing S3 bucket to use for file uploads.
-        profile: AWS profile to use for authentication.
+
+            pdf2htmlEX-specific options (under 'pdf2htmlex' key or at top level):
+            - zoom (float): Zoom ratio. Default: 1.0.
+            - embed_font (bool): Embed fonts in output. Default: True.
+            - embed_css (bool): Embed CSS in HTML. Default: True.
+            - embed_image (bool): Embed images as data URIs. Default: True.
+            - split_pages (bool): Split into separate HTML files. Default: False.
+            - process_outline (bool): Process PDF outline/bookmarks. Default: True.
+            - bg_format (str): Background image format ('png', 'jpg', 'svg'). Default: 'png'.
+            - hdpi (int): Horizontal DPI. Default: 144.
+            - vdpi (int): Vertical DPI. Default: 144.
+            - fit_width (int): Fit to width in pixels. Default: None.
+            - fit_height (int): Fit to height in pixels. Default: None.
+            - first_page (int): First page to convert. Default: None (all).
+            - last_page (int): Last page to convert. Default: None (all).
+        converter: Converter backend to use ('bda' or 'pdf2htmlex'). Default: 'bda'.
+        bda_project_arn: ARN of an existing BDA project to use (BDA only).
+        create_bda_project: Whether to create a new BDA project (BDA only).
+        s3_bucket: Name of an existing S3 bucket to use for file uploads (BDA only).
+        profile: AWS profile to use for authentication (BDA only).
+        docker_image: Docker image to use for pdf2htmlEX (pdf2htmlEX only).
 
     Returns:
         Dictionary containing conversion results:
@@ -153,11 +181,33 @@ def convert_pdf_to_html(
             - 'image_files': List of paths to all generated image files.
             - 'is_image_only': Whether the PDF is image-only.
             - 'temp_dir': Path to the temporary directory if output_dir was None.
+            - 'result_data': Element metadata (BDA only, empty for pdf2htmlEX).
+            - 'mode': Output mode ('single-page' or 'multi-page').
+            - 'document_id': Unique document identifier.
+            - 'page_count': Number of pages in the PDF.
 
     Raises:
         FileNotFoundError: If the PDF file doesn't exist.
         DocumentAccessibilityError: If there's an error during conversion.
+        ConverterNotAvailableError: If the requested converter is not available.
     """
+    # Determine which converter to use
+    try:
+        converter_type = ConverterFactory.from_string(converter)
+    except ValueError as e:
+        raise DocumentAccessibilityError(str(e)) from e
+
+    # For pdf2htmlEX, use the new converter architecture
+    if converter_type == ConverterType.PDF2HTMLEX:
+        return _convert_with_pdf2htmlex(
+            pdf_path=pdf_path,
+            output_dir=output_dir,
+            options=options,
+            docker_image=docker_image,
+        )
+
+    # For BDA, use the existing implementation for backward compatibility
+    # (or optionally use the new BDA converter wrapper)
     # Set default options
     default_options = {
         "extract_images": True,
@@ -492,3 +542,71 @@ def cleanup_bda_output(output_dir: str) -> bool:
     except Exception as e:
         logger.warning(f"Error during BDA output cleanup: {e}")
         return False
+
+
+def _convert_with_pdf2htmlex(
+    pdf_path: str,
+    output_dir: Optional[str] = None,
+    options: Optional[Dict[str, Any]] = None,
+    docker_image: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Convert a PDF to HTML using pdf2htmlEX via Docker.
+
+    This is an internal helper function that uses the Pdf2HtmlExConverter.
+
+    Args:
+        pdf_path: Path to the PDF file.
+        output_dir: Directory to save HTML files.
+        options: Conversion options.
+        docker_image: Docker image to use.
+
+    Returns:
+        Dictionary containing conversion results.
+
+    Raises:
+        FileNotFoundError: If the PDF file doesn't exist.
+        ConverterNotAvailableError: If Docker is not available.
+        PDFConversionError: If conversion fails.
+    """
+    from content_accessibility_utility_on_aws.pdf2html.converters.pdf2htmlex_converter import (
+        Pdf2HtmlExConverter,
+    )
+
+    # Verify PDF file exists
+    if not os.path.isfile(pdf_path):
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    # Determine whether to use a temporary directory
+    use_temp_dir = output_dir is None
+    temp_dir = None
+
+    if use_temp_dir:
+        with temp_directory(prefix="pdf2html_", use_cwd=True, cleanup=False) as dir_path:
+            temp_dir = dir_path
+            output_dir = temp_dir
+    else:
+        ensure_directory(output_dir)
+
+    try:
+        # Create the converter
+        converter = Pdf2HtmlExConverter(docker_image=docker_image)
+
+        # Run conversion
+        result = converter.convert(pdf_path, output_dir, options)
+
+        # Convert to dictionary and add temp_dir if needed
+        result_dict = result.to_dict()
+        if use_temp_dir:
+            result_dict["temp_dir"] = temp_dir
+
+        return result_dict
+
+    except Exception:
+        # Clean up temporary directory if created and conversion failed
+        if use_temp_dir and temp_dir and os.path.exists(temp_dir):
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to clean up temporary directory: {cleanup_error}")
+        raise

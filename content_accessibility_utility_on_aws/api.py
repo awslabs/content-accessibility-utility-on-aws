@@ -322,19 +322,26 @@ def convert_pdf_to_html(
     pdf_path: str,
     output_dir: Optional[str] = None,
     options: Optional[Dict[str, Any]] = None,
+    converter: str = "bda",
     bda_project_arn: Optional[str] = None,
     create_bda_project: bool = False,
     s3_bucket: Optional[str] = None,
     profile: Optional[str] = None,
+    docker_image: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Convert a PDF document to HTML using Bedrock Data Automation.
+    Convert a PDF document to HTML using the specified converter backend.
 
     Args:
         pdf_path: Path to the PDF file.
         output_dir: Directory to save HTML files. If None, a temporary
             directory will be used and the path will be returned.
-        options: Conversion options. Available options:
+        options: Conversion options. Available options depend on the converter:
+            Common options:
+            - single_file (bool): Create a single HTML file. Default: False.
+            - multi_page (bool): Create multiple HTML files per page. Default: True.
+
+            BDA-specific options:
             - extract_images (bool): Whether to extract and embed images. Default: True.
             - image_format (str): Format for extracted images ('jpg', 'png'). Default: 'png'.
             - embed_fonts (bool): Whether to embed fonts. Default: False.
@@ -349,10 +356,24 @@ def convert_pdf_to_html(
             - audit_accessibility (bool): Whether to perform an accessibility audit. Default: False.
             - audit_options (dict): Options for accessibility auditing. Default: {}.
             - cleanup_bda_output (bool): Whether to remove BDA output files after processing. Default: False.
-        bda_project_arn: ARN of an existing BDA project to use.
-        create_bda_project: Whether to create a new BDA project.
-        s3_bucket: Name of an existing S3 bucket to use for file uploads.
-        profile: AWS profile name to use for credentials.
+
+            pdf2htmlEX-specific options (under 'pdf2htmlex' key or at top level):
+            - zoom (float): Zoom ratio. Default: 1.0.
+            - embed_font (bool): Embed fonts in output. Default: True.
+            - split_pages (bool): Split into separate HTML files. Default: False.
+            - process_outline (bool): Process PDF outline/bookmarks. Default: True.
+            - bg_format (str): Background image format ('png', 'jpg', 'svg'). Default: 'png'.
+            - dpi (int): Resolution DPI. Default: 144.
+            - fit_width (int): Fit to width in pixels. Default: None.
+            - fit_height (int): Fit to height in pixels. Default: None.
+            - first_page (int): First page to convert. Default: None (all).
+            - last_page (int): Last page to convert. Default: None (all).
+        converter: Converter backend to use ('bda' or 'pdf2htmlex'). Default: 'bda'.
+        bda_project_arn: ARN of an existing BDA project to use (BDA only).
+        create_bda_project: Whether to create a new BDA project (BDA only).
+        s3_bucket: Name of an existing S3 bucket to use for file uploads (BDA only).
+        profile: AWS profile name to use for credentials (BDA only).
+        docker_image: Docker image to use for pdf2htmlEX (pdf2htmlEX only).
 
     Returns:
         Dictionary containing conversion results:
@@ -361,10 +382,15 @@ def convert_pdf_to_html(
             - 'image_files': List of paths to all generated image files.
             - 'is_image_only': Whether the PDF is image-only.
             - 'temp_dir': Path to the temporary directory if output_dir was None.
+            - 'result_data': Element metadata (BDA only, empty for pdf2htmlEX).
+            - 'mode': Output mode ('single-page' or 'multi-page').
+            - 'document_id': Unique document identifier.
+            - 'page_count': Number of pages in the PDF.
 
     Raises:
         FileNotFoundError: If the PDF file doesn't exist.
         DocumentAccessibilityError: If there's an error during conversion.
+        ConverterNotAvailableError: If the requested converter is not available.
     """
     from content_accessibility_utility_on_aws.pdf2html.api import (
         convert_pdf_to_html as pdf2html_convert,
@@ -374,10 +400,12 @@ def convert_pdf_to_html(
         pdf_path=pdf_path,
         output_dir=output_dir,
         options=options,
+        converter=converter,
         bda_project_arn=bda_project_arn,
         create_bda_project=create_bda_project,
         s3_bucket=s3_bucket,
         profile=profile,
+        docker_image=docker_image,
     )
 
 
