@@ -108,7 +108,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     },
     perform_audit=True,
@@ -155,7 +155,7 @@ remediation_result = remediate_html_accessibility(
     html_path=html_path,
     audit_report=audit_result,
     options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     }
 )
@@ -204,7 +204,7 @@ audit_results = auditor.audit_html(html_content)
 
 # Create a remediator
 remediator = AccessibilityRemediator(
-    model_id="amazon.nova-lite-v1:0"
+    model_id="us.amazon.nova-2-lite-v1:0"
 )
 
 # Remediate specific issues
@@ -365,7 +365,7 @@ config = load_config("accessibility_config.yaml")
 
 # Update configuration
 config["aws"]["s3_bucket"] = "new-bucket-name"
-config["remediation"]["model_id"] = "amazon.nova-lite-v1:0"
+config["remediation"]["model_id"] = "us.amazon.nova-2-lite-v1:0"
 
 # Save configuration
 save_config(config, "accessibility_config.yaml")

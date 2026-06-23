@@ -18,6 +18,7 @@ from content_accessibility_utility_on_aws.remediate.services.bedrock_client impo
     BedrockClient,
     AltTextGenerationError,
 )
+from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
 
 # Import remediation strategies
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.link_remediation import (
@@ -97,7 +98,7 @@ class RemediationManager:
         if not self.options.get("disable_ai", False):
             try:
                 model_id = self.options.get(
-                    "model_id", "us.amazon.nova-lite-v1:0"
+                    "model_id", DEFAULT_MODEL_ID
                 )
                 profile = self.options.get("profile")
                 self.bedrock_client = BedrockClient(model_id=model_id, profile=profile)
@@ -203,7 +204,7 @@ class RemediationManager:
                             )
 
                             model_id = self.options.get(
-                                "model_id", "us.amazon.nova-lite-v1:0"
+                                "model_id", DEFAULT_MODEL_ID
                             )
                             profile = self.options.get("profile")
                             client_to_use = BedrockClient(
@@ -257,7 +258,7 @@ class RemediationManager:
                     )
 
                     model_id = self.options.get(
-                        "model_id", "us.amazon.nova-lite-v1:0"
+                        "model_id", DEFAULT_MODEL_ID
                     )
                     profile = self.options.get("profile")
 

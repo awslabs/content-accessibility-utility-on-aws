@@ -37,8 +37,9 @@ def display_usage_view(usage_data_path: Optional[str] = None) -> None:
         return
     
     # Get cost rates from session state
-    # Price defaults are for Amazon Bedrock Data Automation (BDA) and Bedrock API usage of 
-    # Amazon Nova Lite Model with on-demand in US East (N. Virginia) region as of 2025-04-01
+    # Price defaults are illustrative, based on Amazon Bedrock Data Automation (BDA) and
+    # Bedrock on-demand usage in US East (N. Virginia). The default model is now
+    # Amazon Nova 2 Lite; verify its current rates and adjust the cost inputs accordingly.
     # These rates are subject to change, please refer to the official AWS pricing page for the most up-to-date information.
     # https://aws.amazon.com/bedrock/pricing/ 
     cost_per_bda_page = st.session_state.get('cost_per_bda_page', 0.01)
