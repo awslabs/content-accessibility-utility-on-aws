@@ -11,6 +11,9 @@ from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    generate_short_text,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -25,10 +28,13 @@ def remediate_missing_document_title(
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
+        *args: Optional BedrockClient used to derive a title from content
 
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
+    bedrock_client = args[0] if args else None
+
     # Check if title already exists
     head = soup.find("head")
     if not head:
@@ -64,6 +70,24 @@ def remediate_missing_document_title(
         meta_description = soup.find("meta", attrs={"name": "description"})
         if meta_description and meta_description.get("content"):
             title_text = meta_description["content"].strip()[:60]
+
+    # If still no meaningful title, ask the model to infer one from the
+    # document's leading text. Falls back to "Document Title" when unavailable.
+    if title_text == "Document Title":
+        body = soup.find("body") or soup
+        document_text = body.get_text(separator=" ", strip=True)[:1500]
+        generated = generate_short_text(
+            bedrock_client,
+            instruction=(
+                "Write a concise, descriptive page title (3-10 words) for the "
+                "HTML document whose text content is provided."
+            ),
+            context=document_text,
+            purpose="document_title_generation",
+            max_words=12,
+        )
+        if generated:
+            title_text = generated
 
     # Create or update title element
     if existing_title:

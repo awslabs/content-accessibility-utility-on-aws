@@ -12,6 +12,9 @@ from bs4 import BeautifulSoup
 import re
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    generate_short_text,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -26,10 +29,13 @@ def remediate_missing_form_labels(
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
+        *args: Optional BedrockClient used to derive label text from context
 
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
+    bedrock_client = args[0] if args else None
+
     # Extract element path from the issue
     path = issue.get("location", {}).get("path")
     if not path:
@@ -83,6 +89,30 @@ def remediate_missing_form_labels(
         label_text = " ".join(word.capitalize() for word in re.split(r"[_\-]", name))
     elif form_control.get("type"):
         label_text = form_control["type"].capitalize()
+
+    # If only the generic fallback is available, ask the model to infer a label
+    # from the control's attributes and surrounding text.
+    if label_text == "Label":
+        parent = form_control.find_parent(["form", "fieldset", "div", "p", "li"])
+        surrounding = parent.get_text(separator=" ", strip=True)[:500] if parent else ""
+        attr_hints = " ".join(
+            f"{attr}={form_control.get(attr)}"
+            for attr in ("name", "id", "type", "placeholder", "aria-label")
+            if form_control.get(attr)
+        )
+        context = f"Form control attributes: {attr_hints}\nNearby text: {surrounding}"
+        generated = generate_short_text(
+            bedrock_client,
+            instruction=(
+                "Write a short form field label (1-4 words) for the form control "
+                "described below, based on its attributes and nearby text."
+            ),
+            context=context,
+            purpose="form_label_generation",
+            max_words=4,
+        )
+        if generated:
+            label_text = generated
 
     # Create and insert label
     label = soup.new_tag("label")

@@ -11,9 +11,13 @@ from typing import Dict, Any, Optional
 from bs4 import BeautifulSoup
 import re
 
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    generate_short_text,
+)
+
 
 def remediate_empty_link_text(
-    soup: BeautifulSoup, issue: Dict[str, Any]
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
     """
     Remediate empty link text by adding descriptive text based on context.
@@ -67,7 +71,7 @@ def remediate_empty_link_text(
 
 
 def remediate_generic_link_text(
-    soup: BeautifulSoup, issue: Dict[str, Any]
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
     """
     Remediate generic link text by adding more descriptive text based on context.
@@ -75,10 +79,13 @@ def remediate_generic_link_text(
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
+        *args: Optional BedrockClient used to derive descriptive link text
 
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
+    bedrock_client = args[0] if args else None
+
     # Find the link element from the issue
     element_str = issue.get("element", "")
     if not element_str or not element_str.startswith("<a "):
@@ -116,6 +123,26 @@ def remediate_generic_link_text(
     if not generic_link:
         return None
 
+    # Prefer model-generated descriptive text using the link's destination and
+    # the surrounding sentence as context. Falls back to the heuristics below.
+    current_text = generic_link.get_text(strip=True)
+    parent = generic_link.find_parent(["p", "li", "td", "div"])
+    surrounding = parent.get_text(separator=" ", strip=True) if parent else ""
+    generated = generate_short_text(
+        bedrock_client,
+        instruction=(
+            "Rewrite the generic link text into descriptive link text (2-6 words) "
+            "that states where the link goes. Do not use phrases like 'click "
+            f"here'. The link points to: {href}"
+        ),
+        context=f"Generic link text: '{current_text}'\nSurrounding text: {surrounding}",
+        purpose="link_text_generation",
+        max_words=8,
+    )
+    if generated:
+        generic_link.string = generated
+        return f"Replaced generic link text '{current_text}' with: {generated}"
+
     # Generate better text based on the URL and context
     if href.startswith("http"):
         # Extract domain name
@@ -142,8 +169,7 @@ def remediate_generic_link_text(
                 f"Replaced generic link text with context: More about {context_preview}"
             )
 
-    # Default improvement
-    current_text = generic_link.get_text(strip=True)
+    # Default improvement (current_text captured above)
     if current_text.lower() == "click here":
         generic_link.string = "View details"
     elif current_text.lower() == "read more":
@@ -157,7 +183,7 @@ def remediate_generic_link_text(
 
 
 def remediate_url_as_link_text(
-    soup: BeautifulSoup, issue: Dict[str, Any]
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
     """
     Remediate URL as link text by replacing it with more descriptive text.
@@ -211,7 +237,7 @@ def remediate_url_as_link_text(
 
 
 def remediate_new_window_link_no_warning(
-    soup: BeautifulSoup, issue: Dict[str, Any]
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
     """
     Remediate links that open in new windows without warning by adding a warning.

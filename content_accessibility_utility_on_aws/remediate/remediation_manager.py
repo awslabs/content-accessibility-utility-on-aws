@@ -124,9 +124,15 @@ class RemediationManager:
         """
         return {
             # Link remediation strategies
+            # Hyphenated keys match the issue types emitted by the audit checks;
+            # underscored aliases are kept for backward compatibility.
+            "empty-link-text": remediate_empty_link_text,
             "empty_link": remediate_empty_link_text,
+            "generic-link-text": remediate_generic_link_text,
             "generic_link_text": remediate_generic_link_text,
+            "url-as-link-text": remediate_url_as_link_text,
             "url_as_link_text": remediate_url_as_link_text,
+            "new-window-link-no-warning": remediate_new_window_link_no_warning,
             "new_window_link_no_warning": remediate_new_window_link_no_warning,
             # Image remediation strategies
             "missing_alt_text": remediate_missing_alt_text,
