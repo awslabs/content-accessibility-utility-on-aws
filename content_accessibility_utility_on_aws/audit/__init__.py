@@ -5,7 +5,7 @@
 Accessibility audit module for HTML documents.
 
 This module provides functionality for auditing HTML documents for accessibility issues
-against WCAG 2.1 accessibility standards.
+against WCAG 2.1 and 2.2 accessibility standards.
 """
 
 from content_accessibility_utility_on_aws.audit.auditor import AccessibilityAuditor

@@ -70,6 +70,9 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.form_
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.figure_remediation import (
     remediate_improper_figure_structure,
 )
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.target_size_remediation import (
+    remediate_target_size_too_small,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -171,6 +174,8 @@ class RemediationManager:
             "missing-fieldset": remediate_missing_fieldsets,
             # Figure remediation strategies
             "improper-figure-structure": remediate_improper_figure_structure,
+            # Target size remediation strategies (WCAG 2.2)
+            "target-size-too-small": remediate_target_size_too_small,
         }
 
     def remediate_issue(self, issue: Dict[str, Any]) -> Optional[str]:

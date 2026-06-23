@@ -196,6 +196,14 @@ Key components:
 - Detailed context information
 - Multiple report formats (HTML, JSON, text)
 
+> **WCAG 2.2 scope:** Because this tool produces static HTML converted from PDFs,
+> it audits and remediates the WCAG 2.2 criteria that apply to non-interactive
+> documents — currently **2.5.8 Target Size (Minimum)**. The remaining 2.2
+> criteria (2.5.7 Dragging Movements, 3.2.6 Consistent Help, 3.3.7 Redundant
+> Entry, 3.3.8 Accessible Authentication) govern interactive web-application
+> behaviors such as drag gestures, multi-page help, and authentication flows,
+> which are out of scope for generated document content.
+
 ### Remediate
 
 The Remediate module fixes accessibility issues identified during audit.

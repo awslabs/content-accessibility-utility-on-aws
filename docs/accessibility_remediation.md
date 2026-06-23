@@ -11,7 +11,7 @@ This document explains the accessibility remediation capabilities of the PDF to 
 
 The accessibility remediation functionality:
 
-1. Uses the accessibility audit results to identify WCAG 2.1 compliance issues
+1. Uses the accessibility audit results to identify WCAG 2.1 and 2.2 compliance issues
 2. Creates specialized prompts for each issue type (alt text, page titles, ARIA attributes, etc.)
 3. Sequentially processes issues through Bedrock models to generate fixes
 4. Applies the fixes to the HTML directly
@@ -82,6 +82,7 @@ The remediation process uses specialized templates for common accessibility issu
 | `empty-heading` | Headings with no content | 1.3.1 |
 | `table-missing-headers` | Tables without headers | 1.3.1 |
 | `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
+| `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 

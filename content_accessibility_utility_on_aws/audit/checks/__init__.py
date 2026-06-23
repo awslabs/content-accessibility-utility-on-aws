@@ -40,6 +40,9 @@ from content_accessibility_utility_on_aws.audit.checks.form_checks import (
     FormRequiredFieldCheck,
     FormFieldsetCheck,
 )
+from content_accessibility_utility_on_aws.audit.checks.target_size_checks import (
+    TargetSizeCheck,
+)
 
 __all__ = [
     "HeadingHierarchyCheck",
@@ -59,4 +62,5 @@ __all__ = [
     "FormLabelCheck",
     "FormRequiredFieldCheck",
     "FormFieldsetCheck",
+    "TargetSizeCheck",
 ]

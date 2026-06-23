@@ -148,6 +148,13 @@ ISSUE_TYPES = {
         "remediation_type": "style",
         "element_types": ["a", "button", "input", "select", "textarea"],
     },
+    "target-size-too-small": {
+        "wcag": "2.5.8",
+        "severity": "minor",
+        "description": "Interactive target smaller than the 24x24 CSS px minimum (WCAG 2.2)",
+        "remediation_type": "style",
+        "element_types": ["a", "button", '[role="button"]', '[role="link"]'],
+    },
     # Media
     "missing-video-captions": {
         "wcag": "1.2.2",
