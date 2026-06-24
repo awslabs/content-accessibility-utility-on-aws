@@ -15,6 +15,9 @@ from content_accessibility_utility_on_aws.utils.logging_helper import setup_logg
 from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
     generate_short_text,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -36,22 +39,13 @@ def remediate_missing_form_labels(
     """
     bedrock_client = args[0] if args else None
 
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the form control with missing label
-    form_control = None
-    for control in soup.find_all(["input", "select", "textarea"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(control).lower():
-            form_control = control
-            break
-
-    if not form_control:
-        logger.warning(f"Could not find form control with path: {path}")
+    # Resolve the form control via the shared issue resolver.
+    form_control = find_element_from_issue(soup, issue)
+    if form_control is None or form_control.name not in ("input", "select", "textarea"):
+        logger.warning(
+            f"Could not find form control for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Check if it already has an associated label
@@ -136,22 +130,13 @@ def remediate_missing_required_indicators(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the form control
-    form_control = None
-    for control in soup.find_all(["input", "select", "textarea"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(control).lower():
-            form_control = control
-            break
-
-    if not form_control:
-        logger.warning(f"Could not find form control with path: {path}")
+    # Resolve the form control via the shared issue resolver.
+    form_control = find_element_from_issue(soup, issue)
+    if form_control is None or form_control.name not in ("input", "select", "textarea"):
+        logger.warning(
+            f"Could not find form control for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Check if it's a required field

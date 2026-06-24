@@ -161,10 +161,17 @@ class RemediationManager:
             "missing-header-landmark": remediate_missing_header_landmark,
             "missing-footer-landmark": remediate_missing_footer_landmark,
             "missing-skip-link": remediate_missing_skip_link,
-            # Document structure remediation strategies
+            # Document structure remediation strategies.
+            # Keys must match the issue types the audit checks emit
+            # ("missing-title", "missing-document-language"); the older
+            # "missing-page-title"/"missing-language" keys are kept too.
+            "missing-title": remediate_missing_document_title,
             "missing-page-title": remediate_missing_document_title,
+            "missing-document-language": remediate_missing_language,
             "missing-language": remediate_missing_language,
-            # Form remediation strategies
+            # Form remediation strategies. The audit emits
+            # "form-control-missing-label"; "missing-input-label" is kept as an alias.
+            "form-control-missing-label": remediate_missing_form_labels,
             "missing-input-label": remediate_missing_form_labels,
             "missing-required-indicator": remediate_missing_required_indicators,
             "missing-fieldset": remediate_missing_fieldsets,
@@ -202,8 +209,12 @@ class RemediationManager:
                 # Apply the remediation strategy with BedrockClient if available
                 client_to_use = self.bedrock_client
 
-                # Always ensure we have a client for table remediation
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                # Ensure we have a client for table remediation, unless the
+                # caller explicitly disabled AI (in which case table remediation
+                # uses its rule-based fallback rather than calling Bedrock).
+                if (
+                    issue_type.startswith("table-") or issue_type.startswith("table_")
+                ) and not self.options.get("disable_ai", False):
                     if not client_to_use:
                         logger.warning(
                             f"No BedrockClient available for {issue_type}. Creating one with profile: {self.options.get('profile')}"

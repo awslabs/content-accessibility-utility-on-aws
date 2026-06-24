@@ -15,6 +15,9 @@ from content_accessibility_utility_on_aws.utils.logging_helper import setup_logg
 from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
     generate_short_text,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -178,22 +181,13 @@ def remediate_skipped_heading_level(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the problematic heading
-    heading = None
-    for h_tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(h_tag).lower():
-            heading = h_tag
-            break
-
-    if not heading:
-        logger.warning(f"Could not find heading element with path: {path}")
+    # Resolve the heading via the shared issue resolver.
+    heading = find_element_from_issue(soup, issue)
+    if heading is None or heading.name not in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        logger.warning(
+            f"Could not find heading element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Get current heading level
@@ -251,22 +245,14 @@ def remediate_empty_heading_content(
     """
     bedrock_client = args[0] if args else None
 
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the problematic heading
-    heading = None
-    for h_tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(h_tag).lower():
-            heading = h_tag
-            break
-
-    if not heading:
-        logger.warning(f"Could not find heading element with path: {path}")
+    # Resolve the heading via the shared issue resolver (uses the auditor's
+    # canonical location.path selector rather than fragile substring matching).
+    heading = find_element_from_issue(soup, issue)
+    if heading is None or heading.name not in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        logger.warning(
+            f"Could not find heading element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Check if heading is empty or contains generic text
