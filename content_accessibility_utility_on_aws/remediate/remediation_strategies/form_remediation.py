@@ -198,22 +198,20 @@ def remediate_missing_fieldsets(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    form_path = issue.get("location", {}).get("path")
-    if not form_path:
-        logger.warning("No form path provided in issue")
+    # Resolve the issue's element via the shared resolver, then operate on its
+    # enclosing form. The audit reports this issue against a control (e.g. the
+    # first radio) or a fieldset, so walk up to the form (or use it directly).
+    element = find_element_from_issue(soup, issue)
+    if element is None:
+        logger.warning(
+            f"Could not find element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
-    # Find the form
-    form = None
-    for f in soup.find_all("form"):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if form_path.lower() in str(f).lower():
-            form = f
-            break
-
-    if not form:
-        logger.warning(f"Could not find form with path: {form_path}")
+    form = element if element.name == "form" else element.find_parent("form")
+    if form is None:
+        logger.warning("Could not find an enclosing form for the issue element")
         return None
 
     # Check for existing fieldsets

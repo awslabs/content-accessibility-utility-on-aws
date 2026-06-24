@@ -66,10 +66,12 @@ def test_remediate_api_produces_output_and_reduces_issues(tmp_path):
 
     assert os.path.exists(remediated)
 
-    # Re-auditing the output should show fewer outstanding issues.
+    # Re-auditing the output must show STRICTLY fewer outstanding issues —
+    # a no-op remediation (after == before) should fail this test.
     after = audit_html_accessibility(remediated, output_path=str(tmp_path / "after.json"))
     after_needs = after["summary"].get("needs_remediation", after["summary"]["total_issues"])
-    assert after_needs <= before_needs
+    assert before_needs > 0
+    assert after_needs < before_needs
 
 
 def test_remediated_document_adds_language(tmp_path):

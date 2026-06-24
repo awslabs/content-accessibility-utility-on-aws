@@ -91,6 +91,9 @@ def test_missing_title_remediated():
     html = "<html><head></head><body><h1>Annual Report</h1></body></html>"
     fixed_html, report = remediate_all(html, issue_types={"missing-page-title", "missing-title"})
     assert "<title>" in fixed_html
+    # Re-audit must confirm the issue is actually resolved (not just that some
+    # <title> tag exists — it could be empty or misplaced).
+    assert not has_issue_type(report, "missing-title")
 
 
 # --- Links ------------------------------------------------------------------
@@ -157,3 +160,91 @@ def test_empty_heading_remediated_rule_based():
     mgr.remediate_issue(issues[0])
     heading = mgr.soup.find("h2", id="h")
     assert heading.get_text(strip=True) != ""
+
+
+def test_generic_heading_dispatches_and_is_remediated():
+    # Regression: the audit emits "generic-heading" but the registry only had
+    # "generic-heading-content", so this issue type was silently skipped.
+    html = (
+        "<html><body><h1>Heading</h1>"
+        "<p>This document describes quarterly sales performance.</p></body></html>"
+    )
+    report = audit_html(html)
+    issues = issues_of_type(report, "generic-heading")
+    assert issues
+    mgr = RemediationManager(BeautifulSoup(html, "html.parser"), options={"disable_ai": True})
+    result = mgr.remediate_issue(issues[0])
+    assert result is not None  # was silently skipped before the key was added
+
+
+def test_related_controls_no_fieldset_dispatches():
+    # Regression: the audit emits "form-related-controls-no-fieldset" but the
+    # registry only had "missing-fieldset"; and remediate_missing_fieldsets used
+    # fragile substring path matching. Both are now fixed.
+    html = (
+        "<html><body><form>"
+        "<input type='radio' name='color' value='r'>"
+        "<input type='radio' name='color' value='g'>"
+        "</form></body></html>"
+    )
+    report = audit_html(html)
+    issues = issues_of_type(report, "form-related-controls-no-fieldset")
+    assert issues
+    mgr = RemediationManager(BeautifulSoup(html, "html.parser"), options={"disable_ai": True})
+    result = mgr.remediate_issue(issues[0])
+    assert result is not None
+    # A fieldset should now wrap the related controls.
+    assert mgr.soup.find("fieldset") is not None
+
+
+def test_fieldset_resolves_correct_form_among_many():
+    # The migrated resolver must target the audited form, not the first one,
+    # even when several forms exist (the multi-element bug class).
+    html = (
+        "<html><body>"
+        "<form id='search'><input type='text' name='q'></form>"
+        "<form id='prefs'>"
+        "<input type='radio' name='theme' value='light'>"
+        "<input type='radio' name='theme' value='dark'>"
+        "</form>"
+        "</body></html>"
+    )
+    report = audit_html(html)
+    issues = issues_of_type(report, "form-related-controls-no-fieldset")
+    assert issues
+    mgr = RemediationManager(BeautifulSoup(html, "html.parser"), options={"disable_ai": True})
+    mgr.remediate_issue(issues[0])
+    # The fieldset must land in the prefs form (which has the related radios),
+    # not the search form.
+    prefs = mgr.soup.find("form", id="prefs")
+    search = mgr.soup.find("form", id="search")
+    assert prefs.find("fieldset") is not None
+    assert search.find("fieldset") is None
+
+
+def test_improper_figure_structure_resolves_correct_image():
+    # The migrated figure resolver must wrap the audited image, not the first
+    # image on the page.
+    from content_accessibility_utility_on_aws.remediate.remediation_strategies.figure_remediation import (
+        remediate_improper_figure_structure,
+    )
+
+    html = (
+        "<html><body>"
+        "<img src='logo.png' alt='Site logo'>"
+        "<div><img src='chart.png' alt='Quarterly sales bar chart'></div>"
+        "</body></html>"
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    issue = make_issue(
+        "improper-figure-structure",
+        path="html > body > div > img",
+        element="img",
+    )
+    result = remediate_improper_figure_structure(soup, issue)
+    assert result is not None
+    # The chart image (the audited one) is wrapped, not the logo.
+    chart = soup.find("img", src="chart.png")
+    logo = soup.find("img", src="logo.png")
+    assert chart.find_parent("figure") is not None
+    assert logo.find_parent("figure") is None

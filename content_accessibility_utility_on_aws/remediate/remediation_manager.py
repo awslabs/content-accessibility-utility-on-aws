@@ -147,9 +147,11 @@ class RemediationManager:
             "table-missing-tbody": remediate_table_missing_tbody,
             "table-irregular-headers": remediate_table_irregular_headers,
             "table-missing-headers-id": remediate_table_headers_id,
-            # Heading remediation strategies
+            # Heading remediation strategies. The audit emits "generic-heading";
+            # "generic-heading-content" is kept as an alias.
             "skipped-heading-level": remediate_skipped_heading_level,
             "empty-heading": remediate_empty_heading_content,
+            "generic-heading": remediate_empty_heading_content,
             "generic-heading-content": remediate_empty_heading_content,
             "no-h1": remediate_missing_h1,
             "no-headings": remediate_missing_headings,
@@ -174,6 +176,9 @@ class RemediationManager:
             "form-control-missing-label": remediate_missing_form_labels,
             "missing-input-label": remediate_missing_form_labels,
             "missing-required-indicator": remediate_missing_required_indicators,
+            # The audit emits "form-related-controls-no-fieldset" for ungrouped
+            # related controls; "missing-fieldset" is kept as an alias.
+            "form-related-controls-no-fieldset": remediate_missing_fieldsets,
             "missing-fieldset": remediate_missing_fieldsets,
             # Figure remediation strategies
             "improper-figure-structure": remediate_improper_figure_structure,
@@ -212,9 +217,9 @@ class RemediationManager:
                 # Ensure we have a client for table remediation, unless the
                 # caller explicitly disabled AI (in which case table remediation
                 # uses its rule-based fallback rather than calling Bedrock).
-                if (
-                    issue_type.startswith("table-") or issue_type.startswith("table_")
-                ) and not self.options.get("disable_ai", False):
+                if issue_type.startswith("table-") and not self.options.get(
+                    "disable_ai", False
+                ):
                     if not client_to_use:
                         logger.warning(
                             f"No BedrockClient available for {issue_type}. Creating one with profile: {self.options.get('profile')}"
@@ -242,7 +247,7 @@ class RemediationManager:
                             # Continue without client, table_remediation will handle fallbacks
 
                 # Apply the remediation strategy with enhanced debugging for table issues
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                if issue_type.startswith("table-"):
                     logger.debug(
                         f"Attempting to remediate {issue_type} with client: {client_to_use is not None}"
                     )
@@ -272,6 +277,14 @@ class RemediationManager:
             except AIRemediationRequiredError as e:
                 # Handle AI requirement error - create a client if possible
                 logger.warning(f"AI required for {issue_type}: {e}")
+
+                # Respect disable_ai: do not construct a Bedrock client (which
+                # would make real AWS calls) when the caller disabled AI.
+                if self.options.get("disable_ai", False):
+                    logger.debug(
+                        f"AI disabled; skipping AI recovery for {issue_type}"
+                    )
+                    return None
 
                 try:
                     # Always attempt to create a fresh client for this remediation
@@ -314,7 +327,7 @@ class RemediationManager:
                     )
 
                 # For table issues, use aggressive fallback instead of failing
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                if issue_type.startswith("table-"):
                     from content_accessibility_utility_on_aws.remediate.remediation_strategies.table_remediation import (
                         infer_scope_from_position,
                     )

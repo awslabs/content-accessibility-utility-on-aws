@@ -12,6 +12,9 @@ from bs4 import BeautifulSoup
 import re
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -30,22 +33,13 @@ def remediate_improper_figure_structure(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the image element
-    img = None
-    for image in soup.find_all("img"):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(image).lower():
-            img = image
-            break
-
-    if not img:
-        logger.warning(f"Could not find image element with path: {path}")
+    # Resolve the image via the shared issue resolver.
+    img = find_element_from_issue(soup, issue)
+    if img is None or img.name != "img":
+        logger.warning(
+            f"Could not find image element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Check if already in a figure
