@@ -26,3 +26,9 @@ DEFAULT_MAX_TOKENS = 2000
 # Deterministic generation by default. Accessibility remediation favors
 # repeatable, structured output over creative variation.
 DEFAULT_TEMPERATURE = 0.0
+
+# WCAG 2.2 Success Criterion 2.5.8 minimum interactive target size, in CSS
+# pixels. Shared by the audit check and the remediation strategy so the size
+# they detect against and enforce to cannot drift apart.
+MIN_TARGET_SIZE_PX = 24
+

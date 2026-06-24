@@ -14,6 +14,23 @@ import re
 from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
     generate_short_text,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
+
+
+def _resolve_link(soup: BeautifulSoup, issue: Dict[str, Any]):
+    """
+    Resolve the anchor element an issue refers to.
+
+    Uses the shared issue resolver (which matches the auditor's recorded CSS
+    path) and confirms the result is an anchor, returning it together with its
+    href. Returns (None, None) when no matching link is found.
+    """
+    element = find_element_from_issue(soup, issue)
+    if element is None or element.name != "a":
+        return None, None
+    return element, element.get("href", "")
 
 
 def remediate_empty_link_text(
@@ -29,35 +46,16 @@ def remediate_empty_link_text(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Find the link element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<a "):
+    empty_link, href = _resolve_link(soup, issue)
+    if empty_link is None:
         return None
 
-    # Extract href from the element string
-    href_match = re.search(r'href="([^"]*)"', element_str)
-    if not href_match:
-        return None
-
-    href = href_match.group(1)
-
-    # Find the link in the document
-    links = soup.find_all("a", href=href)
-    if not links:
-        return None
-
-    # Find the empty link
-    empty_link = None
-    for link in links:
-        if not link.get_text(strip=True):
-            empty_link = link
-            break
-
-    if not empty_link:
+    # Only act if the link really has no text content.
+    if empty_link.get_text(strip=True):
         return None
 
     # Generate descriptive text based on the URL
-    if href.startswith("http"):
+    if href and href.startswith("http"):
         # Extract domain name
         domain_match = re.search(r"https?://(?:www\.)?([^/]+)", href)
         if domain_match:
@@ -86,24 +84,11 @@ def remediate_generic_link_text(
     """
     bedrock_client = args[0] if args else None
 
-    # Find the link element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<a "):
+    generic_link, href = _resolve_link(soup, issue)
+    if generic_link is None:
         return None
 
-    # Extract href and text from the element string
-    href_match = re.search(r'href="([^"]*)"', element_str)
-    if not href_match:
-        return None
-
-    href = href_match.group(1)
-
-    # Find the link in the document
-    links = soup.find_all("a", href=href)
-    if not links:
-        return None
-
-    # Find the link with generic text
+    # Confirm the link text is actually generic before rewriting it.
     generic_texts = [
         "click here",
         "here",
@@ -113,19 +98,12 @@ def remediate_generic_link_text(
         "details",
         "link",
     ]
-    generic_link = None
-    for link in links:
-        text = link.get_text(strip=True).lower()
-        if text in generic_texts:
-            generic_link = link
-            break
-
-    if not generic_link:
+    current_text = generic_link.get_text(strip=True)
+    if current_text.lower() not in generic_texts:
         return None
 
     # Prefer model-generated descriptive text using the link's destination and
     # the surrounding sentence as context. Falls back to the heuristics below.
-    current_text = generic_link.get_text(strip=True)
     parent = generic_link.find_parent(["p", "li", "td", "div"])
     surrounding = parent.get_text(separator=" ", strip=True) if parent else ""
     generated = generate_short_text(
@@ -144,7 +122,7 @@ def remediate_generic_link_text(
         return f"Replaced generic link text '{current_text}' with: {generated}"
 
     # Generate better text based on the URL and context
-    if href.startswith("http"):
+    if href and href.startswith("http"):
         # Extract domain name
         domain_match = re.search(r"https?://(?:www\.)?([^/]+)", href)
         if domain_match:
@@ -157,8 +135,7 @@ def remediate_generic_link_text(
     if parent and parent.name != "body":
         parent_text = parent.get_text(strip=True)
         # Remove the link text from parent text
-        link_text = generic_link.get_text(strip=True)
-        context_text = parent_text.replace(link_text, "").strip()
+        context_text = parent_text.replace(current_text, "").strip()
         if context_text:
             # Use first 30 chars of context
             context_preview = context_text[:30].strip()
@@ -195,36 +172,16 @@ def remediate_url_as_link_text(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Find the link element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<a "):
+    url_link, _ = _resolve_link(soup, issue)
+    if url_link is None:
         return None
 
-    # Extract href from the element string
-    href_match = re.search(r'href="([^"]*)"', element_str)
-    if not href_match:
-        return None
-
-    href = href_match.group(1)
-
-    # Find the link in the document
-    links = soup.find_all("a", href=href)
-    if not links:
-        return None
-
-    # Find the link with URL as text
-    url_link = None
-    for link in links:
-        text = link.get_text(strip=True)
-        if text.startswith(("http://", "https://", "www.")):
-            url_link = link
-            break
-
-    if not url_link:
+    # Confirm the link text really is a bare URL.
+    url_text = url_link.get_text(strip=True)
+    if not url_text.startswith(("http://", "https://", "www.")):
         return None
 
     # Extract domain name
-    url_text = url_link.get_text(strip=True)
     domain_match = re.search(r"https?://(?:www\.)?([^/]+)", url_text)
     if domain_match:
         domain = domain_match.group(1)
@@ -249,44 +206,27 @@ def remediate_new_window_link_no_warning(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Find the link element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<a "):
+    link, _ = _resolve_link(soup, issue)
+    if link is None:
         return None
 
-    # Check if it has target="_blank"
-    if 'target="_blank"' not in element_str:
+    # Only act on links that actually open in a new window.
+    if link.get("target") != "_blank":
         return None
 
-    # Extract href from the element string
-    href_match = re.search(r'href="([^"]*)"', element_str)
-    if not href_match:
+    # Skip if it already warns about the new window.
+    text = link.get_text(strip=True)
+    if "new window" in text.lower() or "new tab" in text.lower():
         return None
 
-    href = href_match.group(1)
+    # Add screen reader text
+    sr_span = soup.new_tag("span")
+    sr_span["class"] = "sr-only"
+    sr_span.string = " (opens in new window)"
+    link.append(sr_span)
 
-    # Find the link in the document
-    links = soup.find_all("a", href=href, target="_blank")
-    if not links:
-        return None
+    # Add title attribute if not present
+    if not link.get("title"):
+        link["title"] = f"{text} (opens in new window)"
 
-    # Find the link without warning
-    for link in links:
-        # Check if it already has a warning
-        text = link.get_text(strip=True)
-        if "new window" in text.lower() or "new tab" in text.lower():
-            continue
-
-        # Add screen reader text
-        sr_span = soup.new_tag("span")
-        sr_span["class"] = "sr-only"
-        sr_span.string = " (opens in new window)"
-        link.append(sr_span)
-
-        # Add title attribute if not present
-        if not link.get("title"):
-            link["title"] = f"{text} (opens in new window)"
-
-        return "Added screen reader text and title to indicate link opens in new window"
-
-    return None
+    return "Added screen reader text and title to indicate link opens in new window"

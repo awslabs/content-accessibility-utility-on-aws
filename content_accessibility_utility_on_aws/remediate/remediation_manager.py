@@ -122,49 +122,39 @@ class RemediationManager:
         Returns:
             Dictionary mapping issue types to remediation functions
         """
+        # Keys are canonical hyphenated issue types, matching what the audit
+        # checks emit. Lookups are normalized via _normalize_issue_type, so an
+        # underscored variant of any type resolves to the same strategy without
+        # needing a duplicate alias entry here.
         return {
             # Link remediation strategies
-            # Hyphenated keys match the issue types emitted by the audit checks;
-            # underscored aliases are kept for backward compatibility.
             "empty-link-text": remediate_empty_link_text,
-            "empty_link": remediate_empty_link_text,
+            "empty-link": remediate_empty_link_text,
             "generic-link-text": remediate_generic_link_text,
-            "generic_link_text": remediate_generic_link_text,
             "url-as-link-text": remediate_url_as_link_text,
-            "url_as_link_text": remediate_url_as_link_text,
             "new-window-link-no-warning": remediate_new_window_link_no_warning,
-            "new_window_link_no_warning": remediate_new_window_link_no_warning,
             # Image remediation strategies
-            "missing_alt_text": remediate_missing_alt_text,
-            "empty_alt_text": remediate_empty_alt_text,
-            "generic_alt_text": remediate_generic_alt_text,
-            "generic-alt-text": remediate_generic_alt_text,  # Alternative hyphenated format
-            "long_alt_text": remediate_long_alt_text,
+            "missing-alt-text": remediate_missing_alt_text,
+            "empty-alt-text": remediate_empty_alt_text,
+            "generic-alt-text": remediate_generic_alt_text,
+            "long-alt-text": remediate_long_alt_text,
             # Table remediation strategies
-            "table_missing_headers": remediate_table_missing_headers,
-            "table-missing-headers": remediate_table_missing_headers,  # Alternative hyphenated format
-            "table_no_headers": remediate_table_missing_headers,
-            "table-no-headers": remediate_table_missing_headers,  # Alternative hyphenated format
-            "table_missing_scope": remediate_table_missing_scope,
-            "table-missing-scope": remediate_table_missing_scope,  # Alternative hyphenated format
-            "table_missing_caption": remediate_table_missing_caption,
-            "table-missing-caption": remediate_table_missing_caption,  # Alternative hyphenated format
-            "table_missing_thead": remediate_table_missing_thead,
-            "table-missing-thead": remediate_table_missing_thead,  # Alternative hyphenated format
-            "table_missing_tbody": remediate_table_missing_tbody,
-            "table-missing-tbody": remediate_table_missing_tbody,  # Alternative hyphenated format
-            "table_irregular_headers": remediate_table_irregular_headers,
-            "table-irregular-headers": remediate_table_irregular_headers,  # Alternative hyphenated format
-            "table-missing-headers-id": remediate_table_headers_id,  # New strategy
+            "table-missing-headers": remediate_table_missing_headers,
+            "table-no-headers": remediate_table_missing_headers,
+            "table-missing-scope": remediate_table_missing_scope,
+            "table-missing-caption": remediate_table_missing_caption,
+            "table-missing-thead": remediate_table_missing_thead,
+            "table-missing-tbody": remediate_table_missing_tbody,
+            "table-irregular-headers": remediate_table_irregular_headers,
+            "table-missing-headers-id": remediate_table_headers_id,
             # Heading remediation strategies
             "skipped-heading-level": remediate_skipped_heading_level,
             "empty-heading": remediate_empty_heading_content,
             "generic-heading-content": remediate_empty_heading_content,
-            "no-h1": remediate_missing_h1,  # New strategy
-            "no-headings": remediate_missing_headings,  # New strategy
+            "no-h1": remediate_missing_h1,
+            "no-headings": remediate_missing_headings,
             # Color contrast remediation strategies
-            "insufficient_color_contrast": remediate_insufficient_color_contrast,
-            "insufficient-color-contrast": remediate_insufficient_color_contrast,  # Alternative hyphenated format
+            "insufficient-color-contrast": remediate_insufficient_color_contrast,
             # Landmark remediation strategies
             "missing-main-landmark": remediate_missing_main_landmark,
             "missing-navigation-landmark": remediate_missing_navigation_landmark,
@@ -184,6 +174,16 @@ class RemediationManager:
             "target-size-too-small": remediate_target_size_too_small,
         }
 
+    @staticmethod
+    def _normalize_issue_type(issue_type: Optional[str]) -> Optional[str]:
+        """
+        Normalize an issue type to the canonical hyphenated form used as
+        registry keys, so underscored variants resolve to the same strategy.
+        """
+        if not issue_type:
+            return issue_type
+        return issue_type.replace("_", "-")
+
     def remediate_issue(self, issue: Dict[str, Any]) -> Optional[str]:
         """
         Remediate a single accessibility issue.
@@ -194,7 +194,7 @@ class RemediationManager:
         Returns:
             A message describing the remediation, or None if no remediation was performed
         """
-        issue_type = issue.get("type")
+        issue_type = self._normalize_issue_type(issue.get("type"))
 
         # Check if we have a remediation strategy for this issue type
         if issue_type in self.remediation_strategies:
@@ -438,7 +438,9 @@ class RemediationManager:
 
         # Remediate each issue
         for issue in issues:
-            issue_type = issue.get("type")
+            # Normalize to the canonical hyphenated form so the strategy-exists
+            # check below matches remediate_issue's own lookup.
+            issue_type = self._normalize_issue_type(issue.get("type"))
 
             # Ensure issue has a proper ID - preserve the original ID from audit
             issue_id = issue.get("id")

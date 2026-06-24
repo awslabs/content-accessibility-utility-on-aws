@@ -25,6 +25,18 @@ from content_accessibility_utility_on_aws.utils.logging_helper import setup_logg
 logger = setup_logger(__name__)
 
 
+def strip_quotes_and_trailing_period(text: str) -> str:
+    """
+    Strip surrounding quotes and any trailing period(s) from generated text.
+
+    Shared by ``clean_generated_text`` and the alt-text cleaner so both treat
+    model-added quotes and sentence-ending periods the same way.
+    """
+    if not text:
+        return ""
+    return text.strip("\"'").rstrip(".")
+
+
 def clean_generated_text(text: str, max_words: Optional[int] = None) -> str:
     """
     Normalize a model-generated short text snippet.
@@ -45,7 +57,6 @@ def clean_generated_text(text: str, max_words: Optional[int] = None) -> str:
     # Drop code fences and surrounding quotes the model sometimes adds.
     text = text.strip()
     text = re.sub(r"^```[a-zA-Z]*\n?|```$", "", text).strip()
-    text = text.strip("\"'")
 
     # Models occasionally prefix a label like "Heading:" or "Title -".
     text = re.sub(r"^(heading|title|label|link text)\s*[:\-]\s*", "", text, flags=re.IGNORECASE)
@@ -53,8 +64,9 @@ def clean_generated_text(text: str, max_words: Optional[int] = None) -> str:
     # Collapse whitespace/newlines to a single line.
     text = " ".join(text.split())
 
-    # Remove a single trailing period (headings/labels are not sentences).
-    text = text.rstrip(".")
+    # Strip surrounding quotes and a trailing period (headings/labels are not
+    # sentences); shared with the alt-text cleaner.
+    text = strip_quotes_and_trailing_period(text)
 
     if max_words is not None:
         words = text.split()

@@ -15,50 +15,13 @@ from typing import Dict, Any, Optional
 
 from bs4 import BeautifulSoup
 
-# WCAG 2.2 minimum target dimension in CSS pixels.
-MIN_TARGET_SIZE_PX = 24
-
-
-def _find_target(soup: BeautifulSoup, issue: Dict[str, Any]):
-    """Locate the interactive element referenced by the issue."""
-    location = issue.get("location") or {}
-    element_str = issue.get("element", "")
-
-    # Prefer matching by href when the element is a link.
-    href_match = re.search(r'href="([^"]*)"', element_str)
-    if href_match:
-        candidates = soup.find_all("a", href=href_match.group(1))
-        if candidates:
-            return candidates[0]
-
-    # Fall back to the element name recorded on the issue (e.g. "button").
-    element_name = location.get("element_name") or (
-        element_str if element_str in ("button", "a") else None
-    )
-    if element_name:
-        candidates = soup.find_all(element_name)
-        if len(candidates) == 1:
-            return candidates[0]
-
-    return None
-
-
-def _strip_undersized_dimensions(style: str) -> str:
-    """Remove explicit width/height declarations below the minimum size."""
-
-    def keep(declaration: str) -> bool:
-        match = re.match(
-            r"\s*(width|height)\s*:\s*([0-9.]+)px\s*$", declaration, re.IGNORECASE
-        )
-        if not match:
-            return True
-        try:
-            return float(match.group(2)) >= MIN_TARGET_SIZE_PX
-        except ValueError:
-            return True
-
-    declarations = [d for d in style.split(";") if d.strip()]
-    return "; ".join(d.strip() for d in declarations if keep(d))
+from content_accessibility_utility_on_aws.utils.constants import MIN_TARGET_SIZE_PX
+from content_accessibility_utility_on_aws.utils.css_dimensions import (
+    strip_undersized_dimensions,
+)
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 
 def remediate_target_size_too_small(
@@ -75,13 +38,13 @@ def remediate_target_size_too_small(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    element = _find_target(soup, issue)
+    element = find_element_from_issue(soup, issue)
     if element is None:
         return None
 
-    # Drop any explicit undersized width/height, then enforce the minimum.
-    style = element.get("style", "")
-    style = _strip_undersized_dimensions(style)
+    # Drop any explicit undersized width/height (including !important ones that
+    # would otherwise override the enforced minimum), then enforce the minimum.
+    style = strip_undersized_dimensions(element.get("style", ""), MIN_TARGET_SIZE_PX)
 
     declarations = [
         f"min-width: {MIN_TARGET_SIZE_PX}px",

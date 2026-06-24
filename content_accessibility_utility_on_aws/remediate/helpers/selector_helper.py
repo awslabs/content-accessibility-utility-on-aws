@@ -8,13 +8,96 @@ This module provides functionality to generate and manipulate CSS selectors
 for HTML elements.
 """
 
-from typing import Optional
-from bs4 import BeautifulSoup
+import re
+from typing import Any, Dict, Optional
+from bs4 import BeautifulSoup, Tag
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 
 # Set up module-level logger
 logger = setup_logger(__name__)
+
+
+def find_element_from_issue(
+    soup: BeautifulSoup, issue: Dict[str, Any]
+) -> Optional[Tag]:
+    """
+    Resolve the HTML element an accessibility issue refers to.
+
+    The auditor records ``issue["location"]["path"]`` as a precise CSS selector
+    (built by ``AccessibilityAuditor._get_element_path``, including
+    ``:nth-of-type`` disambiguation), so the path is the canonical way to find
+    the exact element even when several elements share a tag name. The auditor
+    prefixes the path with the BeautifulSoup root token ``[document]``, which is
+    not a valid selector, so it is stripped before matching.
+
+    As a secondary fallback, when ``issue["element"]`` happens to contain element
+    HTML (rather than just the tag name the auditor normally stores), an
+    anchor's ``href`` is used to locate it.
+
+    Args:
+        soup: The parsed HTML document.
+        issue: The accessibility issue, which may carry ``location.path`` and/or
+            ``element``.
+
+    Returns:
+        The matching element, or None if it cannot be resolved.
+    """
+    location = issue.get("location") or {}
+    path = location.get("path")
+    if path:
+        # Drop the synthetic BeautifulSoup root token and any empty segments.
+        selector = " > ".join(
+            seg for seg in path.split(" > ") if seg and seg != "[document]"
+        )
+        if selector:
+            try:
+                element = soup.select_one(selector)
+            except Exception as e:
+                logger.debug(f"Could not resolve issue path '{selector}': {e}")
+                element = None
+            if element is not None:
+                return element
+
+    # The audit-time path can be invalidated when earlier remediations inject
+    # elements (e.g. skip links, landmarks) and shift positional/nth-of-type
+    # selectors. Fall back to matching an anchor by its recorded href, which is
+    # stable across such mutations.
+    href = _recorded_href(issue)
+    if href:
+        candidates = soup.find_all("a", href=href)
+        if candidates:
+            return candidates[0]
+
+    return None
+
+
+def _recorded_href(issue: Dict[str, Any]) -> Optional[str]:
+    """
+    Extract the anchor href recorded on an issue, if any.
+
+    Checks, in order: an element string that is HTML, the context's recorded
+    attributes, and the context's html_snippet.
+    """
+    element_str = issue.get("element", "")
+    if isinstance(element_str, str) and element_str.lstrip().startswith("<a "):
+        match = re.search(r'href="([^"]*)"', element_str)
+        if match:
+            return match.group(1)
+
+    context = issue.get("context") or {}
+    if isinstance(context, dict):
+        attrs = context.get("attributes")
+        if isinstance(attrs, dict) and attrs.get("href"):
+            return attrs["href"]
+
+        snippet = context.get("html_snippet")
+        if isinstance(snippet, str):
+            match = re.search(r'href="([^"]*)"', snippet)
+            if match:
+                return match.group(1)
+
+    return None
 
 
 class SelectorHelper:

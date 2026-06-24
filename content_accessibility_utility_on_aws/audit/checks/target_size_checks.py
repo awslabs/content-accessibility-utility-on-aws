@@ -15,16 +15,13 @@ attributes or inline CSS). Links rendered inline within a block of text are
 exempt under the criterion's "inline" exception and are not flagged.
 """
 
-import re
-from typing import Optional
-
 from content_accessibility_utility_on_aws.audit.base_check import AccessibilityCheck
+from content_accessibility_utility_on_aws.utils.constants import MIN_TARGET_SIZE_PX
+from content_accessibility_utility_on_aws.utils.css_dimensions import declared_dimension
 
-# WCAG 2.2 minimum target dimension in CSS pixels.
-MIN_TARGET_SIZE_PX = 24
-
-# Interactive elements that act as pointer targets.
-INTERACTIVE_SELECTORS = ["a[href]", "button", '[role="button"]', '[role="link"]']
+# Interactive elements that act as pointer targets. Combined into one selector
+# so soup.select returns each matching element once (no cross-selector dedup).
+INTERACTIVE_SELECTOR = 'a[href], button, [role="button"], [role="link"]'
 
 
 class TargetSizeCheck(AccessibilityCheck):
@@ -40,56 +37,54 @@ class TargetSizeCheck(AccessibilityCheck):
             - compliant-target-size: An interactive element declares a size that
               meets the minimum (compliance success).
         """
-        seen = set()
-        for selector in INTERACTIVE_SELECTORS:
-            for element in self.find_elements(selector):
-                # An element may match several selectors; only evaluate it once.
-                element_id = id(element)
-                if element_id in seen:
-                    continue
-                seen.add(element_id)
+        # A single combined selector returns each matching element exactly once,
+        # so no cross-selector deduplication is needed.
+        for element in self.find_elements(INTERACTIVE_SELECTOR):
+            # Inline links inside running text are exempt (inline exception).
+            if element.name == "a" and self._is_inline_link(element):
+                continue
 
-                # Inline links inside running text are exempt (inline exception).
-                if element.name == "a" and self._is_inline_link(element):
-                    continue
+            width = declared_dimension(element, "width")
+            height = declared_dimension(element, "height")
 
-                width = self._declared_dimension(element, "width")
-                height = self._declared_dimension(element, "height")
+            # No explicit dimensions declared: nothing reliable to assess in
+            # static HTML, so do not flag (avoids false positives).
+            if width is None and height is None:
+                continue
 
-                # No explicit dimensions declared: nothing reliable to assess in
-                # static HTML, so do not flag (avoids false positives).
-                if width is None and height is None:
-                    continue
+            too_small = (width is not None and width < MIN_TARGET_SIZE_PX) or (
+                height is not None and height < MIN_TARGET_SIZE_PX
+            )
 
-                too_small = (width is not None and width < MIN_TARGET_SIZE_PX) or (
-                    height is not None and height < MIN_TARGET_SIZE_PX
+            text = self.get_element_text(element) or element.name
+            if too_small:
+                # Use "?" only for genuinely undeclared dimensions; a declared
+                # 0px must render as "0", not be hidden by a falsy check.
+                width_str = "?" if width is None else f"{width:g}"
+                height_str = "?" if height is None else f"{height:g}"
+                self.add_issue(
+                    "target-size-too-small",
+                    "2.5.8",
+                    "minor",
+                    element=element,
+                    description=(
+                        f"Interactive target '{text}' declares a size of "
+                        f"{width_str}x{height_str} CSS px, below the "
+                        f"{MIN_TARGET_SIZE_PX}x{MIN_TARGET_SIZE_PX} px minimum"
+                    ),
                 )
-
-                text = self.get_element_text(element) or element.name
-                if too_small:
-                    self.add_issue(
-                        "target-size-too-small",
-                        "2.5.8",
-                        "minor",
-                        element=element,
-                        description=(
-                            f"Interactive target '{text}' declares a size of "
-                            f"{width or '?'}x{height or '?'} CSS px, below the "
-                            f"{MIN_TARGET_SIZE_PX}x{MIN_TARGET_SIZE_PX} px minimum"
-                        ),
-                    )
-                else:
-                    self.add_issue(
-                        "compliant-target-size",
-                        "2.5.8",
-                        "info",
-                        element=element,
-                        description=(
-                            f"Interactive target '{text}' meets the minimum "
-                            f"target size"
-                        ),
-                        status="compliant",
-                    )
+            else:
+                self.add_issue(
+                    "compliant-target-size",
+                    "2.5.8",
+                    "info",
+                    element=element,
+                    description=(
+                        f"Interactive target '{text}' meets the minimum "
+                        f"target size"
+                    ),
+                    status="compliant",
+                )
 
     def _is_inline_link(self, element) -> bool:
         """
@@ -107,32 +102,3 @@ class TargetSizeCheck(AccessibilityCheck):
         parent_text = parent.get_text(strip=True)
         link_text = element.get_text(strip=True)
         return len(parent_text) > len(link_text)
-
-    def _declared_dimension(self, element, dimension: str) -> Optional[float]:
-        """
-        Extract an explicitly declared pixel dimension for an element.
-
-        Looks at the inline ``style`` first (width/height/min-width/min-height),
-        then the legacy HTML ``width``/``height`` attribute. Returns the value in
-        CSS pixels, or None if no explicit pixel value is declared.
-        """
-        style = self.get_attribute(element, "style") or ""
-        # Prefer min-<dimension> when present, since it sets the floor.
-        for prop in (f"min-{dimension}", dimension):
-            match = re.search(rf"\b{prop}\s*:\s*([0-9.]+)px", style, re.IGNORECASE)
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    pass
-
-        attr_value = self.get_attribute(element, dimension)
-        if attr_value:
-            match = re.match(r"^\s*([0-9.]+)\s*(px)?\s*$", str(attr_value))
-            if match:
-                try:
-                    return float(match.group(1))
-                except ValueError:
-                    pass
-
-        return None
