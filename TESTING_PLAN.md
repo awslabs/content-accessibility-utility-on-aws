@@ -51,21 +51,35 @@ unless explicitly requested.
 - **Phase 6 — CI.** `test.yml` runs `pytest --cov` (`-m "not aws"`) on push/PR across
   Python 3.11–3.13, gating before publish.
 
-## AI quality tier (Phases 7–11) — implemented after the core
+## AI quality tier (Phases 7–11) — IMPLEMENTED
 
-- **Phase 7 — Harness & gating.** `@pytest.mark.aws` / `@pytest.mark.llm_judge`, env-gated
-  (`RUN_AWS_TESTS=1`), real `BedrockClient` + a separate **stronger judge model**
-  fixture, retry/backoff, cost logging.
-- **Phase 8 — LLM-as-a-judge.** `judge(output, criteria, context) -> {score, pass, rationale}`
-  using structured output; criterion-specific WCAG rubrics; judge at `temperature=0`,
-  N=3 majority + threshold (not exact match); failures surface the judge rationale.
-- **Phase 9 — Per-surface quality suites.** Real generation + judge for the six AI outputs:
-  alt text (needs committed test images), document title, heading, form label, link text,
-  table remediation (structural validity assertion + semantic judge).
-- **Phase 10 — Quality baseline (optional).** Persist judge scores over time; model-swap
-  comparison across candidate model IDs.
-- **Phase 11 — Optional CI.** Separate `ai-quality.yml`, `workflow_dispatch` / nightly only,
-  AWS creds via OIDC — never on every PR.
+Lives in `tests/ai_quality/`. Run with `RUN_AWS_TESTS=1 pytest -m aws`.
+
+- **Phase 7 — Harness & gating (done).** `@pytest.mark.aws` / `@pytest.mark.llm_judge`,
+  enforced by a `pytest_collection_modifyitems` skip in `tests/ai_quality/conftest.py`
+  (a conftest `pytestmark` does NOT propagate, so the gate is at collection time):
+  skips unless `RUN_AWS_TESTS=1` AND credentials resolve. Real `BedrockClient` (Nova 2
+  Lite generator) + a separate **stronger judge** fixture (`us.anthropic.claude-sonnet-4-6`),
+  adaptive retries.
+- **Phase 8 — LLM-as-a-judge (done).** `tests/ai_quality/judge.py`: `judge(output, criteria,
+  context) -> Verdict` using Converse forced tool use for reliable structured scoring;
+  `temperature=0`; N=3 votes aggregated by mean score ≥ threshold; `Verdict.explain()`
+  surfaces every vote's rationale in the assertion message.
+- **Phase 9 — Per-surface quality suites (done).** Real generation + judge for: alt text
+  (committed image fixtures in `tests/fixtures/images/`), document title, heading, form
+  label, link text, and table remediation (hard structural assertion + semantic judge).
+- **Phase 10 — Quality baseline (deferred).** Persisting judge scores over time / model-swap
+  comparison — not yet built; the harness supports it.
+- **Phase 11 — Scheduled CI (done).** `.github/workflows/ai-quality.yml`, `workflow_dispatch`
+  + nightly only, AWS creds via OIDC — never on every PR.
+
+### Finding surfaced by this tier
+
+The table-remediation semantic judge (`test_table_scope_semantic_correctness`) is a
+documented `xfail`: the current `table_remediation.py` gives the top-left corner header
+(`Region`) `scope="row"` instead of `scope="col"` and emits scrambled `headers=` references.
+Structural validity (every `<th>` has a valid scope) still passes. Flip the `xfail` to a hard
+assertion once the table logic is fixed.
 
 ### AI-tier design decisions
 

@@ -1,0 +1,46 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+# AI quality tier — makes REAL Bedrock calls and judges output quality.
+# Deliberately NOT run on every push/PR (costs money, needs AWS credentials):
+# only on manual dispatch or a nightly schedule. The per-PR gate stays in
+# test.yml and remains free and offline.
+name: AI Quality (AWS-backed)
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Nightly at 07:00 UTC to catch model/prompt quality drift.
+    - cron: "0 7 * * *"
+
+permissions:
+  id-token: write   # for OIDC role assumption
+  contents: read
+
+jobs:
+  ai-quality:
+    runs-on: ubuntu-latest
+    # Requires an AWS_ROLE_ARN secret/var configured with Bedrock access.
+    if: ${{ vars.AWS_ROLE_ARN != '' }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+    - name: Install package with test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[test]"
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+        aws-region: us-east-1
+    - name: Run AI quality tier
+      env:
+        RUN_AWS_TESTS: "1"
+        AWS_REGION: us-east-1
+      run: pytest -m aws -v
