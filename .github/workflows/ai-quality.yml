@@ -20,12 +20,21 @@ permissions:
 jobs:
   ai-quality:
     runs-on: ubuntu-latest
-    # Requires an AWS_ROLE_ARN secret/var configured with Bedrock access.
-    if: ${{ vars.AWS_ROLE_ARN != '' }}
     steps:
     - uses: actions/checkout@v4
       with:
         persist-credentials: false
+    - name: Require AWS_ROLE_ARN
+      # Fail loudly rather than silently skipping: a job-level `if` on the var
+      # would report the nightly run green while running zero quality tests,
+      # masking that the drift-detection tier never actually executed.
+      env:
+        AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+      run: |
+        if [ -z "$AWS_ROLE_ARN" ]; then
+          echo "::error::AWS_ROLE_ARN variable is not set; the AI quality tier cannot run."
+          exit 1
+        fi
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -43,4 +52,7 @@ jobs:
       env:
         RUN_AWS_TESTS: "1"
         AWS_REGION: us-east-1
-      run: pytest -m aws -v
+      # Treat "no tests collected/ran" (pytest exit 5) as a failure so a gate
+      # that silently selects zero tests cannot report success.
+      run: pytest -m aws -v -p no:cacheprovider --strict-markers
+        || { code=$?; if [ "$code" = "5" ]; then echo "::error::No AI quality tests ran"; fi; exit $code; }

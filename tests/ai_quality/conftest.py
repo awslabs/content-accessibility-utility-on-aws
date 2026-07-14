@@ -19,6 +19,7 @@ plus N judge calls (Sonnet). A full run is a few cents; keep corpora small.
 """
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -60,9 +61,13 @@ def pytest_collection_modifyitems(config, items):
     skip = pytest.mark.skip(
         reason="AI quality tier is opt-in: set RUN_AWS_TESTS=1 with AWS credentials"
     )
-    here = os.path.dirname(__file__)
+    here = Path(__file__).resolve().parent
     for item in items:
-        if str(item.fspath).startswith(here):
+        # Use a proper path-containment check (not string startswith, which a
+        # sibling dir sharing the prefix or a symlink mismatch could defeat and
+        # leak real Bedrock calls).
+        item_path = Path(str(item.fspath)).resolve()
+        if here == item_path or here in item_path.parents:
             item.add_marker(skip)
 
 

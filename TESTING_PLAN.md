@@ -62,9 +62,11 @@ Lives in `tests/ai_quality/`. Run with `RUN_AWS_TESTS=1 pytest -m aws`.
   Lite generator) + a separate **stronger judge** fixture (`us.anthropic.claude-sonnet-4-6`),
   adaptive retries.
 - **Phase 8 — LLM-as-a-judge (done).** `tests/ai_quality/judge.py`: `judge(output, criteria,
-  context) -> Verdict` using Converse forced tool use for reliable structured scoring;
-  `temperature=0`; N=3 votes aggregated by mean score ≥ threshold; `Verdict.explain()`
-  surfaces every vote's rationale in the assertion message.
+  context) -> Verdict` using Converse forced tool use for reliable structured scoring.
+  Passing requires BOTH mean score ≥ threshold (default 4.0, above the rubric midpoint)
+  AND a majority of per-vote pass verdicts; votes are sampled at `temperature>0` so the
+  N=3 draws are genuinely independent; scores are clamped to 1-5 and malformed judgments
+  dropped; `Verdict.explain()` surfaces every vote's score/pass/rationale on failure.
 - **Phase 9 — Per-surface quality suites (done).** Real generation + judge for: alt text
   (committed image fixtures in `tests/fixtures/images/`), document title, heading, form
   label, link text, and table remediation (hard structural assertion + semantic judge).

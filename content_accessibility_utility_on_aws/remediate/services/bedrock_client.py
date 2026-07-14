@@ -26,6 +26,16 @@ from content_accessibility_utility_on_aws.utils.constants import (
 # Set up module-level logger
 logger = setup_logger(__name__)
 
+# Shared boto3 config for all Bedrock runtime clients: adaptive retries so calls
+# back off under throttling instead of failing immediately. Anything talking to
+# bedrock-runtime (including the test-tier judge) should reuse this so the retry
+# and timeout policy cannot drift between call sites.
+BEDROCK_BOTO_CONFIG = Config(
+    retries={"max_attempts": 5, "mode": "adaptive"},
+    connect_timeout=10,
+    read_timeout=120,
+)
+
 
 class AltTextGenerationError(Exception):
     """Exception raised when alt text generation fails."""
@@ -58,13 +68,9 @@ class BedrockClient:
         """
         self.model_id = model_id
         self.profile = profile
-        # Use adaptive retries so the client backs off automatically under
-        # Bedrock throttling instead of failing the call immediately.
-        boto_config = Config(
-            retries={"max_attempts": 5, "mode": "adaptive"},
-            connect_timeout=10,
-            read_timeout=120,
-        )
+        # Shared adaptive-retry config so the client backs off automatically
+        # under Bedrock throttling instead of failing the call immediately.
+        boto_config = BEDROCK_BOTO_CONFIG
         try:
             # Create a boto3 session with the provided profile
             if profile:
