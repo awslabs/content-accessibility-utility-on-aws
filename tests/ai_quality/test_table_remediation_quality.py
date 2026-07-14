@@ -51,15 +51,6 @@ def test_table_scope_structural_validity():
         assert scope in ("col", "row"), f"th '{th.get_text(strip=True)}' has invalid scope={scope!r}"
 
 
-# Known quality gap surfaced by this very tier: the current table remediation
-# mis-assigns scope on the top-left corner header (gives "Region" scope='row'
-# instead of 'col') and produces scrambled `headers=` references. Tracked as an
-# expected failure so the suite stays green while the gap is documented; flip to
-# a hard assertion once table_remediation.py is fixed.
-@pytest.mark.xfail(
-    reason="table_remediation mis-assigns corner-header scope and headers= refs",
-    strict=False,
-)
 def test_table_scope_semantic_correctness(judge):
     soup = _remediate_with_ai(TABLE_HTML)
     table_html = str(soup.find("table"))

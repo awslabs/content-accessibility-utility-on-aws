@@ -75,13 +75,16 @@ Lives in `tests/ai_quality/`. Run with `RUN_AWS_TESTS=1 pytest -m aws`.
 - **Phase 11 — Scheduled CI (done).** `.github/workflows/ai-quality.yml`, `workflow_dispatch`
   + nightly only, AWS creds via OIDC — never on every PR.
 
-### Finding surfaced by this tier
+### Finding surfaced and fixed by this tier
 
-The table-remediation semantic judge (`test_table_scope_semantic_correctness`) is a
-documented `xfail`: the current `table_remediation.py` gives the top-left corner header
-(`Region`) `scope="row"` instead of `scope="col"` and emits scrambled `headers=` references.
-Structural validity (every `<th>` has a valid scope) still passes. Flip the `xfail` to a hard
-assertion once the table logic is fixed.
+The table-remediation semantic judge (`test_table_scope_semantic_correctness`) originally
+surfaced two defects in `table_remediation.py`: the top-left corner header (`Region`) was
+given `scope="row"` instead of `scope="col"`, and `headers=` references were scrambled by
+row/column index misalignment. Both are now fixed — scope is assigned by unambiguous
+position (AI only decides genuinely ambiguous interior headers) and header-id linkage uses
+table-wide row indexing with consistent all-cell column indexing. The judge test is a hard
+assertion again (no `xfail`), and deterministic offline coverage lives in
+`tests/remediate/test_table_structure.py`.
 
 ### AI-tier design decisions
 
