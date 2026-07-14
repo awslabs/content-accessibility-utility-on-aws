@@ -51,8 +51,20 @@ def remediate_target_size_too_small(
         f"min-height: {MIN_TARGET_SIZE_PX}px",
     ]
     # A box model is required for min-width/min-height to take effect on inline
-    # elements such as links; only add one if the element does not set display.
-    if not re.search(r"\bdisplay\s*:", style, re.IGNORECASE):
+    # elements such as links; add one if the element sets no display, or if it
+    # explicitly sets ``display: none`` (which has no rendered box at all, so
+    # the enforced minimum would otherwise be meaningless).
+    display_match = re.search(r"\bdisplay\s*:\s*([a-z-]+)", style, re.IGNORECASE)
+    if display_match is None:
+        declarations.append("display: inline-block")
+    elif display_match.group(1).lower() == "none":
+        # Drop the ``display: none`` declaration so the target can render.
+        style = re.sub(
+            r"\bdisplay\s*:\s*none\s*(!important)?\s*;?",
+            "",
+            style,
+            flags=re.IGNORECASE,
+        ).strip("; ").strip()
         declarations.append("display: inline-block")
 
     enforced = "; ".join(declarations)

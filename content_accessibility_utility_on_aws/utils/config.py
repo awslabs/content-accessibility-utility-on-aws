@@ -283,7 +283,7 @@ config_manager = ConfigManager(
         # Accessibility auditing defaults
         "audit": {
             "audit_accessibility": True,
-            "min_severity": "minor",  # minor, major, critical
+            "severity_threshold": "minor",  # minor, major, critical
             "detailed_context": True,
             "skip_automated_checks": False,
             "issue_types": None,  # List of issue types to check, None = all

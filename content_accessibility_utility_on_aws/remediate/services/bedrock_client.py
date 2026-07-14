@@ -98,6 +98,46 @@ class BedrockClient:
         "Produce accurate, concise output and follow the requested format exactly."
     )
 
+    def _track_usage(
+        self,
+        response: dict,
+        purpose: str,
+        fallback_input_tokens: int,
+        generated_text: str,
+        start_time: datetime,
+    ) -> None:
+        """
+        Record a Bedrock call in the session usage tracker.
+
+        Uses the model-reported token counts from the response when available,
+        falling back to estimates. Tracking failures are logged, never raised,
+        so usage accounting can never break a remediation.
+        """
+        processing_time_ms = int(
+            (datetime.now() - start_time).total_seconds() * 1000
+        )
+        usage = response.get("usage", {})
+        input_tokens = usage.get("inputTokens", fallback_input_tokens)
+        output_tokens = usage.get(
+            "outputTokens", SessionUsageTracker.estimate_tokens(generated_text)
+        )
+
+        try:
+            usage_tracker = SessionUsageTracker.get_instance()
+            usage_tracker.track_bedrock_call(
+                model_id=self.model_id,
+                purpose=purpose,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                processing_time_ms=processing_time_ms,
+            )
+            logger.debug(
+                f"Tracked Bedrock call: purpose={purpose}, "
+                f"input_tokens={input_tokens}, output_tokens={output_tokens}"
+            )
+        except Exception as track_error:
+            logger.warning(f"Failed to track Bedrock usage: {track_error}")
+
     def generate_text(
         self,
         prompt: str,
@@ -166,31 +206,9 @@ class BedrockClient:
             ):
                 generated_text = response["output"]["message"]["content"][0]["text"]
 
-                # Track token usage using the model-reported counts when available,
-                # falling back to estimates otherwise.
-                end_time = datetime.now()
-                processing_time_ms = int((end_time - start_time).total_seconds() * 1000)
-                usage = response.get("usage", {})
-                input_tokens = usage.get("inputTokens", input_tokens)
-                output_tokens = usage.get(
-                    "outputTokens", SessionUsageTracker.estimate_tokens(generated_text)
+                self._track_usage(
+                    response, purpose, input_tokens, generated_text, start_time
                 )
-
-                try:
-                    # Track the usage in the session tracker
-                    usage_tracker = SessionUsageTracker.get_instance()
-                    usage_tracker.track_bedrock_call(
-                        model_id=self.model_id,
-                        purpose=purpose,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        processing_time_ms=processing_time_ms,
-                    )
-                    logger.debug(
-                        f"Tracked Bedrock call: purpose={purpose}, input_tokens={input_tokens}, output_tokens={output_tokens}"
-                    )
-                except Exception as track_error:
-                    logger.warning(f"Failed to track Bedrock usage: {track_error}")
 
                 return generated_text
             else:
@@ -323,30 +341,13 @@ class BedrockClient:
             ):
                 generated_text = response["output"]["message"]["content"][0]["text"]
 
-                # Track token usage using model-reported counts when available.
-                end_time = datetime.now()
-                processing_time_ms = int((end_time - start_time).total_seconds() * 1000)
-                usage = response.get("usage", {})
-                input_tokens = usage.get("inputTokens", input_tokens)
-                output_tokens = usage.get(
-                    "outputTokens", SessionUsageTracker.estimate_tokens(generated_text)
+                self._track_usage(
+                    response,
+                    "alt_text_generation",
+                    input_tokens,
+                    generated_text,
+                    start_time,
                 )
-
-                try:
-                    # Track the usage in the session tracker
-                    usage_tracker = SessionUsageTracker.get_instance()
-                    usage_tracker.track_bedrock_call(
-                        model_id=self.model_id,
-                        purpose="alt_text_generation",
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        processing_time_ms=processing_time_ms,
-                    )
-                    logger.debug(
-                        f"Tracked Bedrock image analysis call: input_tokens={input_tokens}, output_tokens={output_tokens}"
-                    )
-                except Exception as track_error:
-                    logger.warning(f"Failed to track Bedrock usage: {track_error}")
 
                 return generated_text
             else:

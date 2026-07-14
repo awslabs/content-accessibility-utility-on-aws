@@ -13,7 +13,7 @@ import re
 
 
 def remediate_insufficient_color_contrast(
-    soup: BeautifulSoup, issue: Dict[str, Any]
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
     """
     Remediate insufficient color contrast by adjusting text or background color.
@@ -21,6 +21,7 @@ def remediate_insufficient_color_contrast(
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
+        *args: Optional BedrockClient (unused; this is a deterministic fix)
 
     Returns:
         A message describing the remediation, or None if no remediation was performed

@@ -100,20 +100,28 @@ class RemediationManager:
 
         if not self.options.get("disable_ai", False):
             try:
-                model_id = self.options.get(
-                    "model_id", DEFAULT_MODEL_ID
-                )
-                profile = self.options.get("profile")
-                self.bedrock_client = BedrockClient(model_id=model_id, profile=profile)
-                logger.debug(
-                    f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
-                )
+                self.bedrock_client = self._make_bedrock_client()
                 self.bda_client = self.bedrock_client
             except Exception as e:
                 logger.warning(f"Failed to initialize Bedrock client: {e}")
                 # Ensure attributes are properly initialized even after failure
                 self.bedrock_client = None
                 self.bda_client = None
+
+    def _make_bedrock_client(self) -> BedrockClient:
+        """
+        Construct a BedrockClient from the configured model id and profile.
+
+        Single source of truth for client construction so the model-id default
+        and profile handling stay consistent across every call site.
+        """
+        model_id = self.options.get("model_id", DEFAULT_MODEL_ID)
+        profile = self.options.get("profile")
+        client = BedrockClient(model_id=model_id, profile=profile)
+        logger.debug(
+            f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
+        )
+        return client
 
     def _get_remediation_strategies(self) -> Dict[str, Callable]:
         """
@@ -225,21 +233,7 @@ class RemediationManager:
                             f"No BedrockClient available for {issue_type}. Creating one with profile: {self.options.get('profile')}"
                         )
                         try:
-                            # Try to create a new BedrockClient with the profile
-                            from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
-                                BedrockClient,
-                            )
-
-                            model_id = self.options.get(
-                                "model_id", DEFAULT_MODEL_ID
-                            )
-                            profile = self.options.get("profile")
-                            client_to_use = BedrockClient(
-                                model_id=model_id, profile=profile
-                            )
-                            logger.debug(
-                                f"Successfully created BedrockClient for table remediation: {issue_type}"
-                            )
+                            client_to_use = self._make_bedrock_client()
                         except Exception as client_error:
                             logger.error(
                                 f"Failed to create BedrockClient: {client_error}"
@@ -280,51 +274,46 @@ class RemediationManager:
 
                 # Respect disable_ai: do not construct a Bedrock client (which
                 # would make real AWS calls) when the caller disabled AI.
-                if self.options.get("disable_ai", False):
+                # Respect disable_ai: skip constructing a Bedrock client (which
+                # would make real AWS calls). The deterministic table fallback
+                # below still runs, so table scope can be inferred without AI.
+                ai_disabled = self.options.get("disable_ai", False)
+                if ai_disabled:
                     logger.debug(
                         f"AI disabled; skipping AI recovery for {issue_type}"
                     )
-                    return None
+                else:
+                    try:
+                        profile = self.options.get("profile")
 
-                try:
-                    # Always attempt to create a fresh client for this remediation
-                    from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
-                        BedrockClient,
-                    )
-
-                    model_id = self.options.get(
-                        "model_id", DEFAULT_MODEL_ID
-                    )
-                    profile = self.options.get("profile")
-
-                    if profile:
-                        logger.debug(
-                            f"Creating BedrockClient with profile {profile} for {issue_type}"
-                        )
-                        try:
-                            client = BedrockClient(model_id=model_id, profile=profile)
-                            # Try remediation again with the new client
-                            logger.debug(f"Retrying {issue_type} with new client")
-                            result = self.remediation_strategies[issue_type](
-                                self.soup, issue, client
+                        if profile:
+                            logger.debug(
+                                f"Creating BedrockClient with profile {profile} for {issue_type}"
                             )
-                            if result:
-                                logger.debug(
-                                    f"Remediated {issue_type} with newly created client"
+                            try:
+                                client = self._make_bedrock_client()
+                                # Try remediation again with the new client
+                                logger.debug(f"Retrying {issue_type} with new client")
+                                result = self.remediation_strategies[issue_type](
+                                    self.soup, issue, client
                                 )
-                                return result
-                            else:
+                                if result:
+                                    logger.debug(
+                                        f"Remediated {issue_type} with newly created client"
+                                    )
+                                    return result
+                                else:
+                                    logger.error(
+                                        f"Still failed to remediate {issue_type} with new client"
+                                    )
+                            except Exception as client_error:
                                 logger.error(
-                                    f"Still failed to remediate {issue_type} with new client"
+                                    f"Failed to create BedrockClient: {client_error}"
                                 )
-                        except Exception as client_error:
-                            logger.error(
-                                f"Failed to create BedrockClient: {client_error}"
-                            )
-                except Exception as recovery_error:
-                    logger.error(
-                        f"Failed to recover from AIRemediationRequiredError: {recovery_error}"
-                    )
+                    except Exception as recovery_error:
+                        logger.error(
+                            f"Failed to recover from AIRemediationRequiredError: {recovery_error}"
+                        )
 
                 # For table issues, use aggressive fallback instead of failing
                 if issue_type.startswith("table-"):
@@ -389,6 +378,12 @@ class RemediationManager:
                                 )
                     except Exception as fallback_error:
                         logger.error(f"Failed fallback attempt: {fallback_error}")
+
+                # With AI disabled there is no client to recover with, so a
+                # non-table issue that still requires AI cannot be remediated;
+                # report it as unremediated rather than raising.
+                if ai_disabled:
+                    return None
 
                 # If we couldn't recover or use fallback, re-raise the error
                 raise

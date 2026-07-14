@@ -63,3 +63,20 @@ def test_strip_keeps_unrelated_declarations():
     result = strip_undersized_dimensions("color: blue; padding: 2px", MIN_TARGET_SIZE_PX)
     assert "color: blue" in result
     assert "padding: 2px" in result
+
+
+def test_declared_dimension_ignores_hyphenated_property():
+    # "max-width" must not be read as "width" (substring false positive).
+    assert declared_dimension(_el("<button style='max-width: 10px'>x</button>"), "width") is None
+
+
+def test_strip_undersized_min_dimension():
+    # The audit detects undersizing via min-* first, so an undersized
+    # min-width/min-height must also be stripped (including !important), or it
+    # would survive alongside the re-added min-width: 24px.
+    assert strip_undersized_dimensions("min-width: 10px !important", MIN_TARGET_SIZE_PX) == ""
+    assert strip_undersized_dimensions("min-height: 10px", MIN_TARGET_SIZE_PX) == ""
+
+
+def test_strip_keeps_adequate_min_dimension():
+    assert strip_undersized_dimensions("min-width: 30px", MIN_TARGET_SIZE_PX) == "min-width: 30px"

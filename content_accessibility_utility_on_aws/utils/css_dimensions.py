@@ -40,13 +40,19 @@ def declared_dimension(element: Tag, dimension: str) -> Optional[float]:
         The declared size in CSS pixels, or None.
     """
     style = (element.get("style") or "") if hasattr(element, "get") else ""
-    for prop in (f"min-{dimension}", dimension):
-        match = re.search(rf"\b{prop}\s*:\s*([0-9.]+)px", style, re.IGNORECASE)
+    # Parse declarations with the same property-anchored regex strip uses, so a
+    # hyphenated property (e.g. "max-width") is never mistaken for "width".
+    declared = {}
+    for decl in style.split(";"):
+        match = _PX_DECLARATION.match(decl)
         if match:
             try:
-                return float(match.group(1))
+                declared[match.group(1).lower()] = float(match.group(2))
             except ValueError:
                 pass
+    for prop in (f"min-{dimension}", dimension):
+        if prop in declared:
+            return declared[prop]
 
     attr_value = element.get(dimension) if hasattr(element, "get") else None
     if attr_value:
@@ -66,8 +72,12 @@ def strip_undersized_dimensions(style: str, minimum_px: float) -> str:
 
     Both plain (``width: 10px``) and ``!important`` (``width: 10px !important``)
     declarations are dropped when undersized, so an ``!important`` rule cannot
-    survive to override the enforced minimum. Declarations that are not px
-    width/height (or that meet the minimum) are preserved verbatim.
+    survive to override the enforced minimum. This covers ``min-width`` and
+    ``min-height`` as well as plain ``width``/``height`` — the audit detects
+    undersizing via ``min-*`` first, so an undersized ``min-width: 10px`` left
+    in place would otherwise sit alongside the re-added ``min-width: 24px``.
+    Declarations that are not px size constraints (or that meet the minimum)
+    are preserved verbatim.
 
     Args:
         style: The element's inline style string.
@@ -82,7 +92,7 @@ def strip_undersized_dimensions(style: str, minimum_px: float) -> str:
         if not match:
             return True
         prop = match.group(1).lower()
-        if prop not in ("width", "height"):
+        if prop not in ("width", "height", "min-width", "min-height"):
             return True
         try:
             return float(match.group(2)) >= minimum_px

@@ -742,9 +742,16 @@ class AccessibilityAuditor:
                     # Handle class attribute which could be a list
                     classes = current.get("class", [])
                     if classes:
-                        path.append(
+                        segment = (
                             f"{current.name}.{'.'.join(str(cls) for cls in classes)}"
                         )
+                        # Disambiguate among same-tag siblings: a class alone is
+                        # not unique (e.g. repeated "div.card"), so add
+                        # :nth-of-type when earlier siblings share the tag.
+                        siblings = current.find_previous_siblings(current.name)
+                        if siblings:
+                            segment += f":nth-of-type({len(siblings) + 1})"
+                        path.append(segment)
                 # Check for nth-of-type
                 else:
                     siblings = current.find_previous_siblings(current.name)

@@ -28,6 +28,28 @@ def test_resolves_by_path_with_document_token_stripped():
     assert el is not None and el.name == "a"
 
 
+def test_path_disambiguates_class_bearing_siblings():
+    # Regression: two sibling <div class="card"> produce the same class-only
+    # path, so the recorded path must carry :nth-of-type to resolve the right
+    # descendant (not silently the first matching one).
+    from content_accessibility_utility_on_aws.audit.auditor import AccessibilityAuditor
+
+    html = (
+        "<html><body>"
+        "<div class='card'><a href='/a'>first</a></div>"
+        "<div class='card'><a href='/b'></a></div>"
+        "</body></html>"
+    )
+    soup = BeautifulSoup(html, "html.parser")
+    auditor = AccessibilityAuditor.__new__(AccessibilityAuditor)
+    target = soup.find_all("a")[1]  # the empty link in the second card
+    path = AccessibilityAuditor._get_element_path(auditor, target)
+    assert ":nth-of-type(2)" in path
+
+    resolved = find_element_from_issue(soup, {"location": {"path": path}, "type": "x"})
+    assert resolved is target
+
+
 def test_resolves_correct_element_among_many_via_nth_of_type():
     soup = BeautifulSoup(
         "<html><body><p><a href='/1'>one</a><a href='/2'>two</a></p></body></html>",

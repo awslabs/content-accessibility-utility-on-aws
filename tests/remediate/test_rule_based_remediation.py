@@ -77,6 +77,46 @@ def test_target_size_reaudit_clears_issue():
     assert not has_issue_type(report, "target-size-too-small")
 
 
+def test_target_size_display_none_is_made_visible():
+    # Regression: display:none has no rendered box, so leaving it in place makes
+    # the enforced min-size meaningless. The fix must drop display:none and add
+    # a rendering display value.
+    soup = BeautifulSoup(
+        "<html><body><div><button style='display:none;width:10px'>x</button></div></body></html>",
+        "html.parser",
+    )
+    issue = make_issue("target-size-too-small", path="html > body > div > button", element="button")
+    result = remediate_target_size_too_small(soup, issue)
+    assert result is not None
+    style = soup.find("button").get("style")
+    assert "display: none" not in style and "display:none" not in style
+    assert "inline-block" in style
+
+
+# --- Color contrast ---------------------------------------------------------
+
+
+def test_color_contrast_dispatch_passes_client_arg():
+    # Regression: the manager invokes every strategy with three positional args
+    # (soup, issue, client). remediate_insufficient_color_contrast took only two,
+    # so dispatching a contrast issue raised TypeError.
+    from content_accessibility_utility_on_aws.remediate.remediation_strategies.color_contrast_remediation import (
+        remediate_insufficient_color_contrast,
+    )
+
+    soup = BeautifulSoup(
+        "<html><body><p style='color:#777;background:#888'>Low contrast</p></body></html>",
+        "html.parser",
+    )
+    issue = make_issue(
+        "insufficient-color-contrast",
+        path="html > body > p",
+        element="<p style='color:#777;background:#888'>Low contrast</p>",
+    )
+    # Must not raise when called with the third (client) positional arg.
+    remediate_insufficient_color_contrast(soup, issue, None)
+
+
 # --- Document structure -----------------------------------------------------
 
 
@@ -146,6 +186,36 @@ def test_table_remediation_uses_fallback_when_ai_disabled():
         mgr.remediate_issue(issue)
     # The manager still has not constructed a Bedrock client.
     assert mgr.bedrock_client is None
+
+
+def test_disable_ai_table_still_uses_deterministic_fallback(monkeypatch):
+    # Regression: when a table strategy raises AIRemediationRequiredError under
+    # disable_ai, the manager must still run its deterministic scope fallback
+    # (no Bedrock client) rather than returning None / re-raising.
+    from content_accessibility_utility_on_aws.utils.logging_helper import (
+        AIRemediationRequiredError,
+    )
+
+    html = (
+        "<html><body><table>"
+        "<tr><th>Name</th><th>Age</th></tr>"
+        "<tr><td>Sam</td><td>30</td></tr>"
+        "</table></body></html>"
+    )
+    mgr = RemediationManager(BeautifulSoup(html, "html.parser"), options={"disable_ai": True})
+
+    def _raise_ai_required(*args, **kwargs):
+        raise AIRemediationRequiredError("AI needed")
+
+    mgr.remediation_strategies["table-missing-scope"] = _raise_ai_required
+
+    issue = make_issue("table-missing-scope", path="html > body > table", element="table")
+    result = mgr.remediate_issue(issue)
+
+    # Deterministic fallback ran without constructing a client.
+    assert result is not None
+    assert mgr.bedrock_client is None
+    assert all(th.get("scope") for th in mgr.soup.find_all("th"))
 
 
 def test_empty_heading_remediated_rule_based():

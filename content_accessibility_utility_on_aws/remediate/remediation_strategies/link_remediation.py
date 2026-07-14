@@ -33,6 +33,16 @@ def _resolve_link(soup: BeautifulSoup, issue: Dict[str, Any]):
     return element, element.get("href", "")
 
 
+def _domain_of(url: str) -> Optional[str]:
+    """
+    Extract the bare domain (no scheme, no leading ``www.``) from an http(s)
+    URL, or None if it is not an http(s) URL. Shared by the link strategies so
+    their URL-to-label heuristics cannot drift apart.
+    """
+    match = re.search(r"https?://(?:www\.)?([^/]+)", url or "")
+    return match.group(1) if match else None
+
+
 def remediate_empty_link_text(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
@@ -55,13 +65,10 @@ def remediate_empty_link_text(
         return None
 
     # Generate descriptive text based on the URL
-    if href and href.startswith("http"):
-        # Extract domain name
-        domain_match = re.search(r"https?://(?:www\.)?([^/]+)", href)
-        if domain_match:
-            domain = domain_match.group(1)
-            empty_link.string = f"Link to {domain}"
-            return f"Added text to empty link: Link to {domain}"
+    domain = _domain_of(href)
+    if domain:
+        empty_link.string = f"Link to {domain}"
+        return f"Added text to empty link: Link to {domain}"
 
     # Default text
     empty_link.string = f"Link to {href}"
@@ -122,13 +129,10 @@ def remediate_generic_link_text(
         return f"Replaced generic link text '{current_text}' with: {generated}"
 
     # Generate better text based on the URL and context
-    if href and href.startswith("http"):
-        # Extract domain name
-        domain_match = re.search(r"https?://(?:www\.)?([^/]+)", href)
-        if domain_match:
-            domain = domain_match.group(1)
-            generic_link.string = f"Visit {domain} website"
-            return f"Replaced generic link text with: Visit {domain} website"
+    domain = _domain_of(href)
+    if domain:
+        generic_link.string = f"Visit {domain} website"
+        return f"Replaced generic link text with: Visit {domain} website"
 
     # Try to get context from surrounding text
     parent = generic_link.parent
@@ -182,9 +186,8 @@ def remediate_url_as_link_text(
         return None
 
     # Extract domain name
-    domain_match = re.search(r"https?://(?:www\.)?([^/]+)", url_text)
-    if domain_match:
-        domain = domain_match.group(1)
+    domain = _domain_of(url_text)
+    if domain:
         url_link.string = f"Visit {domain}"
         return f"Replaced URL with domain name: Visit {domain}"
 
