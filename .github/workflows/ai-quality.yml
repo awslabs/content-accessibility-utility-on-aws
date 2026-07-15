@@ -2,16 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 # AI quality tier — makes REAL Bedrock calls and judges output quality.
-# Deliberately NOT run on every push/PR (costs money, needs AWS credentials):
-# only on manual dispatch or a nightly schedule. The per-PR gate stays in
-# test.yml and remains free and offline.
+# Runs ONLY on explicit manual dispatch (workflow_dispatch): never on push, PR,
+# or a schedule, so GitHub CI never makes Bedrock calls on its own. Run it by
+# hand from the Actions tab when you want to evaluate model/prompt quality.
+# The per-PR gate stays in test.yml and remains free and offline.
 name: AI Quality (AWS-backed)
 
 on:
   workflow_dispatch:
-  schedule:
-    # Nightly at 07:00 UTC to catch model/prompt quality drift.
-    - cron: "0 7 * * *"
 
 permissions:
   id-token: write   # for OIDC role assumption

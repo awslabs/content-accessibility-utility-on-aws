@@ -26,7 +26,7 @@ deferred in the core suite and exercised only in the opt-in AI tier.
 | Tier | Phases | AWS? | Runs in default CI? | Proves |
 |------|--------|------|---------------------|--------|
 | Core | 0–6 | No | Yes (gate) | Plumbing & logic correct, regressions caught |
-| AI quality | 7–11 | Yes | No (opt-in / scheduled) | AI output is actually good |
+| AI quality | 7–11 | Yes | No (opt-in, manual dispatch only) | AI output is actually good |
 
 `pytest` defaults to `-m "not aws"`, so the AI tier never runs (or costs money)
 unless explicitly requested.
@@ -72,8 +72,9 @@ Lives in `tests/ai_quality/`. Run with `RUN_AWS_TESTS=1 pytest -m aws`.
   label, link text, and table remediation (hard structural assertion + semantic judge).
 - **Phase 10 — Quality baseline (deferred).** Persisting judge scores over time / model-swap
   comparison — not yet built; the harness supports it.
-- **Phase 11 — Scheduled CI (done).** `.github/workflows/ai-quality.yml`, `workflow_dispatch`
-  + nightly only, AWS creds via OIDC — never on every PR.
+- **Phase 11 — Manual CI (done).** `.github/workflows/ai-quality.yml` runs on
+  `workflow_dispatch` ONLY (no push / PR / schedule), AWS creds via OIDC — GitHub CI never
+  makes Bedrock calls on its own; a human triggers it from the Actions tab when needed.
 
 ### Finding surfaced and fixed by this tier
 
