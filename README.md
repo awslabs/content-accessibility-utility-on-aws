@@ -28,7 +28,7 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Convert PDF documents to accessible HTML
 - Preserve layout and visual appearance
 - Extract and embed images
-- Audit HTML for WCAG 2.1 accessibility compliance
+- Audit HTML for WCAG 2.1 and 2.2 accessibility compliance
 - Remediate common accessibility issues using Bedrock models
 - Advanced table remediation strategies
 - Support for single-page and multi-page output formats
@@ -113,7 +113,7 @@ audit:
 # Remediation settings
 remediate:
   max_issues: 100
-  model_id: amazon.nova-lite-v1:0
+  model_id: us.amazon.nova-2-lite-v1:0
   issue_types: null
   severity_threshold: minor
   report_format: json
@@ -175,7 +175,7 @@ Key components:
 
 ### Audit
 
-The Audit module analyzes HTML for accessibility issues according to WCAG 2.1 guidelines.
+The Audit module analyzes HTML for accessibility issues according to WCAG 2.1 and 2.2 guidelines.
 
 ```mermaid
 graph TD
@@ -195,6 +195,14 @@ Key components:
 - Issue severity classification
 - Detailed context information
 - Multiple report formats (HTML, JSON, text)
+
+> **WCAG 2.2 scope:** Because this tool produces static HTML converted from PDFs,
+> it audits and remediates the WCAG 2.2 criteria that apply to non-interactive
+> documents — currently **2.5.8 Target Size (Minimum)**. The remaining 2.2
+> criteria (2.5.7 Dragging Movements, 3.2.6 Consistent Help, 3.3.7 Redundant
+> Entry, 3.3.8 Accessible Authentication) govern interactive web-application
+> behaviors such as drag gestures, multi-page help, and authentication flows,
+> which are out of scope for generated document content.
 
 ### Remediate
 
@@ -401,7 +409,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     },
     perform_audit=True,
@@ -442,7 +450,7 @@ remediation_result = remediate_html_accessibility(
     html_path="output/document.html",
     audit_report=audit_result,
     options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     }
 )

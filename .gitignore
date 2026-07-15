@@ -15,3 +15,9 @@ dist/*
 test_files/*
 misc/
 .DS_Store
+
+# Test artifacts
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/

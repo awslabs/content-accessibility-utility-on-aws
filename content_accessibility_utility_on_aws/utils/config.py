@@ -16,6 +16,7 @@ from typing import Dict, Any, Optional
 from copy import deepcopy
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger, ConfigurationError
+from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
 
 # Configure module-level logger
 logger = setup_logger(__name__)
@@ -282,7 +283,7 @@ config_manager = ConfigManager(
         # Accessibility auditing defaults
         "audit": {
             "audit_accessibility": True,
-            "min_severity": "minor",  # minor, major, critical
+            "severity_threshold": "minor",  # minor, major, critical
             "detailed_context": True,
             "skip_automated_checks": False,
             "issue_types": None,  # List of issue types to check, None = all
@@ -290,7 +291,7 @@ config_manager = ConfigManager(
         # Accessibility remediation defaults
         "remediate": {
             "max_issues": None,  # None = all issues
-            "model_id": "us.amazon.nova-lite-v1:0",
+            "model_id": DEFAULT_MODEL_ID,
             "issue_types": None,  # List of issue types to remediate, None = all
             "severity_threshold": "minor",  # Include all issues by default
             "report_format": "json",

@@ -4,7 +4,7 @@
 """
 HTML Accessibility Standards.
 
-This module provides constants and utilities for working with WCAG 2.1 accessibility standards.
+This module provides constants and utilities for working with WCAG 2.1 and 2.2 accessibility standards.
 """
 
 # Define severity levels for accessibility issues
@@ -96,12 +96,17 @@ WCAG_CRITERIA = {
     "2.4.8": {"name": "Location", "level": "AAA"},
     "2.4.9": {"name": "Link Purpose (Link Only)", "level": "AAA"},
     "2.4.10": {"name": "Section Headings", "level": "AAA"},
+    "2.4.11": {"name": "Focus Not Obscured (Minimum)", "level": "AA"},  # WCAG 2.2
+    "2.4.12": {"name": "Focus Not Obscured (Enhanced)", "level": "AAA"},  # WCAG 2.2
+    "2.4.13": {"name": "Focus Appearance", "level": "AAA"},  # WCAG 2.2
     "2.5.1": {"name": "Pointer Gestures", "level": "A"},
     "2.5.2": {"name": "Pointer Cancellation", "level": "A"},
     "2.5.3": {"name": "Label in Name", "level": "A"},
     "2.5.4": {"name": "Motion Actuation", "level": "A"},
-    "2.5.5": {"name": "Target Size", "level": "AAA"},
+    "2.5.5": {"name": "Target Size (Enhanced)", "level": "AAA"},
     "2.5.6": {"name": "Concurrent Input Mechanisms", "level": "AAA"},
+    "2.5.7": {"name": "Dragging Movements", "level": "AA"},  # WCAG 2.2
+    "2.5.8": {"name": "Target Size (Minimum)", "level": "AA"},  # WCAG 2.2
     # Understandable
     "3.1.1": {"name": "Language of Page", "level": "A"},
     "3.1.2": {"name": "Language of Parts", "level": "AA"},
@@ -114,12 +119,16 @@ WCAG_CRITERIA = {
     "3.2.3": {"name": "Consistent Navigation", "level": "AA"},
     "3.2.4": {"name": "Consistent Identification", "level": "AA"},
     "3.2.5": {"name": "Change on Request", "level": "AAA"},
+    "3.2.6": {"name": "Consistent Help", "level": "A"},  # WCAG 2.2
     "3.3.1": {"name": "Error Identification", "level": "A"},
     "3.3.2": {"name": "Labels or Instructions", "level": "A"},
     "3.3.3": {"name": "Error Suggestion", "level": "AA"},
     "3.3.4": {"name": "Error Prevention (Legal, Financial, Data)", "level": "AA"},
     "3.3.5": {"name": "Help", "level": "AAA"},
     "3.3.6": {"name": "Error Prevention (All)", "level": "AAA"},
+    "3.3.7": {"name": "Redundant Entry", "level": "A"},  # WCAG 2.2
+    "3.3.8": {"name": "Accessible Authentication (Minimum)", "level": "AA"},  # WCAG 2.2
+    "3.3.9": {"name": "Accessible Authentication (Enhanced)", "level": "AAA"},  # WCAG 2.2
     # Robust
     "4.1.1": {"name": "Parsing", "level": "A"},
     "4.1.2": {"name": "Name, Role, Value", "level": "A"},

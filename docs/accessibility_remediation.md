@@ -11,7 +11,7 @@ This document explains the accessibility remediation capabilities of the PDF to 
 
 The accessibility remediation functionality:
 
-1. Uses the accessibility audit results to identify WCAG 2.1 compliance issues
+1. Uses the accessibility audit results to identify WCAG 2.1 and 2.2 compliance issues
 2. Creates specialized prompts for each issue type (alt text, page titles, ARIA attributes, etc.)
 3. Sequentially processes issues through Bedrock models to generate fixes
 4. Applies the fixes to the HTML directly
@@ -59,7 +59,7 @@ remediation_result = remediate_html_accessibility(
     image_dir='path/to/images_folder',  # For image-related issues
     output_path='path/to/output.html',  # Where to save remediated HTML
     options={
-        'model_id': 'amazon.nova-lite-v1:0',
+        'model_id': 'us.amazon.nova-2-lite-v1:0',
         'max_issues': 10,  # Limit number of issues to process
         'issue_types': ['missing-alt-text', 'empty-alt-text'],  # Only process specific issues
         'severity_threshold': 'major'  # Only 'major' and 'critical' issues
@@ -82,6 +82,7 @@ The remediation process uses specialized templates for common accessibility issu
 | `empty-heading` | Headings with no content | 1.3.1 |
 | `table-missing-headers` | Tables without headers | 1.3.1 |
 | `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
+| `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 
@@ -112,7 +113,7 @@ See the `tests/test_accessibility_remediation.py` script for a complete example.
 You can specify different Bedrock model IDs for remediation:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --model-id amazon.nova-lite-v1:0
+content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --model-id us.amazon.nova-2-lite-v1:0
 ```
 
 ### Filtered Remediation

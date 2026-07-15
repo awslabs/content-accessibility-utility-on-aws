@@ -12,12 +12,29 @@ import os
 from datetime import datetime
 from typing import Optional
 
+from botocore.config import Config
+
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 from content_accessibility_utility_on_aws.utils.usage_tracker import SessionUsageTracker
 from content_accessibility_utility_on_aws.utils.image_utils import resize_image
+from content_accessibility_utility_on_aws.utils.constants import (
+    DEFAULT_MODEL_ID,
+    DEFAULT_MAX_TOKENS,
+    DEFAULT_TEMPERATURE,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
+
+# Shared boto3 config for all Bedrock runtime clients: adaptive retries so calls
+# back off under throttling instead of failing immediately. Anything talking to
+# bedrock-runtime (including the test-tier judge) should reuse this so the retry
+# and timeout policy cannot drift between call sites.
+BEDROCK_BOTO_CONFIG = Config(
+    retries={"max_attempts": 5, "mode": "adaptive"},
+    connect_timeout=10,
+    read_timeout=120,
+)
 
 
 class AltTextGenerationError(Exception):
@@ -39,7 +56,7 @@ class BedrockClient:
 
     def __init__(
         self,
-        model_id: str = "us.amazon.nova-lite-v1:0",
+        model_id: str = DEFAULT_MODEL_ID,
         profile: Optional[str] = None,
     ):
         """
@@ -51,6 +68,9 @@ class BedrockClient:
         """
         self.model_id = model_id
         self.profile = profile
+        # Shared adaptive-retry config so the client backs off automatically
+        # under Bedrock throttling instead of failing the call immediately.
+        boto_config = BEDROCK_BOTO_CONFIG
         try:
             # Create a boto3 session with the provided profile
             if profile:
@@ -68,7 +88,7 @@ class BedrockClient:
                 # No profile specified, use default credentials
                 session = boto3.Session()
 
-            self.client = session.client("bedrock-runtime")
+            self.client = session.client("bedrock-runtime", config=boto_config)
             logger.debug(
                 f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
             )
@@ -76,8 +96,61 @@ class BedrockClient:
             logger.warning(f"Failed to initialize Bedrock client: {e}")
             raise
 
+    # Default system prompt steering the model toward accurate, standards-aware
+    # accessibility output. Callers can override via the ``system_prompt`` arg.
+    DEFAULT_SYSTEM_PROMPT = (
+        "You are an expert web accessibility assistant. You help remediate "
+        "HTML content to meet WCAG 2.1 and 2.2 accessibility standards. "
+        "Produce accurate, concise output and follow the requested format exactly."
+    )
+
+    def _track_usage(
+        self,
+        response: dict,
+        purpose: str,
+        fallback_input_tokens: int,
+        generated_text: str,
+        start_time: datetime,
+    ) -> None:
+        """
+        Record a Bedrock call in the session usage tracker.
+
+        Uses the model-reported token counts from the response when available,
+        falling back to estimates. Tracking failures are logged, never raised,
+        so usage accounting can never break a remediation.
+        """
+        processing_time_ms = int(
+            (datetime.now() - start_time).total_seconds() * 1000
+        )
+        usage = response.get("usage", {})
+        input_tokens = usage.get("inputTokens", fallback_input_tokens)
+        output_tokens = usage.get(
+            "outputTokens", SessionUsageTracker.estimate_tokens(generated_text)
+        )
+
+        try:
+            usage_tracker = SessionUsageTracker.get_instance()
+            usage_tracker.track_bedrock_call(
+                model_id=self.model_id,
+                purpose=purpose,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                processing_time_ms=processing_time_ms,
+            )
+            logger.debug(
+                f"Tracked Bedrock call: purpose={purpose}, "
+                f"input_tokens={input_tokens}, output_tokens={output_tokens}"
+            )
+        except Exception as track_error:
+            logger.warning(f"Failed to track Bedrock usage: {track_error}")
+
     def generate_text(
-        self, prompt: str, purpose: str = "general", max_tokens: int = 500
+        self,
+        prompt: str,
+        purpose: str = "general",
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        system_prompt: Optional[str] = None,
+        temperature: float = DEFAULT_TEMPERATURE,
     ) -> str:
         """
         Generate text using the Bedrock model.
@@ -86,6 +159,8 @@ class BedrockClient:
             prompt: The prompt to send to the model
             purpose: The purpose of the call (e.g., 'alt_text_generation', 'table_remediation')
             max_tokens: Maximum number of tokens to generate
+            system_prompt: Optional system prompt; defaults to an accessibility-focused prompt
+            temperature: Sampling temperature (0.0 for deterministic output)
 
         Returns:
             The generated text
@@ -96,7 +171,7 @@ class BedrockClient:
         start_time = datetime.now()
 
         try:
-            # Estimate input tokens
+            # Fallback token estimate; replaced with the model-reported count below.
             input_tokens = SessionUsageTracker.estimate_tokens(prompt)
 
             # Invoke the model
@@ -112,10 +187,20 @@ class BedrockClient:
                         ],
                     }
                 ],
+                system=[{"text": system_prompt or self.DEFAULT_SYSTEM_PROMPT}],
                 inferenceConfig={
                     "maxTokens": max_tokens,
+                    "temperature": temperature,
                 },
             )
+
+            # Warn if the model truncated its output so callers know the result
+            # may be incomplete.
+            if response.get("stopReason") == "max_tokens":
+                logger.warning(
+                    f"Bedrock response for purpose '{purpose}' was truncated "
+                    f"(stopReason=max_tokens, maxTokens={max_tokens})"
+                )
 
             # Extract the generated text
             generated_text = ""
@@ -127,26 +212,9 @@ class BedrockClient:
             ):
                 generated_text = response["output"]["message"]["content"][0]["text"]
 
-                # Track token usage
-                end_time = datetime.now()
-                processing_time_ms = int((end_time - start_time).total_seconds() * 1000)
-                output_tokens = SessionUsageTracker.estimate_tokens(generated_text)
-
-                try:
-                    # Track the usage in the session tracker
-                    usage_tracker = SessionUsageTracker.get_instance()
-                    usage_tracker.track_bedrock_call(
-                        model_id=self.model_id,
-                        purpose=purpose,
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        processing_time_ms=processing_time_ms,
-                    )
-                    logger.debug(
-                        f"Tracked Bedrock call: purpose={purpose}, input_tokens={input_tokens}, output_tokens={output_tokens}"
-                    )
-                except Exception as track_error:
-                    logger.warning(f"Failed to track Bedrock usage: {track_error}")
+                self._track_usage(
+                    response, purpose, input_tokens, generated_text, start_time
+                )
 
                 return generated_text
             else:
@@ -160,7 +228,7 @@ class BedrockClient:
             )
 
     def generate_alt_text_for_image(
-        self, image_path: str, prompt: str, max_tokens: int = 500
+        self, image_path: str, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS
     ) -> str:
         """
         Generate alt text for an image using multimodal capabilities.
@@ -257,10 +325,18 @@ class BedrockClient:
                         "content": content,
                     }
                 ],
+                system=[{"text": self.DEFAULT_SYSTEM_PROMPT}],
                 inferenceConfig={
                     "maxTokens": max_tokens,
+                    "temperature": DEFAULT_TEMPERATURE,
                 },
             )
+
+            if response.get("stopReason") == "max_tokens":
+                logger.warning(
+                    "Bedrock alt-text response was truncated "
+                    f"(stopReason=max_tokens, maxTokens={max_tokens})"
+                )
 
             # Extract the generated text
             if (
@@ -271,26 +347,13 @@ class BedrockClient:
             ):
                 generated_text = response["output"]["message"]["content"][0]["text"]
 
-                # Track token usage
-                end_time = datetime.now()
-                processing_time_ms = int((end_time - start_time).total_seconds() * 1000)
-                output_tokens = SessionUsageTracker.estimate_tokens(generated_text)
-
-                try:
-                    # Track the usage in the session tracker
-                    usage_tracker = SessionUsageTracker.get_instance()
-                    usage_tracker.track_bedrock_call(
-                        model_id=self.model_id,
-                        purpose="alt_text_generation",
-                        input_tokens=input_tokens,
-                        output_tokens=output_tokens,
-                        processing_time_ms=processing_time_ms,
-                    )
-                    logger.debug(
-                        f"Tracked Bedrock image analysis call: input_tokens={input_tokens}, output_tokens={output_tokens}"
-                    )
-                except Exception as track_error:
-                    logger.warning(f"Failed to track Bedrock usage: {track_error}")
+                self._track_usage(
+                    response,
+                    "alt_text_generation",
+                    input_tokens,
+                    generated_text,
+                    start_time,
+                )
 
                 return generated_text
             else:

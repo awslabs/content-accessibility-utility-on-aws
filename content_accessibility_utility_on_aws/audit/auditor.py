@@ -5,7 +5,7 @@
 HTML Accessibility Auditor.
 
 This module provides functionality for auditing
-HTML content against WCAG 2.1 accessibility standards.
+HTML content against WCAG 2.1 and 2.2 accessibility standards.
 """
 
 import os
@@ -33,6 +33,7 @@ from content_accessibility_utility_on_aws.audit.checks import (
     FormLabelCheck,
     FormRequiredFieldCheck,
     FormFieldsetCheck,
+    TargetSizeCheck,
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
@@ -47,7 +48,7 @@ logger = setup_logger(__name__)
 
 
 class AccessibilityAuditor:
-    """Class for auditing HTML content for WCAG 2.1 accessibility compliance issues."""
+    """Class for auditing HTML content for WCAG 2.1 and 2.2 accessibility compliance issues."""
 
     def __init__(
         self,
@@ -408,6 +409,7 @@ class AccessibilityAuditor:
             FormLabelCheck(self.soup, self._add_issue),
             FormRequiredFieldCheck(self.soup, self._add_issue),
             FormFieldsetCheck(self.soup, self._add_issue),
+            TargetSizeCheck(self.soup, self._add_issue),
         ]
 
         for check in checks:
@@ -740,9 +742,16 @@ class AccessibilityAuditor:
                     # Handle class attribute which could be a list
                     classes = current.get("class", [])
                     if classes:
-                        path.append(
+                        segment = (
                             f"{current.name}.{'.'.join(str(cls) for cls in classes)}"
                         )
+                        # Disambiguate among same-tag siblings: a class alone is
+                        # not unique (e.g. repeated "div.card"), so add
+                        # :nth-of-type when earlier siblings share the tag.
+                        siblings = current.find_previous_siblings(current.name)
+                        if siblings:
+                            segment += f":nth-of-type({len(siblings) + 1})"
+                        path.append(segment)
                 # Check for nth-of-type
                 else:
                     siblings = current.find_previous_siblings(current.name)

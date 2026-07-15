@@ -70,7 +70,7 @@ document-accessibility audit --input document.html --output audit_report.json --
 ### Remediate Accessibility Issues
 
 ```bash
-document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id amazon.nova-lite-v1:0
+document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id us.amazon.nova-2-lite-v1:0
 ```
 
 ## Process Command (Full Pipeline)
@@ -94,7 +94,7 @@ document-accessibility process --input document.pdf --output output_dir/ --s3-bu
 document-accessibility process --input document.pdf --output output_dir/ --skip-remediation
 
 # Full processing with custom settings
-document-accessibility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id amazon.nova-lite-v1:0
+document-accessibility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id us.amazon.nova-2-lite-v1:0
 ```
 
 ## Parameter Value Standards
@@ -140,7 +140,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     },
     perform_audit=True,
@@ -181,7 +181,7 @@ remediation_result = remediate_html_accessibility(
     html_path="output/document.html",
     audit_report=audit_result,
     options={
-        "model_id": "amazon.nova-lite-v1:0",
+        "model_id": "us.amazon.nova-2-lite-v1:0",
         "auto_fix": True
     }
 )

@@ -12,6 +12,12 @@ from bs4 import BeautifulSoup, Tag
 import re
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    generate_short_text,
+)
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -175,22 +181,13 @@ def remediate_skipped_heading_level(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
-
-    # Find the problematic heading
-    heading = None
-    for h_tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(h_tag).lower():
-            heading = h_tag
-            break
-
-    if not heading:
-        logger.warning(f"Could not find heading element with path: {path}")
+    # Resolve the heading via the shared issue resolver.
+    heading = find_element_from_issue(soup, issue)
+    if heading is None or heading.name not in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        logger.warning(
+            f"Could not find heading element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Get current heading level
@@ -241,26 +238,21 @@ def remediate_empty_heading_content(
     Args:
         soup: The BeautifulSoup object representing the HTML document
         issue: The accessibility issue to remediate
+        *args: Optional BedrockClient used to derive heading text from context
 
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Extract element path from the issue
-    path = issue.get("location", {}).get("path")
-    if not path:
-        logger.warning("No element path provided in issue")
-        return None
+    bedrock_client = args[0] if args else None
 
-    # Find the problematic heading
-    heading = None
-    for h_tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-        # This is a simplified selector match - in practice we would need more robust matching
-        if path.lower() in str(h_tag).lower():
-            heading = h_tag
-            break
-
-    if not heading:
-        logger.warning(f"Could not find heading element with path: {path}")
+    # Resolve the heading via the shared issue resolver (uses the auditor's
+    # canonical location.path selector rather than fragile substring matching).
+    heading = find_element_from_issue(soup, issue)
+    if heading is None or heading.name not in ("h1", "h2", "h3", "h4", "h5", "h6"):
+        logger.warning(
+            f"Could not find heading element for issue path: "
+            f"{issue.get('location', {}).get('path')}"
+        )
         return None
 
     # Check if heading is empty or contains generic text
@@ -300,21 +292,35 @@ def remediate_empty_heading_content(
             if text_content:
                 context_text = " ".join(text_content)[:100]
 
-        # Generate heading text based on context and level
-        if context_text:
-            # Extract key phrases or summarize
-            words = context_text.split()
-            if len(words) > 5:
-                new_heading_text = " ".join(words[:5]) + "..."
+        # Prefer a model-generated heading derived from the section content.
+        # Falls back to the rule-based behavior below when no client/context.
+        new_heading_text = generate_short_text(
+            bedrock_client,
+            instruction=(
+                f"Write a concise, descriptive level-{level} section heading "
+                "(3-8 words) that summarizes the section text below."
+            ),
+            context=context_text,
+            purpose="heading_generation",
+            max_words=8,
+        )
+
+        if not new_heading_text:
+            # Generate heading text based on context and level
+            if context_text:
+                # Extract key phrases or summarize
+                words = context_text.split()
+                if len(words) > 5:
+                    new_heading_text = " ".join(words[:5]) + "..."
+                else:
+                    new_heading_text = context_text
             else:
-                new_heading_text = context_text
-        else:
-            # Generate from heading position and structure
-            if level == 1:
-                new_heading_text = "Document Title"
-            else:
-                siblings = len(list(heading.find_previous_siblings(heading.name)))
-                new_heading_text = f"Section {siblings + 1}"
+                # Generate from heading position and structure
+                if level == 1:
+                    new_heading_text = "Document Title"
+                else:
+                    siblings = len(list(heading.find_previous_siblings(heading.name)))
+                    new_heading_text = f"Section {siblings + 1}"
 
         # Update heading text
         heading.string = new_heading_text

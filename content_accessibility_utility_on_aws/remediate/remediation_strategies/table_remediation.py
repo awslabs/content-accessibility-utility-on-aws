@@ -160,42 +160,47 @@ def remediate_table_headers_id(
                 th["id"] = f"th-{i+1}"
             modified = True
 
-    # Link data cells to headers
-    headers_with_ids = [th for th in headers if th.get("id")]
-    if headers_with_ids:
-        # Get header positions
-        header_map = {}
+    # Link data cells to headers.
+    #
+    # Index rows table-wide (a single find_all("tr") sequence, not per
+    # thead/tbody section, which previously made the first body row collide
+    # with the header row at index 0) and index every cell by its position
+    # among ALL cells in its row (th and td together) so a leading row-header
+    # <th> does not shift the column numbering of the data <td>s. Column
+    # headers are the <th> in the first row; the row header is the first cell
+    # of the data cell's own row when that cell is a <th>.
+    all_rows = table.find_all("tr")
+    col_header_ids = {}  # column index -> id of the header in row 0
+    row_header_ids = {}  # row index -> id of the leading <th> in that row
 
-        # Map header positions by row and column
-        for th in headers_with_ids:
-            # Find parent row and index within row
-            parent_row = th.parent
-            if parent_row and parent_row.name == "tr":
-                row_index = (
-                    list(parent_row.parent.find_all("tr")).index(parent_row)
-                    if parent_row.parent
-                    else 0
-                )
-                cell_index = list(parent_row.find_all(["th", "td"])).index(th)
-                header_map[(row_index, cell_index)] = th.get("id")
+    for row_idx, tr in enumerate(all_rows):
+        cells = tr.find_all(["th", "td"])
+        for col_idx, cell in enumerate(cells):
+            if cell.name != "th" or not cell.get("id"):
+                continue
+            if row_idx == 0:
+                col_header_ids[col_idx] = cell.get("id")
+            if col_idx == 0:
+                row_header_ids[row_idx] = cell.get("id")
 
-        # Apply headers attribute to data cells
-        for row_idx, tr in enumerate(table.find_all("tr")):
-            for col_idx, td in enumerate(tr.find_all("td")):
-                headers_for_cell = []
-
-                # Column headers are in row 0
-                if (0, col_idx) in header_map:
-                    headers_for_cell.append(header_map[(0, col_idx)])
-
-                # Row headers are in column 0
-                if (row_idx, 0) in header_map:
-                    headers_for_cell.append(header_map[(row_idx, 0)])
-
-                # Add headers attribute if we found relevant headers
-                if headers_for_cell:
-                    td["headers"] = " ".join(headers_for_cell)
-                    modified = True
+    for row_idx, tr in enumerate(all_rows):
+        for col_idx, cell in enumerate(tr.find_all(["th", "td"])):
+            if cell.name != "td":
+                continue  # only data cells get a headers= reference
+            headers_for_cell = []
+            if col_idx in col_header_ids:
+                headers_for_cell.append(col_header_ids[col_idx])
+            if row_idx in row_header_ids:
+                headers_for_cell.append(row_header_ids[row_idx])
+            # De-dup while preserving order (a cell in the header column could
+            # otherwise reference the same id twice).
+            seen = set()
+            headers_for_cell = [
+                h for h in headers_for_cell if not (h in seen or seen.add(h))
+            ]
+            if headers_for_cell:
+                cell["headers"] = " ".join(headers_for_cell)
+                modified = True
 
     if modified:
         return "Added IDs to table headers and linked data cells with headers attribute"
@@ -312,6 +317,55 @@ def fuzzy_match_header(
     return None, None
 
 
+def infer_scope_with_confidence(table: Tag, th: Tag) -> Tuple[str, bool]:
+    """
+    Infer a header's scope from its position, and report whether the position
+    makes the answer unambiguous.
+
+    Returns:
+        (scope, confident) where scope is 'col' or 'row'. ``confident`` is True
+        when the position dictates the scope by the standard matrix-table
+        convention (thead / first row => col; first column of a body row => row;
+        explicit role/class hint). It is False for interior headers, where the
+        caller may prefer an AI judgment.
+    """
+    parent_row = th.parent
+    if not parent_row or parent_row.name != "tr":
+        return "col", False  # Not in a row; weak default.
+
+    # Explicit ARIA role / class hints are authoritative.
+    if th.get("role") == "rowheader" or any(
+        "rowhead" in c.lower() for c in th.get("class", [])
+    ):
+        return "row", True
+    if th.get("role") == "columnheader" or any(
+        "colhead" in c.lower() for c in th.get("class", [])
+    ):
+        return "col", True
+
+    # Header in thead is a column header by convention.
+    if th.parent.parent and th.parent.parent.name == "thead":
+        return "col", True
+
+    all_rows = table.find_all("tr")
+    row_index = all_rows.index(parent_row) if parent_row in all_rows else -1
+    row_cells = parent_row.find_all(["th", "td"])
+    cell_index = row_cells.index(th) if th in row_cells else -1
+
+    # First row: column header (covers the top-left corner cell, which is a
+    # column header by convention even when the first column also holds row
+    # headers). This is the case the AI most often gets wrong.
+    if row_index == 0:
+        return "col", True
+
+    # First cell of a body row: row header.
+    if cell_index == 0:
+        return "row", True
+
+    # Interior header (not first row, not first column): genuinely ambiguous.
+    return "col", False
+
+
 def infer_scope_from_position(table: Tag, th: Tag) -> str:
     """
     Enhanced scope inference based on header position in table.
@@ -323,53 +377,8 @@ def infer_scope_from_position(table: Tag, th: Tag) -> str:
     Returns:
         Either 'col' or 'row' based on position
     """
-    # Find parent row and its position
-    parent_row = th.parent
-    if not parent_row or parent_row.name != "tr":
-        return "col"  # Default to column header
-
-    # Check if header is in thead - these are almost always column headers
-    if th.parent.parent and th.parent.parent.name == "thead":
-        return "col"
-
-    # Get all rows in the table
-    all_rows = table.find_all("tr")
-    row_index = list(all_rows).index(parent_row) if parent_row in all_rows else -1
-
-    # Get position of cell in row
-    cell_index = (
-        list(parent_row.find_all(["th", "td"])).index(th)
-        if th in parent_row.find_all(["th", "td"])
-        else -1
-    )
-
-    # First row headers are typically column headers
-    if row_index == 0:
-        return "col"
-    # First column headers are typically row headers
-    elif cell_index == 0:
-        return "row"
-
-    # Headers in the second row but possibly part of header structure
-    if (
-        row_index == 1
-        and table.find("thead")
-        and th.parent in table.find("thead").find_all("tr")
-    ):
-        return "col"
-
-    # Check for "rowheader" role or similar class names
-    if th.get("role") == "rowheader" or any(
-        "rowhead" in c.lower() for c in th.get("class", [])
-    ):
-        return "row"
-    if th.get("role") == "columnheader" or any(
-        "colhead" in c.lower() for c in th.get("class", [])
-    ):
-        return "col"
-
-    # Default to column header
-    return "col"
+    scope, _ = infer_scope_with_confidence(table, th)
+    return scope
 
 
 def remediate_table_missing_scope(
@@ -624,60 +633,51 @@ def remediate_table_missing_scope(
                     f"Added missing header '{header_text}' with fallback scope '{fallback_scope}'"
                 )
 
-    # First pass: apply AI analysis with fuzzy matching where possible
+    # First pass: assign scope. Position wins when it is unambiguous (thead /
+    # first row => col, first body-row cell => row); the AI analysis is only
+    # consulted for genuinely ambiguous interior headers. This prevents the AI
+    # from mislabeling obvious corner/edge headers (e.g. giving the top-left
+    # "Region" scope="row" when convention makes it a column header).
     for th in headers:
         if th.get("scope"):  # Skip headers that already have scope
             continue
 
-        # Get header text
         header_text = th.get_text(strip=True)
+        position_scope, position_confident = infer_scope_with_confidence(table, th)
 
-        # Handle empty headers
-        if not header_text:
+        # Unambiguous position: trust it over the model.
+        if position_confident:
+            th["scope"] = position_scope
+            modified = True
+            fallback_count += 1
+            continue
+
+        # Ambiguous position: prefer the AI judgment when we have one.
+        ai_scope = None
+        if header_text:
+            if table_analysis.get(header_text) in ["col", "row"]:
+                ai_scope = table_analysis[header_text]
+            else:
+                _, fuzzy_scope = fuzzy_match_header(table_analysis, header_text)
+                if fuzzy_scope in ["col", "row"]:
+                    ai_scope = fuzzy_scope
+        else:
             header_idx = headers.index(th)
-            if header_idx in empty_header_map:
-                empty_key = empty_header_map[header_idx]
-                scope_value = table_analysis.get(empty_key)
-                if scope_value in ["col", "row"]:
-                    th["scope"] = scope_value
-                    modified = True
-                    ai_match_count += 1
-                    continue
+            empty_key = empty_header_map.get(header_idx)
+            if empty_key and table_analysis.get(empty_key) in ["col", "row"]:
+                ai_scope = table_analysis[empty_key]
 
-            # Fallback for empty headers
-            scope_value = infer_scope_from_position(table, th)
-            th["scope"] = scope_value
+        if ai_scope:
+            th["scope"] = ai_scope
+            modified = True
+            ai_match_count += 1
+        else:
+            th["scope"] = position_scope
             modified = True
             fallback_count += 1
             logger.debug(
-                f"Using fallback scope '{scope_value}' for empty header at index {headers.index(th)}"
+                f"Using positional scope '{position_scope}' for header '{header_text}'"
             )
-            continue
-
-        # Try exact match first
-        if header_text in table_analysis:
-            scope_value = table_analysis[header_text]
-            if scope_value in ["col", "row"]:
-                th["scope"] = scope_value
-                modified = True
-                ai_match_count += 1
-                continue
-
-        # Try fuzzy matching if no exact match
-        matched_header, scope_value = fuzzy_match_header(table_analysis, header_text)
-        if matched_header and scope_value in ["col", "row"]:
-            th["scope"] = scope_value
-            modified = True
-            ai_match_count += 1
-            continue
-
-        # If AI analysis failed completely or didn't provide this header,
-        # use positional fallback logic to assign scope
-        scope_value = infer_scope_from_position(table, th)
-        th["scope"] = scope_value
-        modified = True
-        fallback_count += 1
-        logger.debug(f"Using fallback scope '{scope_value}' for header '{header_text}'")
 
     # Report on remediation results
     if modified:

@@ -18,6 +18,7 @@ from content_accessibility_utility_on_aws.remediate.services.bedrock_client impo
     BedrockClient,
     AltTextGenerationError,
 )
+from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
 
 # Import remediation strategies
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.link_remediation import (
@@ -69,6 +70,9 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.form_
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.figure_remediation import (
     remediate_improper_figure_structure,
 )
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.target_size_remediation import (
+    remediate_target_size_too_small,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -96,20 +100,28 @@ class RemediationManager:
 
         if not self.options.get("disable_ai", False):
             try:
-                model_id = self.options.get(
-                    "model_id", "us.amazon.nova-lite-v1:0"
-                )
-                profile = self.options.get("profile")
-                self.bedrock_client = BedrockClient(model_id=model_id, profile=profile)
-                logger.debug(
-                    f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
-                )
+                self.bedrock_client = self._make_bedrock_client()
                 self.bda_client = self.bedrock_client
             except Exception as e:
                 logger.warning(f"Failed to initialize Bedrock client: {e}")
                 # Ensure attributes are properly initialized even after failure
                 self.bedrock_client = None
                 self.bda_client = None
+
+    def _make_bedrock_client(self) -> BedrockClient:
+        """
+        Construct a BedrockClient from the configured model id and profile.
+
+        Single source of truth for client construction so the model-id default
+        and profile handling stay consistent across every call site.
+        """
+        model_id = self.options.get("model_id", DEFAULT_MODEL_ID)
+        profile = self.options.get("profile")
+        client = BedrockClient(model_id=model_id, profile=profile)
+        logger.debug(
+            f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
+        )
+        return client
 
     def _get_remediation_strategies(self) -> Dict[str, Callable]:
         """
@@ -118,59 +130,79 @@ class RemediationManager:
         Returns:
             Dictionary mapping issue types to remediation functions
         """
+        # Keys are canonical hyphenated issue types, matching what the audit
+        # checks emit. Lookups are normalized via _normalize_issue_type, so an
+        # underscored variant of any type resolves to the same strategy without
+        # needing a duplicate alias entry here.
         return {
             # Link remediation strategies
-            "empty_link": remediate_empty_link_text,
-            "generic_link_text": remediate_generic_link_text,
-            "url_as_link_text": remediate_url_as_link_text,
-            "new_window_link_no_warning": remediate_new_window_link_no_warning,
+            "empty-link-text": remediate_empty_link_text,
+            "empty-link": remediate_empty_link_text,
+            "generic-link-text": remediate_generic_link_text,
+            "url-as-link-text": remediate_url_as_link_text,
+            "new-window-link-no-warning": remediate_new_window_link_no_warning,
             # Image remediation strategies
-            "missing_alt_text": remediate_missing_alt_text,
-            "empty_alt_text": remediate_empty_alt_text,
-            "generic_alt_text": remediate_generic_alt_text,
-            "generic-alt-text": remediate_generic_alt_text,  # Alternative hyphenated format
-            "long_alt_text": remediate_long_alt_text,
+            "missing-alt-text": remediate_missing_alt_text,
+            "empty-alt-text": remediate_empty_alt_text,
+            "generic-alt-text": remediate_generic_alt_text,
+            "long-alt-text": remediate_long_alt_text,
             # Table remediation strategies
-            "table_missing_headers": remediate_table_missing_headers,
-            "table-missing-headers": remediate_table_missing_headers,  # Alternative hyphenated format
-            "table_no_headers": remediate_table_missing_headers,
-            "table-no-headers": remediate_table_missing_headers,  # Alternative hyphenated format
-            "table_missing_scope": remediate_table_missing_scope,
-            "table-missing-scope": remediate_table_missing_scope,  # Alternative hyphenated format
-            "table_missing_caption": remediate_table_missing_caption,
-            "table-missing-caption": remediate_table_missing_caption,  # Alternative hyphenated format
-            "table_missing_thead": remediate_table_missing_thead,
-            "table-missing-thead": remediate_table_missing_thead,  # Alternative hyphenated format
-            "table_missing_tbody": remediate_table_missing_tbody,
-            "table-missing-tbody": remediate_table_missing_tbody,  # Alternative hyphenated format
-            "table_irregular_headers": remediate_table_irregular_headers,
-            "table-irregular-headers": remediate_table_irregular_headers,  # Alternative hyphenated format
-            "table-missing-headers-id": remediate_table_headers_id,  # New strategy
-            # Heading remediation strategies
+            "table-missing-headers": remediate_table_missing_headers,
+            "table-no-headers": remediate_table_missing_headers,
+            "table-missing-scope": remediate_table_missing_scope,
+            "table-missing-caption": remediate_table_missing_caption,
+            "table-missing-thead": remediate_table_missing_thead,
+            "table-missing-tbody": remediate_table_missing_tbody,
+            "table-irregular-headers": remediate_table_irregular_headers,
+            "table-missing-headers-id": remediate_table_headers_id,
+            # Heading remediation strategies. The audit emits "generic-heading";
+            # "generic-heading-content" is kept as an alias.
             "skipped-heading-level": remediate_skipped_heading_level,
             "empty-heading": remediate_empty_heading_content,
+            "generic-heading": remediate_empty_heading_content,
             "generic-heading-content": remediate_empty_heading_content,
-            "no-h1": remediate_missing_h1,  # New strategy
-            "no-headings": remediate_missing_headings,  # New strategy
+            "no-h1": remediate_missing_h1,
+            "no-headings": remediate_missing_headings,
             # Color contrast remediation strategies
-            "insufficient_color_contrast": remediate_insufficient_color_contrast,
-            "insufficient-color-contrast": remediate_insufficient_color_contrast,  # Alternative hyphenated format
+            "insufficient-color-contrast": remediate_insufficient_color_contrast,
             # Landmark remediation strategies
             "missing-main-landmark": remediate_missing_main_landmark,
             "missing-navigation-landmark": remediate_missing_navigation_landmark,
             "missing-header-landmark": remediate_missing_header_landmark,
             "missing-footer-landmark": remediate_missing_footer_landmark,
             "missing-skip-link": remediate_missing_skip_link,
-            # Document structure remediation strategies
+            # Document structure remediation strategies.
+            # Keys must match the issue types the audit checks emit
+            # ("missing-title", "missing-document-language"); the older
+            # "missing-page-title"/"missing-language" keys are kept too.
+            "missing-title": remediate_missing_document_title,
             "missing-page-title": remediate_missing_document_title,
+            "missing-document-language": remediate_missing_language,
             "missing-language": remediate_missing_language,
-            # Form remediation strategies
+            # Form remediation strategies. The audit emits
+            # "form-control-missing-label"; "missing-input-label" is kept as an alias.
+            "form-control-missing-label": remediate_missing_form_labels,
             "missing-input-label": remediate_missing_form_labels,
             "missing-required-indicator": remediate_missing_required_indicators,
+            # The audit emits "form-related-controls-no-fieldset" for ungrouped
+            # related controls; "missing-fieldset" is kept as an alias.
+            "form-related-controls-no-fieldset": remediate_missing_fieldsets,
             "missing-fieldset": remediate_missing_fieldsets,
             # Figure remediation strategies
             "improper-figure-structure": remediate_improper_figure_structure,
+            # Target size remediation strategies (WCAG 2.2)
+            "target-size-too-small": remediate_target_size_too_small,
         }
+
+    @staticmethod
+    def _normalize_issue_type(issue_type: Optional[str]) -> Optional[str]:
+        """
+        Normalize an issue type to the canonical hyphenated form used as
+        registry keys, so underscored variants resolve to the same strategy.
+        """
+        if not issue_type:
+            return issue_type
+        return issue_type.replace("_", "-")
 
     def remediate_issue(self, issue: Dict[str, Any]) -> Optional[str]:
         """
@@ -182,7 +214,7 @@ class RemediationManager:
         Returns:
             A message describing the remediation, or None if no remediation was performed
         """
-        issue_type = issue.get("type")
+        issue_type = self._normalize_issue_type(issue.get("type"))
 
         # Check if we have a remediation strategy for this issue type
         if issue_type in self.remediation_strategies:
@@ -190,28 +222,18 @@ class RemediationManager:
                 # Apply the remediation strategy with BedrockClient if available
                 client_to_use = self.bedrock_client
 
-                # Always ensure we have a client for table remediation
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                # Ensure we have a client for table remediation, unless the
+                # caller explicitly disabled AI (in which case table remediation
+                # uses its rule-based fallback rather than calling Bedrock).
+                if issue_type.startswith("table-") and not self.options.get(
+                    "disable_ai", False
+                ):
                     if not client_to_use:
                         logger.warning(
                             f"No BedrockClient available for {issue_type}. Creating one with profile: {self.options.get('profile')}"
                         )
                         try:
-                            # Try to create a new BedrockClient with the profile
-                            from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
-                                BedrockClient,
-                            )
-
-                            model_id = self.options.get(
-                                "model_id", "us.amazon.nova-lite-v1:0"
-                            )
-                            profile = self.options.get("profile")
-                            client_to_use = BedrockClient(
-                                model_id=model_id, profile=profile
-                            )
-                            logger.debug(
-                                f"Successfully created BedrockClient for table remediation: {issue_type}"
-                            )
+                            client_to_use = self._make_bedrock_client()
                         except Exception as client_error:
                             logger.error(
                                 f"Failed to create BedrockClient: {client_error}"
@@ -219,7 +241,7 @@ class RemediationManager:
                             # Continue without client, table_remediation will handle fallbacks
 
                 # Apply the remediation strategy with enhanced debugging for table issues
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                if issue_type.startswith("table-"):
                     logger.debug(
                         f"Attempting to remediate {issue_type} with client: {client_to_use is not None}"
                     )
@@ -250,48 +272,51 @@ class RemediationManager:
                 # Handle AI requirement error - create a client if possible
                 logger.warning(f"AI required for {issue_type}: {e}")
 
-                try:
-                    # Always attempt to create a fresh client for this remediation
-                    from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
-                        BedrockClient,
+                # Respect disable_ai: do not construct a Bedrock client (which
+                # would make real AWS calls) when the caller disabled AI.
+                # Respect disable_ai: skip constructing a Bedrock client (which
+                # would make real AWS calls). The deterministic table fallback
+                # below still runs, so table scope can be inferred without AI.
+                ai_disabled = self.options.get("disable_ai", False)
+                if ai_disabled:
+                    logger.debug(
+                        f"AI disabled; skipping AI recovery for {issue_type}"
                     )
+                else:
+                    try:
+                        profile = self.options.get("profile")
 
-                    model_id = self.options.get(
-                        "model_id", "us.amazon.nova-lite-v1:0"
-                    )
-                    profile = self.options.get("profile")
-
-                    if profile:
-                        logger.debug(
-                            f"Creating BedrockClient with profile {profile} for {issue_type}"
-                        )
-                        try:
-                            client = BedrockClient(model_id=model_id, profile=profile)
-                            # Try remediation again with the new client
-                            logger.debug(f"Retrying {issue_type} with new client")
-                            result = self.remediation_strategies[issue_type](
-                                self.soup, issue, client
+                        if profile:
+                            logger.debug(
+                                f"Creating BedrockClient with profile {profile} for {issue_type}"
                             )
-                            if result:
-                                logger.debug(
-                                    f"Remediated {issue_type} with newly created client"
+                            try:
+                                client = self._make_bedrock_client()
+                                # Try remediation again with the new client
+                                logger.debug(f"Retrying {issue_type} with new client")
+                                result = self.remediation_strategies[issue_type](
+                                    self.soup, issue, client
                                 )
-                                return result
-                            else:
+                                if result:
+                                    logger.debug(
+                                        f"Remediated {issue_type} with newly created client"
+                                    )
+                                    return result
+                                else:
+                                    logger.error(
+                                        f"Still failed to remediate {issue_type} with new client"
+                                    )
+                            except Exception as client_error:
                                 logger.error(
-                                    f"Still failed to remediate {issue_type} with new client"
+                                    f"Failed to create BedrockClient: {client_error}"
                                 )
-                        except Exception as client_error:
-                            logger.error(
-                                f"Failed to create BedrockClient: {client_error}"
-                            )
-                except Exception as recovery_error:
-                    logger.error(
-                        f"Failed to recover from AIRemediationRequiredError: {recovery_error}"
-                    )
+                    except Exception as recovery_error:
+                        logger.error(
+                            f"Failed to recover from AIRemediationRequiredError: {recovery_error}"
+                        )
 
                 # For table issues, use aggressive fallback instead of failing
-                if issue_type.startswith("table-") or issue_type.startswith("table_"):
+                if issue_type.startswith("table-"):
                     from content_accessibility_utility_on_aws.remediate.remediation_strategies.table_remediation import (
                         infer_scope_from_position,
                     )
@@ -353,6 +378,12 @@ class RemediationManager:
                                 )
                     except Exception as fallback_error:
                         logger.error(f"Failed fallback attempt: {fallback_error}")
+
+                # With AI disabled there is no client to recover with, so a
+                # non-table issue that still requires AI cannot be remediated;
+                # report it as unremediated rather than raising.
+                if ai_disabled:
+                    return None
 
                 # If we couldn't recover or use fallback, re-raise the error
                 raise
@@ -426,7 +457,9 @@ class RemediationManager:
 
         # Remediate each issue
         for issue in issues:
-            issue_type = issue.get("type")
+            # Normalize to the canonical hyphenated form so the strategy-exists
+            # check below matches remediate_issue's own lookup.
+            issue_type = self._normalize_issue_type(issue.get("type"))
 
             # Ensure issue has a proper ID - preserve the original ID from audit
             issue_id = issue.get("id")

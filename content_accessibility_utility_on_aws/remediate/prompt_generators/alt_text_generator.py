@@ -17,6 +17,9 @@ from content_accessibility_utility_on_aws.remediate.services.bedrock_client impo
     BedrockClient,
     AltTextGenerationError,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    strip_quotes_and_trailing_period,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -122,19 +125,17 @@ def clean_alt_text(alt_text: str) -> str:
     Returns:
         Cleaned alt text
     """
-    # Remove any quotes that might be around the text
-    alt_text = alt_text.strip("\"'")
-
-    # Remove phrases like "Image of" or "Picture of" from the beginning
+    # Remove phrases like "Image of" or "Picture of" from the beginning. Done
+    # before quote-stripping so a leading quote does not block the prefix match.
     alt_text = re.sub(
-        r"^(image|picture|photo|photograph|illustration|graphic|icon)\s+of\s+",
+        r"^[\"']?(image|picture|photo|photograph|illustration|graphic|icon)\s+of\s+",
         "",
         alt_text,
         flags=re.IGNORECASE,
     )
 
-    # Remove any trailing periods
-    alt_text = alt_text.rstrip(".")
+    # Strip surrounding quotes and any trailing period (shared helper).
+    alt_text = strip_quotes_and_trailing_period(alt_text)
 
     # Capitalize first letter
     if alt_text:

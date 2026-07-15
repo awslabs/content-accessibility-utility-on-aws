@@ -30,6 +30,7 @@ from content_accessibility_utility_on_aws.api import (
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 from content_accessibility_utility_on_aws.utils.config import config_manager, load_config_file, ConfigurationError
+from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -228,7 +229,7 @@ def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--model-id",
-        default="us.amazon.nova-lite-v1:0",
+        default=DEFAULT_MODEL_ID,
         help="Bedrock model ID to use for remediation",
     )
     parser.add_argument(
@@ -342,7 +343,7 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--model-id",
-        default="us.amazon.nova-lite-v1:0",
+        default=DEFAULT_MODEL_ID,
         help="Bedrock model ID to use for remediation",
     )
 

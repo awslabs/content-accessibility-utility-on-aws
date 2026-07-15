@@ -41,6 +41,20 @@ dependencies = [
 WebApp = [
     "streamlit>=1.43.2",
 ]
+test = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Default to the offline core suite. The AWS-backed AI quality tier is opt-in
+# via `pytest -m aws` and is also gated on RUN_AWS_TESTS at collection time.
+addopts = "-m 'not aws' --strict-markers"
+markers = [
+    "aws: tests that make real AWS Bedrock calls (cost money, need credentials)",
+    "llm_judge: AI-quality tests that use an LLM-as-a-judge to score output",
+]
 
 [project.urls]
 "Bug Tracker" = "https://github.com/awslabs/content-accessibility-utility-on-aws/issues"

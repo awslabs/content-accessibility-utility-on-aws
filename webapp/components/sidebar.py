@@ -47,7 +47,7 @@ def create_sidebar() -> (
         process_button = st.button("Process Document", type="primary")
 
         st.markdown(f"Using document-accessibility v{current_version}")
-        st.markdown("Bedrock Model: `amazon.nova-lite-v1:0`")
+        st.markdown("Bedrock Model: `us.amazon.nova-2-lite-v1:0`")
 
         return uploaded_file, processing_options, process_button
 
@@ -138,8 +138,9 @@ def get_processing_options(file_type: Optional[str]) -> Dict[str, Any]:
     with st.expander("Cost Calculation Options", expanded=False):
         # Retrieve current values from session state or use defaults
         # Get cost rates from session state
-        # Price defaults are for Amazon Bedrock Data Automation (BDA) and Bedrock API using of
-        # Amazon Nova Lite Model with on-demand in US East (N. Virginia) region as of 2025-04-01
+        # Price defaults are illustrative, based on Amazon Bedrock Data Automation (BDA) and
+        # Bedrock on-demand usage in US East (N. Virginia). The default model is now
+        # Amazon Nova 2 Lite; verify its current rates and adjust the cost inputs accordingly.
         # These rates are subject to change, please refer to the official AWS pricing page for the most up-to-date information.
         # https://aws.amazon.com/bedrock/pricing/
         if "cost_per_bda_page" in st.session_state:
@@ -185,7 +186,7 @@ def get_processing_options(file_type: Optional[str]) -> Dict[str, Any]:
             help="Cost in $ per 1,000 output tokens for Bedrock models",
         )
         st.caption(
-            "Note: Default costs are base on AWS Pricing of Amazon Bedrock Data Automation & Amazon Bedrock Nova Lite Model with on-demand consumption in US East (N. Virginia) region as of 2025-04-01. These costs may vary based on your consumption type, provisioned capacity, model and region. Please refer to the [AWS Pricing page](https://aws.amazon.com/bedrock/pricing/) for the most accurate and up-to-date information."
+            "Note: Default costs are illustrative, based on AWS Pricing of Amazon Bedrock Data Automation & Amazon Bedrock with on-demand consumption in US East (N. Virginia). The default model is now Amazon Nova 2 Lite. These costs may vary based on your consumption type, provisioned capacity, model and region. Please refer to the [AWS Pricing page](https://aws.amazon.com/bedrock/pricing/) for the most accurate and up-to-date information."
         )
 
         # Update session state values if they've changed

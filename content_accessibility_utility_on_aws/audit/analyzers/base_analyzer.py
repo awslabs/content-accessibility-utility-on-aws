@@ -128,7 +128,14 @@ class BaseAnalyzer:
                     break
                 elif element.get("class"):
                     classes = ".".join(element.get("class"))
-                    path.append(f"{element.name}.{classes}")
+                    segment = f"{element.name}.{classes}"
+                    # Disambiguate among same-tag siblings: a class alone is not
+                    # unique (e.g. repeated "div.card"), so add :nth-of-type
+                    # when earlier siblings share the tag.
+                    siblings = element.find_previous_siblings(element.name)
+                    if siblings:
+                        segment += f":nth-of-type({len(siblings) + 1})"
+                    path.append(segment)
                 else:
                     siblings = element.find_previous_siblings(element.name)
                     if siblings:
