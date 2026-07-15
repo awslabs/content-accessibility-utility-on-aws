@@ -26,7 +26,7 @@ import pytest
 # A judge model deliberately STRONGER than the Nova 2 Lite model the app uses to
 # generate, so the judge is not grading its own family's output.
 JUDGE_MODEL_ID = os.environ.get(
-    "AI_QUALITY_JUDGE_MODEL", "us.anthropic.claude-sonnet-4-6"
+    "AI_QUALITY_JUDGE_MODEL", "us.anthropic.claude-sonnet-5"
 )
 
 # Number of independent judge calls per assertion; the aggregate (majority /
