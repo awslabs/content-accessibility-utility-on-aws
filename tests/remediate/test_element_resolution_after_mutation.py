@@ -83,6 +83,37 @@ def test_textarea_resolves_by_name_after_mutation():
     assert resolved.get("name") == "notes"
 
 
+def test_deleted_element_does_not_resolve_to_a_sibling():
+    """A removed element must resolve to None, not a different same-tag element.
+
+    Regression: after an earlier remediation deletes the target, a stale generic
+    path or the position fallback could hand back a surviving sibling, so alt
+    text / fixes intended for A would be applied to B.
+    """
+    soup = BeautifulSoup(
+        '<html><body><img src="a.png"><img src="b.png"></body></html>', "html.parser"
+    )
+    img_a = soup.find_all("img")[0]
+    issue = _issue_for(img_a, "html > body > img")
+    img_a.extract()  # earlier remediation removed image A
+    resolved = find_element_from_issue(soup, issue)
+    assert resolved is None
+
+
+def test_data_bda_id_disambiguates_same_src_images():
+    soup = BeautifulSoup(
+        '<html><body><img src="x.png" data-bda-id="1">'
+        '<img src="x.png" data-bda-id="2"></body></html>',
+        "html.parser",
+    )
+    second = soup.find_all("img")[1]
+    issue = _issue_for(second, "html > body > img:nth-of-type(2)")
+    # Break the path so resolution must use data-bda-id.
+    issue["location"]["path"] = "[document] > html > body > img"
+    resolved = find_element_from_issue(soup, issue)
+    assert resolved is not None and resolved.get("data-bda-id") == "2"
+
+
 def test_exact_path_still_preferred_when_unchanged():
     soup = BeautifulSoup(_HTML, "html.parser")
     email = soup.find("input", attrs={"name": "email"})

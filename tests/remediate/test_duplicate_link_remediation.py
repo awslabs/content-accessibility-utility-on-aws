@@ -36,13 +36,30 @@ def test_fallback_appends_path_hint_to_first_of_duplicates():
     assert first.get_text(strip=True) != "Documentation"  # now distinct
 
 
-def test_fallback_appends_domain_for_absolute_url():
+def test_fallback_distinguishes_same_text_absolute_urls():
+    # Prefer the distinguishing path segment; fall back to domain only if the
+    # path does not differentiate. Here /x vs /y makes the links distinct.
     html = ('<html><body><p><a href="https://a.example.com/x">Report</a> '
             '<a href="https://b.example.com/y">Report</a></p></body></html>')
     soup = BeautifulSoup(html, "html.parser")
     first = soup.find_all("a")[0]
-    msg = remediate_duplicate_link_text(soup, _issue(first))
-    assert "example.com" in first.get_text(strip=True)
+    remediate_duplicate_link_text(soup, _issue(first))
+    t = first.get_text(strip=True)
+    assert t != "Report"  # disambiguated
+    assert "x" in t  # path segment appended
+
+
+def test_fallback_avoids_leaving_same_domain_links_identical():
+    # Two "here" links to the same host, different paths: the domain alone would
+    # leave them identical ("here (x.com)" x2); the path must distinguish them.
+    html = ('<html><body><p><a href="https://x.com/alpha">here</a> '
+            '<a href="https://x.com/beta">here</a></p></body></html>')
+    soup = BeautifulSoup(html, "html.parser")
+    links = soup.find_all("a")
+    remediate_duplicate_link_text(soup, _issue(links[0]))
+    remediate_duplicate_link_text(soup, _issue(links[1]))
+    texts = [a.get_text(strip=True) for a in soup.find_all("a")]
+    assert texts[0] != texts[1], f"links still identical: {texts}"
 
 
 def test_already_unique_link_reports_no_change():

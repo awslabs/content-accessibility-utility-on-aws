@@ -43,6 +43,47 @@ def _domain_of(url: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _set_link_text(link, new_text: str) -> None:
+    """Set an anchor's accessible text without destroying nested markup.
+
+    Assigning ``link.string`` replaces *all* children, which silently discards
+    nested elements such as icons (``<i>``) or images inside the anchor. To
+    preserve them, this replaces only the anchor's own text nodes with the new
+    text, and — when the anchor has no direct text node to replace (e.g. it
+    contains only an ``<img>``) — appends a screen-reader-only span so the link
+    gets an accessible name while its visual content stays intact.
+    """
+    from bs4 import NavigableString
+
+    text_nodes = [c for c in link.contents if isinstance(c, NavigableString) and c.strip()]
+    has_child_tags = any(getattr(c, "name", None) for c in link.contents)
+
+    if not has_child_tags:
+        # Plain text link: safe to replace wholesale.
+        link.string = new_text
+        return
+
+    if text_nodes:
+        # Replace the first meaningful text node; blank out any others.
+        text_nodes[0].replace_with(new_text)
+        for extra in text_nodes[1:]:
+            extra.replace_with("")
+        return
+
+    # Only non-text children (e.g. an <img>): add sr-only text, keep the markup.
+    # Walk up to the BeautifulSoup document, which owns new_tag().
+    root = link
+    while root.parent is not None:
+        root = root.parent
+    if hasattr(root, "new_tag"):
+        sr = root.new_tag("span")
+        sr["class"] = "sr-only"
+        sr.string = new_text
+        link.append(sr)
+    else:  # pragma: no cover - defensive
+        link.append(new_text)
+
+
 def remediate_empty_link_text(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
@@ -301,26 +342,21 @@ def remediate_duplicate_link_text(
         max_words=8,
     )
     if generated and generated.lower() != current_text.lower():
-        link.string = generated
+        _set_link_text(link, generated)
         return (
             f"Disambiguated duplicate link text '{current_text}' -> '{generated}'"
         )
 
-    # Fallback: append the destination domain so same-text links differ.
-    domain = _domain_of(href)
-    if domain:
-        # Avoid double-appending if a prior run already did this.
-        if domain.lower() in current_text.lower():
-            return None
-        new_text = f"{current_text} ({domain})" if current_text else f"Visit {domain}"
-        link.string = new_text
-        return f"Disambiguated duplicate link text with destination: {new_text}"
-
-    # Relative/non-http destination: append a short path hint if available.
+    # Fallback: append a destination hint so same-text links differ. Prefer the
+    # most specific stable part of the URL that is NOT already in the text. The
+    # bare domain alone does not distinguish same-host/different-path links
+    # (e.g. x.com/a vs x.com/b), so try a path segment first, then the domain.
     path_hint = (href or "").strip("/").split("/")[-1].replace("-", " ").replace("_", " ")
-    if path_hint and path_hint.lower() not in current_text.lower():
-        new_text = f"{current_text} ({path_hint})" if current_text else path_hint
-        link.string = new_text
-        return f"Disambiguated duplicate link text with path: {new_text}"
+    domain = _domain_of(href)
+    for hint in (path_hint, domain):
+        if hint and hint.lower() not in current_text.lower():
+            new_text = f"{current_text} ({hint})" if current_text else f"Visit {hint}"
+            _set_link_text(link, new_text)
+            return f"Disambiguated duplicate link text with destination: {new_text}"
 
     return None
