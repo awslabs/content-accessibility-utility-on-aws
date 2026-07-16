@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `init-pipeline` CLI command: scaffolds the managed AgentCore deployment (SAM
+  template, runtime entrypoint, trigger Lambda, requirements) into a directory,
+  so the event-driven S3 → convert → audit → agent-remediate → S3 pipeline can be
+  deployed from a `pip install` alone — no repository checkout. The deployment
+  assets ship as package data.
+- `duplicate-link-text-different-url` remediation (WCAG 2.4.9): model-authored
+  disambiguation of same-text/different-URL links, with a rule-based fallback.
 - Optional browser-backed **rendered audit** (`--rendered` / `options["rendered"]`)
   that renders each page in a real headless browser (Playwright) and runs
   axe-core plus a focus-visibility probe, detecting computed-style and

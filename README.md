@@ -105,6 +105,32 @@ playwright install chromium
 > [Rendered & Agent Guide](docs/rendered_agent_guide.md) (Amazon Bedrock
 > AgentCore Browser Tool).
 
+### Deploy the managed pipeline (pip only, no repo checkout)
+
+A complete event-driven pipeline — **upload a document to S3 → convert (PDF) →
+audit → agent-remediate → accessible result written back to S3** — ships with the
+package. Scaffold the deployment files and deploy them; no clone required:
+
+```bash
+pip install "content-accessibility-utility-on-aws[agent]"
+pip install bedrock-agentcore-starter-toolkit aws-sam-cli
+
+# Write the SAM template, AgentCore runtime app, and trigger Lambda into a dir:
+content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
+cd a11y-pipeline
+
+agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
+  --requirements-file requirements.txt --region <region>
+agentcore launch                                  # note the runtime ARN
+sam deploy --guided --parameter-overrides \
+  AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
+```
+
+Then upload documents to the input bucket (`pdf/` for PDFs, `html/` for HTML or a
+`.zip` of HTML+CSS+JS); results land under `accessible/`. The generated
+`README.md` and the [Rendered & Agent Guide](docs/rendered_agent_guide.md) cover
+IAM, BDA setup, and usage in full.
+
 ## Configuration
 
 ### Environment Variables
@@ -392,6 +418,20 @@ Options:
 - `--agent`: Use the browser-backed agent for the rendered pass (implies `--rendered`)
 - Plus all options available in the individual commands
 - `--config`: Path to configuration file
+
+### Scaffold the managed cloud pipeline
+
+```bash
+content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
+```
+
+Writes the deployment files (SAM template, AgentCore runtime app, trigger Lambda,
+requirements) into the given directory so you can deploy the event-driven S3
+pipeline without checking out the repository. See
+[Deploy the managed pipeline](#deploy-the-managed-pipeline-pip-only-no-repo-checkout).
+
+Options:
+- `--force`: Overwrite existing files in the target directory
 
 ### Use a configuration file
 

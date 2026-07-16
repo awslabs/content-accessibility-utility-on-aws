@@ -88,7 +88,15 @@ content-accessibility-utility-on-aws = "content_accessibility_utility_on_aws.cli
 packages = { find = { include = ["content_accessibility_utility_on_aws*"] } }
 
 [tool.setuptools.package-data]
-content_accessibility_utility_on_aws = ["**/*.html", "agent/vendor/*.js"]
+content_accessibility_utility_on_aws = [
+    "**/*.html",
+    "agent/vendor/*.js",
+    # Bundled deploy scaffolding written out by `init-pipeline`.
+    "deployment_assets/*.yaml",
+    "deployment_assets/*.txt",
+    "deployment_assets/*.md",
+    "deployment_assets/**/*.py",
+]
 
 [tool.setuptools.dynamic]
 version = { attr = "content_accessibility_utility_on_aws.__version__" }

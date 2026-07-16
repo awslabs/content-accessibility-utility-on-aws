@@ -1,0 +1,9 @@
+# Runtime dependencies for the AgentCore-hosted accessibility pipeline.
+# Installed into the AgentCore Runtime container (Linux ARM64) at deploy time.
+#
+# The [agent] extra pulls in Playwright + Strands + the AgentCore SDK so the
+# hosted pipeline runs the render -> fix -> verify agent against the managed
+# AgentCore Browser Tool. No local Chromium is installed — the browser is the
+# managed service, reached over CDP.
+content-accessibility-utility-on-aws[agent]
+bedrock-agentcore

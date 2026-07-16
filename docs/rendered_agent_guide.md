@@ -176,6 +176,53 @@ Tool** so you do not bundle or patch a Chromium binary.
 - **Longer sessions.** AgentCore Runtime supports multi-hour sessions (vs.
   Lambda's 15 minutes), which suits batch-remediating many documents.
 
+### Deploy the managed pipeline (from a pip install — no repo checkout)
+
+A complete, event-driven pipeline — **document uploaded to S3 → convert (PDF) →
+audit → agent-remediate → accessible result written back to S3** — ships with the
+package. Scaffold and deploy it without cloning the repo:
+
+```bash
+# 1. Install the package (the agent extra) and the deploy tooling.
+pip install "content-accessibility-utility-on-aws[agent]"
+pip install bedrock-agentcore-starter-toolkit aws-sam-cli
+
+# 2. Write the deployment files (SAM template, runtime app, trigger Lambda).
+content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
+cd a11y-pipeline
+
+# 3. Deploy the AgentCore Runtime (builds an ARM64 image in the cloud; no Docker).
+#    For the PDF path, also pass BDA config as runtime env vars.
+agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
+  --requirements-file requirements.txt --region <region>
+agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
+#    -> note the runtime ARN it prints.
+
+# 4. Deploy the S3 + Lambda + DynamoDB stack, wiring in that runtime ARN.
+sam deploy --guided --parameter-overrides \
+  AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
+```
+
+Then just upload documents (see [Prefix routing](#prefix-routing) below):
+
+```bash
+aws s3 cp report.pdf s3://<bucket>/pdf/report.pdf     # PDF  -> accessible/report/
+aws s3 cp page.html  s3://<bucket>/html/page.html     # HTML -> accessible/page/
+aws s3 cp site.zip   s3://<bucket>/html/site.zip      # zip  -> accessible/site/
+```
+
+`init-pipeline` writes a `README.md` next to the files with the same steps, the
+IAM the runtime role needs, and the BDA-project setup. Everything is regenerable
+— re-run with `--force` to refresh the files after a package upgrade.
+
+<a id="prefix-routing"></a>
+The trigger routes by S3 prefix: `pdf/*.pdf` → convert (writes an HTML bundle
+under `html/<name>/` plus a `manifest.json` that auto-triggers audit);
+`html/<name>.html`, `html/<name>.zip`, or `html/<name>/manifest.json` → audit +
+remediate. A single HTML with **external** images degrades to placeholder alt
+text (the image bytes are not available to describe) — upload a **zip** bundling
+the HTML with its images/CSS/JS to get full multimodal alt text.
+
 ### How the connection works
 
 `AgentCoreBrowserProbe` starts a managed browser session
@@ -214,9 +261,13 @@ options = {
 
 ### Where to run it
 
-- **Batch / hosted service:** run the agent loop on AgentCore Runtime (or an ECS
-  task / Lambda container) driving the AgentCore browser. The existing `batch/`
-  module (S3/DynamoDB/Lambda) is the orchestration entry point.
+- **Managed pipeline (recommended):** the `init-pipeline` scaffold above deploys
+  the agent loop on AgentCore Runtime driving the managed AgentCore browser,
+  fronted by an S3-triggered Lambda and DynamoDB job tracking. Nothing to
+  check out.
+- **Embedded / library use:** call `run_agent(make_browser_probe(...), html)`
+  from your own service; set `browser_backend=agentcore` so no Chromium ships in
+  your artifact.
 - **Fallback:** a Lambda/ECS container image with a bundled headless-chromium
   layer and the `local` backend. Heavier cold starts and you own patching.
 
