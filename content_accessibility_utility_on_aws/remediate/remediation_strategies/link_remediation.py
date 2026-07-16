@@ -233,3 +233,94 @@ def remediate_new_window_link_no_warning(
         link["title"] = f"{text} (opens in new window)"
 
     return "Added screen reader text and title to indicate link opens in new window"
+
+
+def remediate_duplicate_link_text(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """
+    Disambiguate links that share the same text but point to different URLs.
+
+    WCAG 2.4.9: when several links read the same (e.g. two "click here" links
+    going to different destinations), a user cannot tell them apart out of
+    context. There is no mechanical rewrite for this — the fix depends on what
+    each destination *is*, which is exactly the kind of judgment the model layer
+    is for. This strategy rewrites the specific link the issue points at with
+    descriptive text derived from that link's own destination and surrounding
+    text, so each formerly-identical link ends up distinct and meaningful.
+
+    Falls back (no model / no context) to appending the destination domain to
+    the existing text, which still makes same-text links distinguishable.
+
+    Args:
+        soup: The BeautifulSoup document.
+        issue: The accessibility issue (points at one of the duplicate links).
+        *args: Optional BedrockClient used to author the descriptive text.
+
+    Returns:
+        A message describing the remediation, or None if it could not be applied.
+    """
+    bedrock_client = args[0] if args else None
+
+    link, href = _resolve_link(soup, issue)
+    if link is None:
+        return None
+
+    current_text = link.get_text(strip=True)
+
+    # An earlier strategy (e.g. generic-link-text) may have already rewritten
+    # this link so it no longer collides with its former twins. If no other link
+    # on the page still shares this exact text, the ambiguity is already
+    # resolved — report success rather than a spurious failure.
+    same_text_siblings = [
+        a for a in soup.find_all("a")
+        if a is not link and a.get_text(strip=True).lower() == current_text.lower()
+    ]
+    if not same_text_siblings:
+        return f"Link text '{current_text}' is already unique; no change needed"
+
+    # Prefer model-authored descriptive text grounded in this link's own
+    # destination and the sentence around it, so the two same-text links diverge
+    # into meaningful, distinct labels.
+    parent = link.find_parent(["p", "li", "td", "div"])
+    surrounding = parent.get_text(separator=" ", strip=True) if parent else ""
+    generated = generate_short_text(
+        bedrock_client,
+        instruction=(
+            "Several links on this page share the same text but go to different "
+            "places, which is ambiguous. Rewrite this one link's text into "
+            "descriptive text (2-6 words) that uniquely says where THIS link "
+            f"goes. Do not reuse the current generic text. The link points to: {href}"
+        ),
+        context=(
+            f"Current (ambiguous) link text: '{current_text}'\n"
+            f"This link's destination: {href}\n"
+            f"Surrounding text: {surrounding}"
+        ),
+        purpose="link_text_generation",
+        max_words=8,
+    )
+    if generated and generated.lower() != current_text.lower():
+        link.string = generated
+        return (
+            f"Disambiguated duplicate link text '{current_text}' -> '{generated}'"
+        )
+
+    # Fallback: append the destination domain so same-text links differ.
+    domain = _domain_of(href)
+    if domain:
+        # Avoid double-appending if a prior run already did this.
+        if domain.lower() in current_text.lower():
+            return None
+        new_text = f"{current_text} ({domain})" if current_text else f"Visit {domain}"
+        link.string = new_text
+        return f"Disambiguated duplicate link text with destination: {new_text}"
+
+    # Relative/non-http destination: append a short path hint if available.
+    path_hint = (href or "").strip("/").split("/")[-1].replace("-", " ").replace("_", " ")
+    if path_hint and path_hint.lower() not in current_text.lower():
+        new_text = f"{current_text} ({path_hint})" if current_text else path_hint
+        link.string = new_text
+        return f"Disambiguated duplicate link text with path: {new_text}"
+
+    return None

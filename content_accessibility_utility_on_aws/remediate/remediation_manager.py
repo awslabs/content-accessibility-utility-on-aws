@@ -26,6 +26,7 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.link_
     remediate_generic_link_text,
     remediate_url_as_link_text,
     remediate_new_window_link_no_warning,
+    remediate_duplicate_link_text,
 )
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.image_remediation import (
     remediate_missing_alt_text,
@@ -144,6 +145,8 @@ class RemediationManager:
             "generic-link-text": remediate_generic_link_text,
             "url-as-link-text": remediate_url_as_link_text,
             "new-window-link-no-warning": remediate_new_window_link_no_warning,
+            # Model-authored disambiguation of same-text/different-URL links.
+            "duplicate-link-text-different-url": remediate_duplicate_link_text,
             # Image remediation strategies
             "missing-alt-text": remediate_missing_alt_text,
             "empty-alt-text": remediate_empty_alt_text,

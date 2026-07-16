@@ -119,6 +119,13 @@ ISSUE_TYPES = {
         "remediation_type": "content",
         "element_types": ["a"],
     },
+    "duplicate-link-text-different-url": {
+        "wcag": "2.4.9",
+        "severity": "major",
+        "description": "Links with identical text point to different destinations",
+        "remediation_type": "content",
+        "element_types": ["a"],
+    },
     "missing-skip-link": {
         "wcag": "2.4.1",
         "severity": "major",
