@@ -20,6 +20,7 @@ import hashlib
 import time
 
 import boto3
+from botocore.config import Config
 
 from ..utils.logging_helper import setup_logger
 
@@ -27,8 +28,21 @@ from ..utils.logging_helper import setup_logger
 logger = setup_logger(__name__)
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
-# Initialize AWS clients
-s3_client = boto3.client("s3")
+# Initialize AWS clients.
+#
+# Newer botocore defaults request checksums on every S3 upload, which wraps the
+# request body in a streaming (unseekable) wrapper. When boto has to retry or
+# rewind such a body (as it does for ``upload_file``), it raises
+# ``UnseekableStreamError``. Requesting checksums only ``when_required`` keeps
+# uploads seekable and avoids that failure without weakening integrity checks
+# that the caller explicitly asks for.
+s3_client = boto3.client(
+    "s3",
+    config=Config(
+        request_checksum_calculation="when_required",
+        response_checksum_validation="when_required",
+    ),
+)
 dynamodb = boto3.resource("dynamodb")
 sqs = boto3.client("sqs")
 

@@ -40,15 +40,15 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      # Notify on ALL object-created events. The trigger Lambda does the
+      # prefix routing (pdf/ -> convert, html/ -> audit) and — importantly —
+      # skips converted-bundle asset objects so audit fires once per document
+      # via the manifest. S3 filters cannot express that logic, and overlapping
+      # prefix rules for one event type are disallowed, so routing lives in code.
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt TriggerFunction.Arn
-            Filter:
-              S3Key:
-                Rules:
-                  - Name: suffix
-                    Value: .pdf
     DependsOn: TriggerFunctionS3Permission
 
   # DynamoDB job-tracking table the batch stage helpers read/write. Name matches
@@ -85,7 +85,12 @@ Resources:
             - Sid: InvokeAgentRuntime
               Effect: Allow
               Action: bedrock-agentcore:InvokeAgentRuntime
-              Resource: !Ref AgentRuntimeArn
+              # InvokeAgentRuntime authorizes against the runtime AND its
+              # endpoint sub-resource (.../runtime-endpoint/DEFAULT), so both
+              # the runtime ARN and its child resources must be allowed.
+              Resource:
+                - !Ref AgentRuntimeArn
+                - !Sub "${AgentRuntimeArn}/*"
 
   # Allow S3 to invoke the trigger function (bucket-scoped by account/name to
   # avoid a circular dependency with the bucket resource).

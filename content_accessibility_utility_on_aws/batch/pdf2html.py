@@ -150,8 +150,23 @@ def upload_conversion_results(
     # Generate prefix for the HTML files
     prefix = f"html/{base_name}/"
 
-    # Upload main HTML file
+    # Resolve the main HTML file. In multi-page mode ``html_path`` points at the
+    # extracted_html *directory* rather than a file (see pdf2html.api), so fall
+    # back to the conventional document.html / first .html inside it. Uploading
+    # a directory path would raise IsADirectoryError.
     html_path = result.get("html_path")
+    if html_path and os.path.isdir(html_path):
+        candidate = os.path.join(html_path, "document.html")
+        if not os.path.isfile(candidate):
+            html_in_dir = sorted(
+                f for f in os.listdir(html_path) if f.lower().endswith(".html")
+            )
+            candidate = os.path.join(html_path, html_in_dir[0]) if html_in_dir else None
+        html_path = candidate
+    if not html_path or not os.path.isfile(html_path):
+        raise ValueError(
+            f"Conversion produced no main HTML file for {source_key}"
+        )
     html_key = f"{prefix}{os.path.basename(html_path)}"
 
     upload_to_s3(
@@ -161,9 +176,14 @@ def upload_conversion_results(
         metadata={"source-document": source_key, "content-type": "text/html"},
     )
 
-    # Upload additional HTML files
+    # Upload additional HTML files (multi-page docs). Skip directories and the
+    # main file we already uploaded above.
     html_files = []
     for file_path in result.get("html_files", []):
+        if not file_path or not os.path.isfile(file_path):
+            continue
+        if os.path.abspath(file_path) == os.path.abspath(html_path):
+            continue
         file_key = f"{prefix}{os.path.basename(file_path)}"
         upload_to_s3(
             local_path=file_path,
