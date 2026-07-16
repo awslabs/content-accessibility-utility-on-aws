@@ -209,20 +209,41 @@ def _run_audit(
             html_path=audit_target, image_dir=work, options=options, output_path=audit_report
         )
 
-        # Remediate (agent render -> fix -> verify) against the same target.
-        remediated_out = os.path.join(tmp, "remediated")
-        os.makedirs(remediated_out, exist_ok=True)
-        remediate_html_accessibility(
-            html_path=audit_target,
-            audit_report=audit_result,
-            output_path=remediated_out,
-            image_dir=work,
-            options=options,
-        )
+        # Remediate (agent render -> fix -> verify). The core API's output_path
+        # is a FILE for single-page and a DIRECTORY for multi-page. For
+        # multi-page it rewrites the bundle in ``work`` in place, so we publish
+        # from ``work``; for single-page we write one remediated file and
+        # publish just that (alongside its assets in ``work``).
+        if multi_page:
+            remediate_html_accessibility(
+                html_path=audit_target, audit_report=audit_result,
+                output_path=audit_target, image_dir=work, options=options,
+            )
+            publish_root = work
+        else:
+            remediated_file = os.path.join(work, f"{name}.remediated.html")
+            remediate_html_accessibility(
+                html_path=audit_target, audit_report=audit_result,
+                output_path=remediated_file, image_dir=work, options=options,
+            )
+            # Drop the pre-remediation source so it is not published twice; the
+            # remediated file is the deliverable, assets (css/js/images) remain.
+            if os.path.abspath(audit_target) != os.path.abspath(remediated_file):
+                try:
+                    os.remove(audit_target)
+                except OSError:
+                    pass
+            publish_root = work
 
-        # Publish every produced artifact under accessible/<name>/.
+        # Publish every produced artifact under accessible/<name>/, plus the
+        # audit report alongside it for traceability.
         out_prefix = f"{OUTPUT_PREFIX}{name}/"
-        published = _publish_tree(remediated_out, output_bucket, out_prefix)
+        published = _publish_tree(publish_root, output_bucket, out_prefix)
+        if os.path.isfile(audit_report):
+            s3_client.upload_file(
+                audit_report, output_bucket, f"{out_prefix}accessibility_audit.json"
+            )
+            published.append(f"{out_prefix}accessibility_audit.json")
 
     update_job_status(
         job_id, STATUS_COMPLETED, STAGE_COMPLETE,
