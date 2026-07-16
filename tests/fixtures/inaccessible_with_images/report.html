@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2025 Amazon.com, Inc. or its affiliates.
+  SPDX-License-Identifier: Apache-2.0
+
+  DELIBERATELY INACCESSIBLE test fixture WITH REAL-CONTENT IMAGES.
+
+  Unlike the sibling `inaccessible/` fixture (whose images are blank solid-color
+  rectangles), this one references images with recognizable visual content:
+    - images/bar_chart.png : a "Quarterly Sales" bar chart, bars rising Q1->Q4
+    - images/stop_sign.png : a red octagonal STOP sign
+
+  That lets us validate the WITH-IMAGES path meaningfully: the multimodal model
+  must produce alt text that names the actual content (a bar chart / a stop
+  sign), which proves it is SEEING the image rather than paraphrasing nearby
+  text. Uploaded as a zip (images travel with the HTML), it exercises real
+  multimodal alt-text; uploaded as a lone .html (images absent), it exercises
+  graceful degradation to placeholder alt.
+
+  Accessibility failures (do NOT fix this file): missing alt on both images,
+  no lang, no title, and a duplicate-link-text case.
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; color: #222; }
+    a, button { outline: none; }
+    figure { margin: 16px 0; }
+  </style>
+</head>
+<body>
+  <h1>Quarterly Operations</h1>
+
+  <!-- Real bar chart, NO alt: model should describe a bar chart of quarterly
+       sales with an upward trend. -->
+  <figure>
+    <img src="images/bar_chart.png" width="320" height="220">
+  </figure>
+  <p>Our quarterly sales results for the year, by region.</p>
+
+  <!-- Real stop sign, NO alt: model should identify a red octagonal stop sign. -->
+  <p>
+    Before proceeding, review the safety notice:
+    <img src="images/stop_sign.png" width="120" height="120">
+  </p>
+
+  <!-- Duplicate link text to different URLs (agent disambiguation). -->
+  <p>
+    Read the <a href="/reports/q3">report</a> or the previous
+    <a href="/reports/q2">report</a>.
+  </p>
+</body>
+</html>
