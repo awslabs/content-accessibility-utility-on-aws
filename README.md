@@ -454,7 +454,7 @@ The package provides a Python API for programmatic use:
 ### Complete Processing Pipeline
 
 ```python
-from content_accessibility_with_aws.api import process_pdf_accessibility
+from content_accessibility_utility_on_aws.api import process_pdf_accessibility
 
 # Process a PDF through the full pipeline
 result = process_pdf_accessibility(
@@ -480,7 +480,7 @@ result = process_pdf_accessibility(
 ### Individual Components
 
 ```python
-from content_accessibility_with_aws.api import (
+from content_accessibility_utility_on_aws.api import (
     convert_pdf_to_html,
     audit_html_accessibility,
     remediate_html_accessibility
@@ -562,32 +562,49 @@ Bedrock AgentCore.
 
 ### Batch Processing
 
+The `batch` package is a set of per-stage processors plus S3/DynamoDB/SQS
+helpers, designed to be wired into an event-driven pipeline (e.g. Lambda
+functions triggered by S3 events or SQS messages). Each stage takes a job id and
+S3 locations, does its work, and writes results back to S3.
+
 ```python
-from content_accessibility_with_aws.batch import (
-    submit_batch_job,
-    check_job_status,
-    get_job_results
+from content_accessibility_utility_on_aws.batch.common import (
+    generate_job_id,
+    create_job_record,
+    get_job_status,
+)
+from content_accessibility_utility_on_aws.batch.pdf2html import process_pdf_document
+from content_accessibility_utility_on_aws.batch.audit import process_html_document
+
+# Create a job record (tracked in DynamoDB)
+job_id = generate_job_id()
+create_job_record(job_id, document_key="documents/file.pdf", stage="PDF_TO_HTML")
+
+# Stage 1: convert a PDF from S3 to HTML, writing results back to S3
+conversion = process_pdf_document(
+    job_id=job_id,
+    source_bucket="my-bucket",
+    source_key="documents/file.pdf",
+    destination_bucket="my-bucket",
+    options={"single_file": True},
 )
 
-# Submit a batch job
-job_id = submit_batch_job(
-    input_bucket="my-bucket",
-    input_key="documents/file.pdf",
-    output_bucket="my-bucket",
-    output_prefix="results/",
-    process_options={
-        "perform_audit": True,
-        "perform_remediation": True
-    }
+# Stage 2: audit the produced HTML (see batch.remediate for the remediation stage)
+audit = process_html_document(
+    job_id=job_id,
+    source_bucket="my-bucket",
+    source_key=conversion["html_key"],
+    destination_bucket="my-bucket",
+    options={"severity_threshold": "minor"},
 )
 
-# Check job status
-status = check_job_status(job_id)
-
-# Get job results when complete
-if status["status"] == "COMPLETED":
-    results = get_job_results(job_id)
+# Inspect job status at any time
+status = get_job_status(job_id)
 ```
+
+> In production these stages run as separate Lambda functions chained by S3/SQS
+> events; `batch.common` provides `parse_s3_event`, `parse_sqs_event`,
+> `send_sqs_message`, and `update_job_status` for that wiring.
 
 ## Requirements
 

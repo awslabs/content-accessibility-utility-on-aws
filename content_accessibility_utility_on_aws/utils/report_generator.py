@@ -53,6 +53,12 @@ def generate_report(
                     f"Fixed {processed} issues with {remediated} HTML changes"
                 )
 
+    # No destination path: there is nothing to write, so return the report data
+    # as-is rather than crashing in os.path.dirname(None). Callers that only
+    # want the in-memory report (e.g. audit with output_path=None) rely on this.
+    if not output_path:
+        return report_data
+
     # Make sure the output directory exists
     output_dir = os.path.dirname(output_path)
     if output_dir:

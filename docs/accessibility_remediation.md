@@ -50,7 +50,7 @@ Accessibility remediation options:
 ### From Python Code
 
 ```python
-from content_accessibility_with_aws.api import remediate_html_accessibility
+from content_accessibility_utility_on_aws.api import remediate_html_accessibility
 
 # After performing an accessibility audit that generates an audit report:
 remediation_result = remediate_html_accessibility(
