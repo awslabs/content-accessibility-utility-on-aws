@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2025 Amazon.com, Inc. or its affiliates.
+  SPDX-License-Identifier: Apache-2.0
+
+  DELIBERATELY INACCESSIBLE test fixture. Do NOT "fix" this file — it exists to
+  exercise the audit + remediation pipeline. It packs many WCAG 2.1/2.2
+  failures into a realistic, complex page: a data dashboard with navigation,
+  charts-as-images, a data table, a form, custom widgets, and links.
+
+  Intended failures (by WCAG SC):
+    3.1.1  no lang attribute on <html>
+    2.4.2  no <title>
+    1.4.3  low-contrast text (computed, from the stylesheet — static misses this)
+    2.4.7  interactive controls with outline:none and no focus indicator
+    1.1.1  images (charts/icons/logo) with missing / empty / generic alt
+    1.3.1  skipped heading levels; data table with no <th>/scope; no landmarks
+    2.4.4  non-descriptive link text ("click here", "read more", bare URL)
+    4.1.2  custom div/span "buttons" and a toggle with no role / name / state
+    3.3.2  form inputs with no associated labels
+    2.5.8  tap targets far smaller than 24x24 CSS px
+    1.4.1  status conveyed by color alone
+-->
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; color: #333; background: #fff; }
+    /* Low contrast: light gray text on white (~1.6:1) — defined in the
+       stylesheet, so inline-only static analysis cannot see it. */
+    .muted { color: #bfbfbf; background: #ffffff; }
+    .subtle-link { color: #9ad; }
+    header.topbar { background: #f5f5f5; padding: 12px 20px; }
+    /* Focus indicator removed globally — a 2.4.7 failure across every control. */
+    a, button, input, select, textarea, .btn, .toggle { outline: none; }
+    .btn { background: #1565c0; color: #eaeaea; padding: 8px 14px; cursor: pointer; display: inline-block; }
+    /* Tiny tap target: 12x12, well under the 24x24 minimum. */
+    .icon-btn { width: 12px; height: 12px; padding: 0; display: inline-block; background: #1565c0; }
+    .toggle { display: inline-block; width: 40px; height: 18px; background: #ccc; border-radius: 9px; cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; }
+    td, th { border: 1px solid #ddd; padding: 6px 10px; text-align: left; }
+    .status-ok { color: #2e7d32; }   /* color-only status */
+    .status-bad { color: #c62828; }  /* color-only status */
+    .card { border: 1px solid #eee; padding: 16px; margin: 12px 0; }
+  </style>
+</head>
+<body>
+
+  <!-- No landmarks (no <header role>, <nav>, <main>, <footer>). Logo image has
+       no alt. Nav uses generic link text. -->
+  <div class="topbar">
+    <img src="images/logo.png">
+    <span>Quarterly Operations Dashboard</span>
+    <div style="float:right">
+      <a href="/home" class="subtle-link">click here</a>
+      <a href="/reports" class="subtle-link">read more</a>
+      <a href="https://example.com/very/long/report/path/q3-2026">https://example.com/very/long/report/path/q3-2026</a>
+    </div>
+  </div>
+
+  <!-- Heading hierarchy skips from h1 to h4. -->
+  <h1>Q3 2026 Operations</h1>
+  <div class="card">
+    <h4>Summary</h4>
+    <p class="muted">
+      Overall throughput improved 12% quarter over quarter, with regional
+      variance detailed below. This paragraph is intentionally low-contrast to
+      exercise computed color-contrast detection.
+    </p>
+
+    <!-- Charts as images: one missing alt, one empty alt, one generic alt. -->
+    <img src="images/throughput_chart.png">
+    <img src="images/region_chart.png" alt="">
+    <img src="images/trend_chart.png" alt="chart">
+  </div>
+
+  <!-- Data table with NO header cells and no caption/scope: screen readers
+       cannot associate data with columns. -->
+  <div class="card">
+    <h4>Regional Breakdown</h4>
+    <table>
+      <tr>
+        <td>Region</td>
+        <td>Throughput</td>
+        <td>SLA</td>
+        <td>Status</td>
+      </tr>
+      <tr>
+        <td>North</td><td>1,240</td><td>98.2%</td>
+        <td class="status-ok">&#9679;</td>
+      </tr>
+      <tr>
+        <td>South</td><td>980</td><td>91.0%</td>
+        <td class="status-bad">&#9679;</td>
+      </tr>
+      <tr>
+        <td>West</td><td>1,510</td><td>99.1%</td>
+        <td class="status-ok">&#9679;</td>
+      </tr>
+    </table>
+    <p class="muted">Status shown by color only (green = healthy, red = at risk).</p>
+  </div>
+
+  <!-- Custom widgets with no semantics: div/span acting as buttons with no
+       role, no accessible name, no keyboard support; a toggle with no
+       role/state. Icon button is a sub-24px tap target. -->
+  <div class="card">
+    <h4>Controls</h4>
+    <div class="btn" onclick="refresh()">Refresh</div>
+    <span class="btn" onclick="exportCsv()">Export</span>
+    <div class="toggle" onclick="toggleLive()"></div>
+    <span>Live updates</span>
+    <a href="#settings" class="icon-btn"></a>
+  </div>
+
+  <!-- Form with no labels associated to inputs, no fieldset for the radio
+       group, and a low-contrast submit. -->
+  <div class="card">
+    <h4>Schedule a Report</h4>
+    <form action="/schedule" method="post">
+      <div>
+        Email
+        <input type="email" name="email" placeholder="you@example.com">
+      </div>
+      <div>
+        Frequency
+        <input type="radio" name="freq" value="daily"> Daily
+        <input type="radio" name="freq" value="weekly"> Weekly
+        <input type="radio" name="freq" value="monthly"> Monthly
+      </div>
+      <div>
+        Notes
+        <textarea name="notes"></textarea>
+      </div>
+      <button type="submit" class="btn">Submit</button>
+    </form>
+  </div>
+
+  <div class="muted" style="padding:12px 20px">
+    &copy; 2026 Operations. <a href="/privacy" class="subtle-link">click here</a> for privacy.
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
