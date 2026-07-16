@@ -73,6 +73,9 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.figur
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.target_size_remediation import (
     remediate_target_size_too_small,
 )
+from content_accessibility_utility_on_aws.remediate.remediation_strategies.interactive_remediation import (
+    remediate_focus_not_visible,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
@@ -192,6 +195,11 @@ class RemediationManager:
             "improper-figure-structure": remediate_improper_figure_structure,
             # Target size remediation strategies (WCAG 2.2)
             "target-size-too-small": remediate_target_size_too_small,
+            # Interactive / rendered remediation strategies (browser-backed
+            # audit). The audit emits "focus-not-visible"; "missing-focus-indicator"
+            # is kept as an alias for the catalog type in issue_types.py.
+            "focus-not-visible": remediate_focus_not_visible,
+            "missing-focus-indicator": remediate_focus_not_visible,
         }
 
     @staticmethod

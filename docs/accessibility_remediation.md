@@ -25,12 +25,12 @@ You can remediate accessibility issues in two ways:
 
 1. **As part of PDF conversion**:
    ```bash
-   content-accessibilty-utility-on-aws process --input path/to/input.pdf --output output/ --perform-remediation
+   content-accessibility-utility-on-aws process --input path/to/input.pdf --output output/ --perform-remediation
    ```
 
 2. **For an existing HTML file with an audit report**:
    ```bash
-   content-accessibilty-utility-on-aws remediate --input path/to/existing.html --output remediated.html
+   content-accessibility-utility-on-aws remediate --input path/to/existing.html --output remediated.html
    ```
 
 #### Available CLI Options
@@ -83,10 +83,21 @@ The remediation process uses specialized templates for common accessibility issu
 | `table-missing-headers` | Tables without headers | 1.3.1 |
 | `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
 | `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
+| `focus-not-visible` | Interactive element shows no visible focus indicator (detected in a rendered browser) | 2.4.7 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 
 The system can process additional issue types using a generic remediation template, but specialized templates provide better results.
+
+### Browser-backed (rendered) issue types
+
+`focus-not-visible` is produced by the optional **rendered audit**, which renders
+the page in a real headless browser (see the
+[Rendered & Agent Guide](rendered_agent_guide.md)). These interactive/computed
+issues cannot be detected by static HTML analysis. When the accessibility
+**agent** is used, each such fix is applied, the page is re-rendered, and the fix
+is **verified** to actually render correctly before the issue is marked resolved
+— unlike the static remediation path, which applies a fix without re-checking it.
 
 ## Processing Order and Image Handling
 
@@ -113,7 +124,7 @@ See the `tests/test_accessibility_remediation.py` script for a complete example.
 You can specify different Bedrock model IDs for remediation:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --model-id us.amazon.nova-2-lite-v1:0
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --model-id us.amazon.nova-2-lite-v1:0
 ```
 
 ### Filtered Remediation
@@ -121,7 +132,7 @@ content-accessibilty-utility-on-aws remediate --input document.html --output rem
 Process only specific issue types:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --issue-types missing-alt-text,empty-alt-text
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --issue-types missing-alt-text,empty-alt-text
 ```
 
 ### Severity-Based Remediation
@@ -129,7 +140,7 @@ content-accessibilty-utility-on-aws remediate --input document.html --output rem
 Focus on the most important issues:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --severity-threshold critical
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --severity-threshold critical
 ```
 
 ## Limitations

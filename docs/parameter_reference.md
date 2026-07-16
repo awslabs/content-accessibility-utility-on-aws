@@ -67,6 +67,17 @@ document-accessibility convert --input document.pdf --output output_dir/ --singl
 document-accessibility audit --input document.html --output audit_report.json --format json --severity major
 ```
 
+### Audit with the browser-backed (rendered) pass
+
+```bash
+# Add computed-style / interactive detection (requires the [rendered] extra
+# and `playwright install chromium`)
+document-accessibility audit --input document.html --output audit_report.json --rendered
+
+# Use the browser-backed agent to also fix and verify (requires the [agent] extra)
+document-accessibility audit --input document.html --output audit_report.json --agent
+```
+
 ### Remediate Accessibility Issues
 
 ```bash
@@ -119,6 +130,28 @@ Common issue types include:
 - `empty-links`: Links with no text content
 - `table-structure`: Tables without proper headers or structure
 - `document-structure`: Issues with overall document structure and landmarks
+
+Issue types produced only by the browser-backed rendered audit (`--rendered` /
+`--agent`):
+- `focus-not-visible`: Interactive element shows no visible focus indicator (WCAG 2.4.7)
+
+### Rendered / agent options
+
+Set via CLI flags or the audit `options` dict / configuration file:
+- `rendered` (`--rendered`): run the browser-backed rendered audit in addition
+  to the static audit.
+- `agent` (`--agent`): use the Strands agent to drive the render → fix → verify
+  loop; implies `rendered`.
+- `browser_backend`: `local` (default) for local Playwright Chromium, or
+  `agentcore` for the managed Amazon Bedrock AgentCore browser. Can also be set
+  with the `A11Y_BROWSER_BACKEND` environment variable.
+- `agentcore_region`: AWS region for the AgentCore browser (defaults to
+  `AWS_REGION` / `AWS_DEFAULT_REGION`).
+- `agentcore_browser_id`: optional AgentCore browser identifier (defaults to the
+  AWS-managed `aws.browser.v1`).
+
+See the [Rendered & Agent Guide](rendered_agent_guide.md) for details and cloud
+deployment.
 
 ## Python API Examples
 

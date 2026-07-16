@@ -148,6 +148,34 @@ ISSUE_TYPES = {
         "remediation_type": "style",
         "element_types": ["a", "button", "input", "select", "textarea"],
     },
+    # Emitted by the browser-backed rendered audit, which measures the computed
+    # focus style in a real browser (the static pass cannot). Shares the 2.4.7
+    # criterion and the same remediation strategy as "missing-focus-indicator".
+    "focus-not-visible": {
+        "wcag": "2.4.7",
+        "severity": "major",
+        "description": "Interactive element shows no visible focus indicator when focused (measured in a rendered browser)",
+        "remediation_type": "style",
+        "element_types": ["a", "button", "input", "select", "textarea"],
+    },
+    # Emitted by the rendered audit for computed color-contrast failures that
+    # the static (inline-CSS-only) contrast check cannot see.
+    "computed-contrast-insufficient": {
+        "wcag": "1.4.3",
+        "severity": "major",
+        "description": "Text contrast measured in a rendered browser is below the WCAG minimum",
+        "remediation_type": "style",
+        "element_types": ["*"],
+    },
+    # Emitted by the rendered audit from the accessibility tree (missing
+    # accessible name on an interactive element).
+    "missing-accessible-name": {
+        "wcag": "4.1.2",
+        "severity": "critical",
+        "description": "Interactive element has no accessible name in the accessibility tree",
+        "remediation_type": "attribute",
+        "element_types": ["a", "button", '[role="button"]', '[role="link"]'],
+    },
     "target-size-too-small": {
         "wcag": "2.5.8",
         "severity": "minor",

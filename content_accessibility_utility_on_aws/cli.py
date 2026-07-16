@@ -201,6 +201,48 @@ def _add_audit_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Only include summary information in report",
     )
+    _add_rendered_arguments(parser)
+
+
+def _add_rendered_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the browser-backed (rendered) accessibility options.
+
+    Shared by the audit and process commands. These opt into rendering the page
+    in a real headless browser to detect computed-style and interactive issues
+    (e.g. focus visibility) the static analysis cannot see. Requires the
+    optional dependency: ``pip install content-accessibility-utility-on-aws[rendered]``
+    (and ``playwright install chromium``); ``--agent`` additionally needs the
+    ``[agent]`` extra.
+    """
+    parser.add_argument(
+        "--rendered",
+        action="store_true",
+        help=(
+            "Render each page in a headless browser to detect computed-style and "
+            "interactive issues (e.g. focus visibility) static analysis misses. "
+            "Requires the [rendered] extra and 'playwright install chromium'."
+        ),
+    )
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help=(
+            "Use the browser-backed agent for the rendered pass (implies "
+            "--rendered). Requires the [agent] extra."
+        ),
+    )
+
+
+def _apply_rendered_options(args: Dict[str, Any], options: Dict[str, Any]) -> None:
+    """Thread the --rendered/--agent flags into an audit options dict.
+
+    ``--agent`` implies ``--rendered`` (the agent drives the rendered pass).
+    Shared by the audit and process commands so the two cannot drift.
+    """
+    if args.get("rendered") or args.get("agent"):
+        options["rendered"] = True
+    if args.get("agent"):
+        options["agent"] = True
 
 
 def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
@@ -280,6 +322,7 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         default="json",
         help="Format for the audit report",
     )
+    _add_rendered_arguments(parser)
 
     # Add conversion options
     parser.add_argument(
@@ -634,6 +677,8 @@ def run_audit_command(args: Dict[str, Any]) -> int:
         if args.get("checks"):
             options["issue_types"] = [t.strip() for t in args["checks"].split(",")]
 
+        _apply_rendered_options(args, options)
+
         if not args.get("quiet"):
             logger.info(f"Auditing HTML for accessibility: {args['input']}")
 
@@ -872,6 +917,8 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 audit_options["issue_types"] = [
                     t.strip() for t in args["checks"].split(",")
                 ]
+
+            _apply_rendered_options(args, audit_options)
 
             # Save the audit report with the appropriate file extension
             audit_output = os.path.join(output_dir, f"audit_report.{audit_format}")

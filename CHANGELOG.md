@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Added
+
+- Optional browser-backed **rendered audit** (`--rendered` / `options["rendered"]`)
+  that renders each page in a real headless browser (Playwright) and runs
+  axe-core plus a focus-visibility probe, detecting computed-style and
+  interactive issues static HTML analysis cannot see (e.g. WCAG 2.4.7 focus
+  visibility). Rendered findings use the same issue shape as the static audit,
+  so reports and remediation routing are unchanged.
+- Optional **accessibility agent** (`--agent` / `options["agent"]`) built on
+  [Strands](https://strandsagents.com) that drives a render → fix → **verify**
+  loop: it applies a remediation, re-renders, and only marks an issue resolved
+  when a deterministic re-probe confirms the fix. Enforced by a steering hook so
+  the model can never mark an unverified fix as done.
+- `focus-not-visible` remediation strategy (WCAG 2.4.7) that injects a scoped
+  `:focus-visible` outline.
+- New optional dependency extras: `[rendered]` (Playwright) and `[agent]`
+  (Playwright + Strands + `bedrock-agentcore`). The core install is unchanged
+  and never imports the browser/agent stack. Run `playwright install chromium`
+  once after installing an extra.
+- `AgentCoreBrowserProbe` and the `make_browser_probe()` factory: run the
+  rendered/agent layer against the managed Amazon Bedrock AgentCore Browser Tool
+  (no local Chromium) by setting `options["browser_backend"] = "agentcore"` or
+  the `A11Y_BROWSER_BACKEND=agentcore` environment variable. See
+  `docs/rendered_agent_guide.md`.
+
+
 ### Bug Fixes
 
 - Added missing build dependency
