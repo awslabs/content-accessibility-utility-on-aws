@@ -21,3 +21,12 @@ misc/
 .coverage.*
 htmlcov/
 .pytest_cache/
+
+# Deployment build/cache artifacts (regenerable; never commit)
+deployment/dependencies.zip
+deployment/dependencies.hash
+deployment/.bedrock_agentcore.yaml
+deployment/.bedrock_agentcore/
+deployment/.aws-sam/
+deployment/dist/
+deployment/*.whl
