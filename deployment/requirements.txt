@@ -1,8 +1,9 @@
 # Runtime dependencies for the AgentCore-hosted accessibility pipeline.
 # Installed into the AgentCore Runtime container (Linux ARM64) at deploy time.
 #
-# We install the package from the LOCALLY BUILT wheel (bundled next to this
-# file), not from PyPI, because the browser/agent layer is not yet published.
+# We install the package from a LOCALLY BUILT wheel (not PyPI) because the
+# browser/agent layer is not yet published. The wheel is a build artifact and is
+# NOT committed — run `deployment/build_wheel.sh` first to generate it here.
 # The [agent] extra pulls in Strands + the AgentCore SDK so the hosted pipeline
 # runs the render -> fix -> verify agent against the managed AgentCore Browser
 # Tool. No local Chromium is installed — the browser is the managed service.
