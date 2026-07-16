@@ -20,9 +20,47 @@ from content_accessibility_utility_on_aws.remediate.services.bedrock_client impo
     BedrockClient,
     AltTextGenerationError,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
+    find_element_from_issue,
+)
 
 # Set up module-level logger
 logger = setup_logger(__name__)
+
+
+def _find_image(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[Tag]:
+    """Locate the <img> an image issue refers to, robustly.
+
+    The auditor normally stores just the tag name in ``issue["element"]`` (not
+    the element HTML), so the legacy regex-on-element-string lookup below finds
+    nothing. Try the shared resolver first — it uses the recorded ``src`` /
+    ``data-bda-id`` / position from ``context`` and survives DOM restructuring —
+    then fall back to parsing ``element`` when it does happen to carry HTML.
+    """
+    element = find_element_from_issue(soup, issue)
+    if element is not None and getattr(element, "name", None) == "img":
+        return element
+
+    # Legacy fallback: element string containing <img ...> HTML.
+    element_str = issue.get("element", "")
+    if not isinstance(element_str, str) or not element_str.strip().startswith("<img"):
+        return None
+    src_match = re.search(r'src="([^"]*)"', element_str)
+    bda_match = re.search(r'data-bda-id="([^"]*)"', element_str)
+    if bda_match:
+        img = soup.find("img", attrs={"data-bda-id": bda_match.group(1)})
+        if img:
+            return img
+    if src_match:
+        src = src_match.group(1)
+        img = soup.find("img", src=src)
+        if img:
+            return img
+        filename = os.path.basename(src)
+        for image in soup.find_all("img"):
+            if image.get("src") and os.path.basename(image["src"]) == filename:
+                return image
+    return None
 
 
 def remediate_missing_alt_text(
@@ -41,40 +79,9 @@ def remediate_missing_alt_text(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Find the image element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<img "):
-        return None
-
-    # Extract src and data-bda-id from the element string
-    src_match = re.search(r'src="([^"]*)"', element_str)
-    data_bda_id_match = re.search(r'data-bda-id="([^"]*)"', element_str)
-
-    if not src_match:
-        return None
-
-    src = src_match.group(1)
-
-    # Try to find the image using multiple strategies
-    img = None
-
-    # Strategy 1: Try to find by data-bda-id if available
-    if data_bda_id_match:
-        bda_id = data_bda_id_match.group(1)
-        img = soup.find("img", attrs={"data-bda-id": bda_id})
-
-    # Strategy 2: Try to find by src
-    if not img:
-        img = soup.find("img", src=src)
-
-        # If not found, try matching just the filename
-        if not img:
-            filename = os.path.basename(src)
-            for image in soup.find_all("img"):
-                if image.get("src") and os.path.basename(image["src"]) == filename:
-                    img = image
-                    break
-
+    # Find the image element from the issue (robust to the auditor storing just
+    # the tag name in ``element`` and to DOM restructuring by earlier fixes).
+    img = _find_image(soup, issue)
     if not img:
         return None
 
@@ -111,40 +118,9 @@ def remediate_empty_alt_text(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    # Find the image element from the issue
-    element_str = issue.get("element", "")
-    if not element_str or not element_str.startswith("<img "):
-        return None
-
-    # Extract src and data-bda-id from the element string
-    src_match = re.search(r'src="([^"]*)"', element_str)
-    data_bda_id_match = re.search(r'data-bda-id="([^"]*)"', element_str)
-
-    if not src_match:
-        return None
-
-    src = src_match.group(1)
-
-    # Try to find the image using multiple strategies
-    img = None
-
-    # Strategy 1: Try to find by data-bda-id if available
-    if data_bda_id_match:
-        bda_id = data_bda_id_match.group(1)
-        img = soup.find("img", attrs={"data-bda-id": bda_id})
-
-    # Strategy 2: Try to find by src
-    if not img:
-        img = soup.find("img", src=src)
-
-        # If not found, try matching just the filename
-        if not img:
-            filename = os.path.basename(src)
-            for image in soup.find_all("img"):
-                if image.get("src") and os.path.basename(image["src"]) == filename:
-                    img = image
-                    break
-
+    # Find the image element from the issue (robust to tag-name-only element
+    # fields and to DOM restructuring by earlier fixes).
+    img = _find_image(soup, issue)
     if not img:
         return None
 
