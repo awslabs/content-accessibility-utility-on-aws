@@ -62,22 +62,65 @@ def test_missing_record_does_not_skip(monkeypatch):
     assert result["status"] == "completed"  # proceeded despite no record
 
 
-def test_candidate_pages_selects_only_interactive_or_image_pages(tmp_path):
-    # 3 pages: text-only, one with an <img>, one with a <button>.
-    (tmp_path / "page-0.html").write_text("<html><body><p>text only</p></body></html>")
-    (tmp_path / "page-1.html").write_text("<html><body><img src='x.png'></body></html>")
-    (tmp_path / "page-2.html").write_text("<html><body><button>Go</button></body></html>")
+def _audit(*issues):
+    """Minimal audit-result shape with the given issues."""
+    return {"issues": list(issues)}
 
-    picks = pipe._candidate_pages(str(tmp_path), cap=25)
+
+def _issue(file_name, wcag, status="needs_remediation"):
+    return {
+        "wcag_criterion": wcag,
+        "remediation_status": status,
+        "file_name": file_name,
+        "location": {"file_name": file_name},
+    }
+
+
+def test_candidate_pages_selects_only_agent_relevant_findings(tmp_path):
+    # 3 pages exist; audit flags page-1 with contrast (agent-relevant) and page-0
+    # with a heading issue (static-only). page-2 has no findings.
+    for i in range(3):
+        (tmp_path / f"page-{i}.html").write_text("<html><body>x</body></html>")
+    audit = _audit(
+        _issue("page-0.html", "1.3.1"),          # structural: NOT agent-relevant
+        _issue("page-1.html", "1.4.3"),          # contrast: agent-relevant
+    )
+    picks = pipe._candidate_pages(str(tmp_path), cap=25, audit_result=audit)
     bases = sorted(os.path.basename(p) for p in picks)
-    assert bases == ["page-1.html", "page-2.html"]  # text-only page excluded
+    assert bases == ["page-1.html"]  # only the contrast page
+
+
+def test_candidate_pages_empty_when_no_agent_relevant_issues(tmp_path):
+    # This is the Unilever case: many issues, none agent-relevant → agent skipped.
+    (tmp_path / "page-0.html").write_text("<html><body>x</body></html>")
+    audit = _audit(
+        _issue("page-0.html", "1.3.1"),
+        _issue("page-0.html", "2.4.2"),
+    )
+    picks = pipe._candidate_pages(str(tmp_path), cap=25, audit_result=audit)
+    assert picks == []
+
+
+def test_candidate_pages_ignores_compliant_findings(tmp_path):
+    (tmp_path / "page-0.html").write_text("<html><body>x</body></html>")
+    audit = _audit(_issue("page-0.html", "2.4.7", status="compliant"))
+    assert pipe._candidate_pages(str(tmp_path), cap=25, audit_result=audit) == []
 
 
 def test_candidate_pages_respects_cap(tmp_path):
     for i in range(5):
-        (tmp_path / f"page-{i}.html").write_text("<html><body><img src='x.png'></body></html>")
-    picks = pipe._candidate_pages(str(tmp_path), cap=2)
+        (tmp_path / f"page-{i}.html").write_text("<html><body>x</body></html>")
+    audit = _audit(*[_issue(f"page-{i}.html", "2.4.7") for i in range(5)])
+    picks = pipe._candidate_pages(str(tmp_path), cap=2, audit_result=audit)
     assert len(picks) == 2
+
+
+def test_candidate_pages_dom_fallback_without_audit(tmp_path):
+    # No audit result → DOM heuristic (interactive/image pages).
+    (tmp_path / "page-0.html").write_text("<html><body><p>text</p></body></html>")
+    (tmp_path / "page-1.html").write_text("<html><body><button>Go</button></body></html>")
+    picks = pipe._candidate_pages(str(tmp_path), cap=25, audit_result=None)
+    assert [os.path.basename(p) for p in picks] == ["page-1.html"]
 
 
 def test_agent_skipped_when_disabled(tmp_path):
