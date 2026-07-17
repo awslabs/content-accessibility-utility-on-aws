@@ -40,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Focus-order remediation (WCAG 2.4.3).** A tab-order probe reports elements
   with positive `tabindex` (which distort the keyboard sequence); the fix
   neutralizes them to `tabindex="0"` and verify re-walks the order.
+- **Name/Role/Value verifier (WCAG 4.1.2).** `verify(selector, "4.1.2")` re-runs
+  axe's name/role/state rules scoped to the node, so accessible-name, aria-state,
+  and aria-structure fixes can be formally verified and committed through the
+  verify-gated loop (previously these had no verifier, so real fixes could not
+  be marked resolved).
 - `init-pipeline` CLI command: scaffolds the managed AgentCore deployment (SAM
   template, runtime entrypoint, trigger Lambda, requirements) into a directory,
   so the event-driven S3 → convert → audit → agent-remediate → S3 pipeline can be

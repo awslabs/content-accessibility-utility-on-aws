@@ -516,6 +516,8 @@ class _PlaywrightProbeBase(BrowserProbe):
             return self._verify_contrast(html, selector, criterion)
         if criterion == "2.4.3":
             return self._verify_focus_order(html, selector)
+        if criterion == "4.1.2":
+            return self._verify_name_role_value(html, selector)
         return VerifyResult(
             criterion=criterion,
             selector=selector,
@@ -541,6 +543,53 @@ class _PlaywrightProbeBase(BrowserProbe):
                     "Visible focus indicator present"
                     if passed
                     else "No visible focus indicator on focus"
+                ),
+            )
+        finally:
+            page.close()
+
+    # axe rules that back WCAG 4.1.2 (Name, Role, Value) — the same rules the
+    # adapter maps to accessible-name / aria-state / aria-structure issues. The
+    # verifier re-runs exactly these, scoped to the node, so "fixed" means axe no
+    # longer flags a name/role/value problem on it.
+    _NRV_RULES = [
+        "button-name", "link-name", "aria-command-name", "aria-toggle-field-name",
+        "aria-input-field-name", "select-name", "aria-required-attr",
+        "aria-required-parent", "aria-required-children", "aria-valid-attr-value",
+    ]
+
+    def _verify_name_role_value(self, html: str, selector: str) -> VerifyResult:
+        """Re-run axe's Name/Role/Value rules scoped to one node (WCAG 4.1.2).
+
+        Passes when none of the 4.1.2-backing rules flag the element. Confirms
+        accessible-name, required-state, and required-structure fixes the agent
+        applies, which previously had no verifier (so real fixes could not be
+        marked resolved through the verify-gated commit).
+        """
+        page = self._new_page(html)
+        try:
+            match_count = page.evaluate(
+                "(sel) => document.querySelectorAll(sel).length", selector
+            )
+            if not match_count:
+                return VerifyResult(
+                    "4.1.2", selector, passed=False,
+                    detail="Element not found when verifying name/role/value",
+                )
+            page.evaluate(self._axe_js)
+            axe_raw = page.evaluate(
+                "async (args) => await axe.run(args.sel, {runOnly: args.rules})",
+                {"sel": selector, "rules": self._NRV_RULES},
+            )
+            violations = _parse_axe_violations(axe_raw)
+            failed = bool(violations)
+            return VerifyResult(
+                "4.1.2", selector, passed=not failed,
+                measured={"violations": [v.rule_id for v in violations]},
+                detail=(
+                    "Name/role/value valid"
+                    if not failed
+                    else "Still flagged: " + ", ".join(v.rule_id for v in violations)
                 ),
             )
         finally:

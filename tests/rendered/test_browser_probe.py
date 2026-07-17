@@ -34,6 +34,29 @@ def test_verify_closes_the_loop(browser_probe):
     assert browser_probe.verify(fixed, "button#go", "2.4.7").passed is True
 
 
+def test_verify_name_role_value_4_1_2(browser_probe):
+    # An unnamed custom button fails 4.1.2; adding an accessible name passes.
+    bad = "<html><body><button id='b'></button></body></html>"
+    good = "<html><body><button id='b' aria-label='Refresh data'></button></body></html>"
+    assert browser_probe.verify(bad, "#b", "4.1.2").passed is False
+    assert browser_probe.verify(good, "#b", "4.1.2").passed is True
+
+
+def test_verify_focus_order_2_4_3(browser_probe):
+    # Positive tabindex fails 2.4.3; tabindex=0 passes.
+    bad = "<html><body><button id='b' tabindex='3'>X</button></body></html>"
+    good = "<html><body><button id='b' tabindex='0'>X</button></body></html>"
+    assert browser_probe.verify(bad, "#b", "2.4.3").passed is False
+    assert browser_probe.verify(good, "#b", "2.4.3").passed is True
+
+
+def test_probe_detects_positive_tabindex(browser_probe):
+    html = "<html><body><a href='#' id='x' tabindex='5'>L</a></body></html>"
+    result = browser_probe.render_and_probe(html)
+    findings = [f for f in result.focus_order_findings if f.tabindex == 5]
+    assert findings, "should report the positive-tabindex element"
+
+
 def test_rendered_auditor_emits_canonical_issue(browser_probe):
     from content_accessibility_utility_on_aws.agent.rendered_auditor import (
         RenderedAuditor,
