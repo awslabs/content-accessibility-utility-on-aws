@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 
+### Changed
+
+- Default Bedrock model is now Claude Sonnet 5 (`us.anthropic.claude-sonnet-5`),
+  up from Amazon Nova 2 Lite, for higher-quality semantic authoring (accessible
+  names, link text, alt text). Override via `--model-id` / `options["model_id"]`;
+  Nova 2 Lite remains a valid lower-cost choice for high-volume batch runs.
+
 ### Added
 
 - `init-pipeline` CLI command: scaffolds the managed AgentCore deployment (SAM

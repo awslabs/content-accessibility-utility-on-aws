@@ -59,7 +59,7 @@ remediation_result = remediate_html_accessibility(
     image_dir='path/to/images_folder',  # For image-related issues
     output_path='path/to/output.html',  # Where to save remediated HTML
     options={
-        'model_id': 'us.amazon.nova-2-lite-v1:0',
+        'model_id': 'us.anthropic.claude-sonnet-5',
         'max_issues': 10,  # Limit number of issues to process
         'issue_types': ['missing-alt-text', 'empty-alt-text'],  # Only process specific issues
         'severity_threshold': 'major'  # Only 'major' and 'critical' issues
@@ -124,7 +124,7 @@ See the `tests/test_accessibility_remediation.py` script for a complete example.
 You can specify different Bedrock model IDs for remediation:
 
 ```bash
-content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --model-id us.amazon.nova-2-lite-v1:0
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --model-id us.anthropic.claude-sonnet-5
 ```
 
 ### Filtered Remediation

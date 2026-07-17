@@ -173,7 +173,7 @@ audit:
 # Remediation settings
 remediate:
   max_issues: 100
-  model_id: us.amazon.nova-2-lite-v1:0
+  model_id: us.anthropic.claude-sonnet-5
   issue_types: null
   severity_threshold: minor
   report_format: json
@@ -509,7 +509,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     },
     perform_audit=True,
@@ -550,7 +550,7 @@ remediation_result = remediate_html_accessibility(
     html_path="output/document.html",
     audit_report=audit_result,
     options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     }
 )
