@@ -724,6 +724,25 @@ def _materialize_html_input(
     return local_html, False, name
 
 
+def _bundle_dest(work_dir: str, bundle_prefix: str, key: str) -> str:
+    """Resolve a manifest S3 ``key`` to a local path confined to ``work_dir``.
+
+    The manifest is attacker-controllable (any object named ``manifest.json``
+    uploaded under ``html/`` is routed here — the router does not verify the
+    pipeline produced it), and its key values flow into a local write target, so
+    they must be confined exactly like the zip and asset-inlining paths in this
+    module. S3 keys are opaque strings that may contain ``..`` segments, so a
+    key such as ``html/x/../../../../tmp/evil.py`` would otherwise escape
+    ``work_dir``. Rejects any key that resolves outside ``work_dir``.
+    """
+    rel = key[len(bundle_prefix):] if key.startswith(bundle_prefix) else os.path.basename(key)
+    work_root = os.path.realpath(work_dir)
+    dest = os.path.realpath(os.path.join(work_dir, rel))
+    if dest != work_root and not dest.startswith(work_root + os.sep):
+        raise ValueError(f"Unsafe manifest key (path traversal): {key}")
+    return dest
+
+
 def _materialize_bundle(bucket: str, manifest_key: str, work_dir: str, name: str) -> Tuple[str, bool, str]:
     obj = s3_client.get_object(Bucket=bucket, Key=manifest_key)
     manifest = json.loads(obj["Body"].read())
@@ -735,17 +754,14 @@ def _materialize_bundle(bucket: str, manifest_key: str, work_dir: str, name: str
     keys += manifest.get("css_files", [])
 
     for k in keys:
-        rel = k[len(bundle_prefix):] if k.startswith(bundle_prefix) else os.path.basename(k)
-        dest = os.path.join(work_dir, rel)
+        dest = _bundle_dest(work_dir, bundle_prefix, k)
         os.makedirs(os.path.dirname(dest), exist_ok=True)
         s3_client.download_file(bucket, k, dest)
 
     multi_page = bool(manifest.get("multi_page"))
     if multi_page:
         return work_dir, True, name
-    main_rel = manifest["html_key"]
-    main_rel = main_rel[len(bundle_prefix):] if main_rel.startswith(bundle_prefix) else os.path.basename(main_rel)
-    return os.path.join(work_dir, main_rel), False, name
+    return _bundle_dest(work_dir, bundle_prefix, manifest["html_key"]), False, name
 
 
 def _safe_extract_zip(zf: zipfile.ZipFile, dest_dir: str) -> None:

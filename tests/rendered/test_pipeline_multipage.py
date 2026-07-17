@@ -319,3 +319,36 @@ def test_reaudit_counts_issues_when_no_summary(tmp_path, monkeypatch):
     page.write_text("<html><body>x</body></html>")
     gap = pipe._reaudit_final(str(page), str(tmp_path), {}, {"issues": []}, str(tmp_path / "a.json"))
     assert gap["issues_after"] == 1  # only the unresolved one
+
+
+# --- bundle manifest path confinement (security regression) ------------------
+# A manifest.json uploaded under html/ is attacker-reachable and its S3 keys
+# flow into a local write target; keys must be confined to work_dir exactly like
+# the zip and asset-inlining paths, or a `..`-laden key writes outside it.
+
+def test_bundle_dest_allows_keys_inside_prefix(tmp_path):
+    work = str(tmp_path)
+    root = os.path.realpath(work)
+    dest = pipe._bundle_dest(work, "html/doc/", "html/doc/page.html")
+    assert dest == os.path.join(root, "page.html")
+    nested = pipe._bundle_dest(work, "html/doc/", "html/doc/css/style.css")
+    assert nested == os.path.join(root, "css", "style.css")
+
+
+def test_bundle_dest_basename_fallback_stays_confined(tmp_path):
+    # A key not under the bundle prefix falls back to its basename, still inside.
+    dest = pipe._bundle_dest(str(tmp_path), "html/doc/", "other/logo.png")
+    assert dest == os.path.join(os.path.realpath(str(tmp_path)), "logo.png")
+
+
+def test_bundle_dest_rejects_traversal(tmp_path):
+    import pytest
+
+    work = str(tmp_path)
+    for bad in [
+        "html/doc/../../../../tmp/evil.py",   # escape via .. inside prefix
+        "html/doc/../../etc/passwd",
+        "html/doc/../../../secret",
+    ]:
+        with pytest.raises(ValueError):
+            pipe._bundle_dest(work, "html/doc/", bad)

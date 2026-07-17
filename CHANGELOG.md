@@ -76,6 +76,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `docs/rendered_agent_guide.md`.
 
 
+### Security
+
+- **Path-traversal fix in converted-bundle materialization.** A `manifest.json`
+  uploaded under the `html/` input prefix is routed to the audit pipeline
+  without a provenance check, and its S3 key values flowed into a local write
+  target (`os.path.join(work_dir, rel)` → `download_file`) with no confinement —
+  so a key containing `..` (S3 keys are opaque and may hold `..`) could write
+  the object's bytes outside the temp work dir. `_materialize_bundle` now
+  resolves every manifest key through `_bundle_dest`, which confines the
+  destination to `work_dir` (realpath prefix check) and rejects traversal,
+  matching the existing zip-slip and asset-inlining guards.
+
 ### Bug Fixes
 
 - The browser-backed **agent now runs on single-file HTML**, not only on
