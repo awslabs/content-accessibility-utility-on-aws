@@ -30,3 +30,6 @@ deployment/.bedrock_agentcore/
 deployment/.aws-sam/
 deployment/dist/
 deployment/*.whl
+
+# Content-security-review disposition artifacts (local only)
+agent-data/

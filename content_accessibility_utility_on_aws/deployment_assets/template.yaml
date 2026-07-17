@@ -22,11 +22,74 @@ Parameters:
     Type: String
     Default: "accessible/"
     Description: Key prefix under which accessible results are written.
+  JobTableKmsKeyId:
+    Type: String
+    Default: ""
+    Description: >
+      Optional KMS key (ID or ARN) to encrypt the DynamoDB job table. Leave empty
+      to use the AWS-managed DynamoDB KMS key (no extra key to manage or pay for);
+      supply a customer-managed CMK if your compliance posture requires one.
+
+Conditions:
+  UseCustomerManagedKey: !Not [!Equals [!Ref JobTableKmsKeyId, ""]]
 
 Resources:
   # Bucket documents are uploaded to. Output is written to the same bucket under
   # OutputPrefix; the trigger only fires on .pdf keys, so writing HTML output
   # back here does not recurse.
+  # Access-log bucket for the input bucket (S3 server access logging target).
+  # Hardened the same way. Uses OwnershipControls + a bucket policy for log
+  # delivery (the modern replacement for the legacy LogDeliveryWrite ACL).
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${InputBucketName}-logs"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Allow the S3 logging service to write access logs into the log bucket, and
+  # deny any non-TLS access (S3_BUCKET_SSL_REQUESTS_ONLY).
+  LogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: S3ServerAccessLogsWrite
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${InputBucketName}-logs/input-access-logs/*"
+            Condition:
+              ArnLike:
+                "aws:SourceArn": !Sub "arn:aws:s3:::${InputBucketName}"
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${InputBucketName}-logs"
+              - !Sub "arn:aws:s3:::${InputBucketName}-logs/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+
   InputBucket:
     Type: AWS::S3::Bucket
     Properties:
@@ -40,6 +103,13 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      # Versioning + server access logging (security best practice; CKV_AWS_21,
+      # CKV_AWS_18). Logs land in the dedicated LogBucket above.
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogBucket
+        LogFilePrefix: input-access-logs/
       # Notify on ALL object-created events. The trigger Lambda does the
       # prefix routing (pdf/ -> convert, html/ -> audit) and — importantly —
       # skips converted-bundle asset objects so audit fires once per document
@@ -50,6 +120,25 @@ Resources:
           - Event: s3:ObjectCreated:*
             Function: !GetAtt TriggerFunction.Arn
     DependsOn: TriggerFunctionS3Permission
+
+  # Deny any non-TLS access to the input bucket (S3_BUCKET_SSL_REQUESTS_ONLY).
+  InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InputBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${InputBucketName}"
+              - !Sub "arn:aws:s3:::${InputBucketName}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
 
   # DynamoDB job-tracking table the batch stage helpers read/write. Name matches
   # the default the code expects (JOB_STATUS_TABLE / "DocumentAccessibilityJobs").
@@ -64,6 +153,15 @@ Resources:
       KeySchema:
         - AttributeName: job_id
           KeyType: HASH
+      # Encryption at rest with KMS + point-in-time recovery (CKV_AWS_119,
+      # CKV_AWS_28). Uses the AWS-managed DynamoDB KMS key by default, or a
+      # customer-managed CMK when JobTableKmsKeyId is supplied.
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !If [UseCustomerManagedKey, !Ref JobTableKmsKeyId, !Ref "AWS::NoValue"]
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
 
   # Thin S3 -> AgentCore trigger. Does no accessibility work itself.
   TriggerFunction:
