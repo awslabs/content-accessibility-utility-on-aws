@@ -264,6 +264,96 @@ def remediate_missing_accessible_name(
     return f"Added aria-label '{label}' to <{el.name}> (WCAG 4.1.2)"
 
 
+def remediate_focus_order(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """Neutralize a positive ``tabindex`` so focus follows DOM order (WCAG 2.4.3).
+
+    A positive tabindex forces an element to the front of the tab sequence,
+    ahead of source order, producing a confusing keyboard path. The fix is to
+    set ``tabindex="0"`` (keep it focusable, but in natural DOM order). The
+    element's position in the source is assumed to be the intended reading
+    order; when it is not, the author should reorder the DOM, which is beyond a
+    safe automatic edit.
+    """
+    el = find_element_from_issue(soup, issue)
+    if el is None:
+        return None
+    ti = el.get("tabindex")
+    try:
+        ti_val = int(ti) if ti is not None else 0
+    except (TypeError, ValueError):
+        ti_val = 0
+    if ti_val <= 0:
+        return f"<{el.name}> has no positive tabindex; no change needed"
+    el["tabindex"] = "0"
+    return (
+        f"Changed tabindex from {ti_val} to 0 so <{el.name}> follows DOM focus "
+        f"order (WCAG 2.4.3)"
+    )
+
+
+def remediate_computed_contrast(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """Raise an element's text contrast to meet WCAG 1.4.3 (deterministic).
+
+    This is the rule-based counterpart to the agent's ``author_css_rule`` path,
+    used on the ``disable_ai`` / no-model route. It reads the element's declared
+    color/background (inline style or the issue's measured context), computes a
+    compliant foreground with the shared contrast math, and sets it as an inline
+    style so the new color wins the cascade. When no usable color can be parsed
+    it returns None so the caller keeps the original (the agent path, which can
+    read the *computed* cascade via the browser, handles those cases).
+    """
+    from content_accessibility_utility_on_aws.utils.color_contrast import (
+        AA_NORMAL_TEXT,
+        adjust_for_contrast,
+        contrast_ratio,
+        parse_color,
+        to_hex,
+    )
+
+    el = find_element_from_issue(soup, issue)
+    if el is None:
+        return None
+
+    # Prefer colors the audit measured (issue context), else the inline style.
+    ctx = issue.get("context") or {}
+    style = el.get("style", "") or ""
+
+    def _from_style(prop: str) -> Optional[str]:
+        for decl in style.split(";"):
+            if ":" in decl:
+                k, v = decl.split(":", 1)
+                if k.strip().lower() == prop:
+                    return v.strip()
+        return None
+
+    fg_raw = ctx.get("foreground_color") or _from_style("color")
+    bg_raw = ctx.get("background_color") or _from_style("background-color")
+    fg = parse_color(fg_raw) if fg_raw else None
+    bg = parse_color(bg_raw) if bg_raw else None
+    # Assume white background when unknown (the audit's own default) so a dark
+    # foreground can still be chosen; if foreground is unknown too, we cannot act.
+    if bg is None:
+        bg = (255, 255, 255)
+    if fg is None:
+        return None
+    if contrast_ratio(fg, bg) >= AA_NORMAL_TEXT:
+        return "Contrast already meets the threshold; no change needed"
+
+    new_fg = adjust_for_contrast(fg, bg, AA_NORMAL_TEXT)
+    if new_fg is None:
+        return None
+    new_color = to_hex(new_fg)
+    # Merge into the inline style, replacing any existing color declaration.
+    decls = [d for d in style.split(";") if d.strip() and not d.strip().lower().startswith("color:")]
+    decls.append(f"color:{new_color}")
+    el["style"] = ";".join(d.strip() for d in decls) + ";"
+    return f"Set color:{new_color} to meet WCAG 1.4.3 contrast (>= 4.5:1)"
+
+
 def remediate_missing_aria_state(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:

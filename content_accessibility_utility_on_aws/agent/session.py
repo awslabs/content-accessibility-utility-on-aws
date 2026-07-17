@@ -132,6 +132,80 @@ class AgentSession:
         )
         return message
 
+    # Marker so the agent's authored rules go in one managed <style> block that
+    # is created once and can be found deterministically on re-runs.
+    _AGENT_STYLE_MARKER = "data-a11y-agent-css"
+
+    def author_css_rule(self, selector: str, declarations: str) -> str:
+        """Inject a CSS rule ``selector { declarations }`` into a managed <style>.
+
+        Some criteria — most importantly contrast (1.4.3 / 1.4.11) — cannot be
+        fixed with an inline attribute because the failing color comes from a
+        stylesheet rule that wins the cascade. A real rule (with ``!important``
+        where needed, which the caller includes in ``declarations``) is required.
+        The agent reads the computed color/background via ``get_element``, picks a
+        compliant color, and calls this to apply it; ``verify`` then re-measures.
+
+        Appends to a single marked <style> block so repeated calls accumulate
+        rather than creating many blocks. Mutates ``self.html``. Returns a
+        message; applying a rule does NOT mark anything verified.
+        """
+        selector = (selector or "").strip()
+        declarations = (declarations or "").strip()
+        if not selector or not declarations:
+            return "author_css_rule needs both a selector and declarations."
+        # Guard against a declarations string that tries to close the block and
+        # inject arbitrary markup (the value is model-authored).
+        if "</" in declarations or "<style" in declarations.lower():
+            return "Rejected declarations containing markup."
+        if not declarations.endswith(";"):
+            declarations += ";"
+
+        soup = BeautifulSoup(self.html, "html.parser")
+        style = soup.find("style", attrs={self._AGENT_STYLE_MARKER: True})
+        if style is None:
+            head = soup.find("head")
+            if head is None:
+                head = soup.new_tag("head")
+                html_el = soup.find("html")
+                (html_el or soup).insert(0, head)
+            style = soup.new_tag("style")
+            style[self._AGENT_STYLE_MARKER] = "true"
+            style.string = ""
+            head.append(style)
+        rule = f"{selector}{{{declarations}}}"
+        style.string = (style.string or "") + rule
+        self.html = str(soup)
+        self._record(
+            "author_css_rule",
+            {"selector": selector, "declarations": declarations},
+            {"applied": True},
+        )
+        return f"Added CSS rule: {rule}"
+
+    def set_page_state(self, script: str) -> str:
+        """Drive the page into a runtime state, then re-probe in that state.
+
+        Some issues only exist at runtime: a modal dialog that is display:none
+        until ``openModal()`` runs (so its missing role/label/focus-trap is
+        invisible to a static snapshot), or a live region that only updates on
+        interaction. This sets a JS snippet the probe runs after each render, so
+        every subsequent render_and_probe / get_element / verify observes that
+        state. Pass an empty string to return to the pristine page.
+
+        Returns the issues found in the new state as JSON (same shape as
+        render_and_probe), so the model immediately sees what the state exposed.
+        """
+        script = (script or "").strip()
+        # Reject attempts to smuggle markup / navigate away; this is model input.
+        if "</" in script or "document.write" in script:
+            return "Rejected page-state script containing markup or document.write."
+        self.probe.set_state_script(script or None)
+        self._record("set_page_state", {"script": script[:200]}, {"applied": True})
+        # Re-probe in the new state so the model sees the newly-exposed issues.
+        issues = self.probe_page()
+        return AgentSession.issues_to_json(issues)
+
     def verify(self, selector: str, criterion: str) -> Dict[str, Any]:
         """Re-render and re-probe one node/criterion; record the passing result.
 

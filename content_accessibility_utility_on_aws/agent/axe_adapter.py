@@ -81,6 +81,15 @@ AXE_RULE_MAP: Dict[str, Dict[str, str]] = {
     "aria-required-children": {
         "type": "invalid-aria-structure", "wcag": "4.1.2", "severity": "major",
     },
+    # Duplicate ids (WCAG 4.1.1 in 2.1; parsing) break label[for]/aria-*
+    # references — the reference resolves only to the first match. Routed to a
+    # deterministic document-wide de-dup that also repairs label associations.
+    "duplicate-id-active": {
+        "type": "duplicate-id", "wcag": "4.1.1", "severity": "major",
+    },
+    "duplicate-id-aria": {
+        "type": "duplicate-id", "wcag": "4.1.1", "severity": "major",
+    },
 }
 
 
@@ -165,6 +174,28 @@ class AxeAdapter:
                 )
             )
 
+        # Focus-order findings (WCAG 2.4.3): positive tabindex distorts the tab
+        # sequence. Detected by the probe's tab-order walk, not axe.
+        for finding in getattr(probe_result, "focus_order_findings", []):
+            issues.append(
+                _issue_from_parts(
+                    issue_type="focus-order-broken",
+                    wcag="2.4.3",
+                    severity="major",
+                    selector=finding.selector,
+                    element_tag=_tag_from_selector(finding.selector),
+                    description=(
+                        f"Element '{finding.selector}' has positive "
+                        f"tabindex={finding.tabindex}, which overrides DOM order "
+                        f"and creates a confusing keyboard focus sequence "
+                        f"(WCAG 2.4.3)."
+                    ),
+                    page_number=self.page_number,
+                    issue_index=len(issues),
+                    source="focus-order-probe",
+                )
+            )
+
         # axe rule violations we own.
         for violation in probe_result.violations:
             mapping = AXE_RULE_MAP.get(violation.rule_id)
@@ -193,6 +224,6 @@ class AxeAdapter:
 
 def rendered_issue_types() -> set:
     """Set of issue types this adapter can emit (for de-dup / gating)."""
-    types = {"focus-not-visible"}
+    types = {"focus-not-visible", "focus-order-broken"}
     types.update(m["type"] for m in AXE_RULE_MAP.values())
     return types

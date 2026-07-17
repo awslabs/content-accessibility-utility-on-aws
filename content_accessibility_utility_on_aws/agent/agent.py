@@ -55,6 +55,17 @@ outstanding accessibility issues (type, wcag_criterion, selector, description).
 accessible name.
 - apply_fix(selector, issue_type): apply the remediation for that issue type at \
 that selector. This edits the page but does NOT prove the fix worked.
+- author_css_rule(selector, declarations): inject a real CSS rule. Use this for \
+contrast (1.4.3 / 1.4.11): read the element's computed color and \
+background-color with get_element, pick colors meeting the threshold (>= 4.5:1 \
+normal text, >= 3:1 large text / UI components), then apply e.g. \
+"color:#111 !important; background-color:#fff !important". apply_fix does not fix \
+contrast; author_css_rule does.
+- set_page_state(script): run a small JS snippet after render to reach a runtime \
+state (e.g. "openModal();"), then re-probe in that state. Use this when an issue \
+only exists after interaction — a modal hidden until opened, a live region that \
+updates on an action. All later probes/verify observe that state; pass "" to \
+reset.
 - verify(selector, criterion): re-render the page and re-measure whether that \
 element now satisfies that WCAG criterion. This is the ONLY source of truth for \
 whether a fix worked. Returns passed=true/false and a detail.
@@ -115,6 +126,25 @@ def build_tools(session: AgentSession) -> List[Any]:
         return session.apply_fix(selector, issue_type)
 
     @tool
+    def author_css_rule(selector: str, declarations: str) -> str:
+        """Inject a real CSS rule into the page: `selector { declarations }`.
+
+        Use this for fixes that a per-element attribute cannot express because
+        the failing style comes from a stylesheet that wins the cascade — most
+        importantly contrast (1.4.3 / 1.4.11). First read the element's computed
+        color and background-color with get_element, choose colors that meet the
+        contrast threshold (>= 4.5:1 for normal text, >= 3:1 for large text or UI
+        components), then apply them here. Include `!important` in declarations
+        when overriding an existing rule. Call verify(selector, '1.4.3') after.
+
+        Args:
+            selector: CSS selector the rule targets (reuse one from a probe).
+            declarations: CSS declarations, e.g. 'color:#111 !important;
+                background-color:#fff !important'.
+        """
+        return session.author_css_rule(selector, declarations)
+
+    @tool
     def verify(selector: str, criterion: str) -> Dict[str, Any]:
         """Re-render and re-measure whether an element now meets a WCAG criterion.
 
@@ -127,6 +157,24 @@ def build_tools(session: AgentSession) -> List[Any]:
         return session.verify(selector, criterion)
 
     @tool
+    def set_page_state(script: str) -> str:
+        """Drive the page into a runtime state, then re-probe in that state.
+
+        Some issues only exist after interaction — a modal that is hidden until
+        openModal() runs (so its missing dialog role / label / focus trap is
+        invisible on the initial render), or a live region that only updates on
+        an action. Provide a small JS snippet to reach that state (e.g.
+        "openModal();" or "document.querySelector('.tab:nth-child(2)').click();").
+        Every later probe/verify observes that state until you call this again;
+        pass an empty string to return to the initial page. Returns the issues
+        found in the new state (same shape as render_and_probe).
+
+        Args:
+            script: JavaScript to execute after render to reach the state.
+        """
+        return session.set_page_state(script)
+
+    @tool
     def mark_issue_resolved(selector: str, criterion: str) -> str:
         """Record an issue as resolved. Only valid after a passing verify().
 
@@ -136,7 +184,15 @@ def build_tools(session: AgentSession) -> List[Any]:
         """
         return session.commit_resolution(selector, criterion)
 
-    return [render_and_probe, get_element, apply_fix, verify, mark_issue_resolved]
+    return [
+        render_and_probe,
+        get_element,
+        apply_fix,
+        author_css_rule,
+        set_page_state,
+        verify,
+        mark_issue_resolved,
+    ]
 
 
 def build_verification_hook(session: AgentSession):

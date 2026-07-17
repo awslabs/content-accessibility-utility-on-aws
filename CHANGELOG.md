@@ -17,6 +17,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Post-remediation re-audit + gap report.** After remediation the pipeline
+  re-audits the final HTML and publishes `accessibility_audit_before.json`,
+  `accessibility_audit.json` (now the post-remediation state), and
+  `remediation_gap.json` (before/after issue counts + residual-by-criterion), so
+  the report reflects what was actually fixed and the residual gap is
+  measurable. Job status carries `issues_before`/`issues_after`/`issues_resolved`.
+- **`author_css_rule` agent tool + computed-contrast remediation (WCAG 1.4.3 /
+  1.4.11).** The agent can inject a real CSS cascade rule (needed for contrast,
+  which an inline attribute cannot fix against a stylesheet), reading computed
+  colors via `get_element` and verifying with axe. A deterministic
+  `computed-contrast-insufficient` strategy (shared luminance math in
+  `utils/color_contrast.py`) covers the no-model path.
+- **`set_page_state` agent tool (runtime state).** Runs a JS snippet after
+  render (e.g. `openModal()`) so runtime-only issues — a modal hidden until
+  opened, a live region — become observable and fixable; all later probes/verify
+  observe that state. Markup/`document.write` injection is refused.
+- **Duplicate-id remediation (WCAG 4.1.1).** A deterministic document-wide pass
+  makes colliding `id`s unique and repairs adjacent `label[for]` associations
+  (a shared id otherwise resolves only to the first match, mis-labelling
+  controls). Mapped from axe `duplicate-id-active`/`-aria`.
+- **Focus-order remediation (WCAG 2.4.3).** A tab-order probe reports elements
+  with positive `tabindex` (which distort the keyboard sequence); the fix
+  neutralizes them to `tabindex="0"` and verify re-walks the order.
 - `init-pipeline` CLI command: scaffolds the managed AgentCore deployment (SAM
   template, runtime entrypoint, trigger Lambda, requirements) into a directory,
   so the event-driven S3 → convert → audit → agent-remediate → S3 pipeline can be

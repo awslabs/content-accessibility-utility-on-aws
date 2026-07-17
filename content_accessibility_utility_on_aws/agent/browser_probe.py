@@ -96,11 +96,21 @@ class FocusFinding:
 
 
 @dataclass
+class FocusOrderFinding:
+    """An element whose positive ``tabindex`` distorts focus order (WCAG 2.4.3)."""
+
+    selector: str
+    html: str
+    tabindex: int
+
+
+@dataclass
 class ProbeResult:
     """Everything one render pass measured."""
 
     violations: List[RawViolation] = field(default_factory=list)
     focus_findings: List[FocusFinding] = field(default_factory=list)
+    focus_order_findings: List[FocusOrderFinding] = field(default_factory=list)
 
 
 @dataclass
@@ -160,6 +170,15 @@ class BrowserProbe(ABC):
 
     def __exit__(self, *exc: Any) -> None:
         self.close()
+
+    def set_state_script(self, script: Optional[str]) -> None:  # pragma: no cover
+        """Drive the page into a runtime state before probing (default no-op).
+
+        Implementations backed by a real browser run ``script`` after each
+        render (before axe/focus/verify) so runtime-only issues — a modal that
+        only exists once opened, a live region that only updates on interaction —
+        become observable. Probes without a JS runtime ignore it.
+        """
 
     def close(self) -> None:  # pragma: no cover - trivial
         """Release any backend resources. Safe to call more than once."""
@@ -229,6 +248,42 @@ _FOCUS_PROBE_JS = r"""
 """
 
 
+# Positive tabindex (> 0) forces an element to the front of the tab sequence,
+# ahead of DOM order — a common, deterministic WCAG 2.4.3 (Focus Order) defect
+# that produces a confusing keyboard sequence. This reports each such element
+# with the same cssPath selector convention as the focus probe.
+_FOCUS_ORDER_PROBE_JS = r"""
+() => {
+  const cssPath = (el) => {
+    if (el.id) return el.tagName.toLowerCase() + '#' + CSS.escape(el.id);
+    const parts = [];
+    while (el && el.nodeType === 1 && el.tagName.toLowerCase() !== 'html') {
+      let seg = el.tagName.toLowerCase();
+      const parent = el.parentNode;
+      if (parent) {
+        const sameTag = Array.from(parent.children).filter(
+          c => c.tagName === el.tagName);
+        if (sameTag.length > 1) {
+          seg += ':nth-of-type(' + (sameTag.indexOf(el) + 1) + ')';
+        }
+      }
+      parts.unshift(seg);
+      el = el.parentNode;
+    }
+    return parts.join(' > ');
+  };
+  const results = [];
+  for (const el of document.querySelectorAll('[tabindex]')) {
+    const ti = parseInt(el.getAttribute('tabindex'), 10);
+    if (Number.isFinite(ti) && ti > 0) {
+      results.push({selector: cssPath(el), html: el.outerHTML.slice(0, 300), tabindex: ti});
+    }
+  }
+  return results;
+}
+"""
+
+
 class _PlaywrightProbeBase(BrowserProbe):
     """Shared Playwright-driven probe logic, independent of *where* the browser is.
 
@@ -256,6 +311,10 @@ class _PlaywrightProbeBase(BrowserProbe):
         self._playwright = None
         self._browser = None
         self._axe_js = self._load_axe()
+        # Optional JS run after each render to drive the page into a runtime
+        # state before probing (e.g. open a modal). Set via set_state_script so
+        # render/get_element/verify all observe the same state. None = pristine.
+        self._setup_script: Optional[str] = None
         # All Playwright calls run here so they never see an asyncio loop.
         from concurrent.futures import ThreadPoolExecutor
 
@@ -340,10 +399,24 @@ class _PlaywrightProbeBase(BrowserProbe):
                 "document.head && document.head.appendChild(s);});"
             )
             page.set_content(html, wait_until="networkidle")
+            # Drive the page into a requested runtime state (e.g. open a modal)
+            # so the probe observes issues that only exist after interaction.
+            # Failures here are non-fatal: probe the pristine page rather than
+            # aborting, since a bad script should not block all detection.
+            if self._setup_script:
+                try:
+                    page.evaluate(f"() => {{ {self._setup_script} }}")
+                    page.wait_for_timeout(150)  # let state settle (deterministic)
+                except Exception as e:  # pragma: no cover - script-dependent
+                    logger.warning("set_state_script failed, probing pristine page: %s", e)
         except Exception:
             page.close()
             raise
         return page
+
+    def set_state_script(self, script: Optional[str]) -> None:
+        """Set (or clear, with None) the JS run after each render before probing."""
+        self._setup_script = script or None
 
     def render_and_probe(self, html: str) -> ProbeResult:
         return self._submit(self._render_and_probe_impl, html)
@@ -371,7 +444,18 @@ class _PlaywrightProbeBase(BrowserProbe):
                 )
                 for f in focus_raw
             ]
-            return ProbeResult(violations=violations, focus_findings=focus_findings)
+            order_raw = page.evaluate(_FOCUS_ORDER_PROBE_JS)
+            focus_order_findings = [
+                FocusOrderFinding(
+                    selector=f["selector"], html=f["html"], tabindex=f["tabindex"]
+                )
+                for f in order_raw
+            ]
+            return ProbeResult(
+                violations=violations,
+                focus_findings=focus_findings,
+                focus_order_findings=focus_order_findings,
+            )
         finally:
             page.close()
 
@@ -430,6 +514,8 @@ class _PlaywrightProbeBase(BrowserProbe):
             return self._verify_focus_visible(html, selector)
         if criterion in ("1.4.3", "1.4.11"):
             return self._verify_contrast(html, selector, criterion)
+        if criterion == "2.4.3":
+            return self._verify_focus_order(html, selector)
         return VerifyResult(
             criterion=criterion,
             selector=selector,
@@ -455,6 +541,37 @@ class _PlaywrightProbeBase(BrowserProbe):
                     "Visible focus indicator present"
                     if passed
                     else "No visible focus indicator on focus"
+                ),
+            )
+        finally:
+            page.close()
+
+    def _verify_focus_order(self, html: str, selector: str) -> VerifyResult:
+        """Pass when the element no longer carries a positive tabindex (2.4.3)."""
+        page = self._new_page(html)
+        try:
+            ti = page.evaluate(
+                """(sel) => {
+                    const el = document.querySelector(sel);
+                    if (!el) return null;
+                    const v = el.getAttribute('tabindex');
+                    return v === null ? 0 : parseInt(v, 10);
+                }""",
+                selector,
+            )
+            if ti is None:
+                return VerifyResult(
+                    "2.4.3", selector, passed=False,
+                    detail="Element not found when verifying focus order",
+                )
+            passed = not (isinstance(ti, (int, float)) and ti > 0)
+            return VerifyResult(
+                "2.4.3", selector, passed=passed,
+                measured={"tabindex": ti},
+                detail=(
+                    "No positive tabindex; focus follows DOM order"
+                    if passed
+                    else f"Element still has positive tabindex={ti}"
                 ),
             )
         finally:

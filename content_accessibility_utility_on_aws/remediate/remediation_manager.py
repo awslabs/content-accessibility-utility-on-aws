@@ -67,6 +67,7 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.form_
     remediate_missing_form_labels,
     remediate_missing_required_indicators,
     remediate_missing_fieldsets,
+    remediate_duplicate_ids,
 )
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.figure_remediation import (
     remediate_improper_figure_structure,
@@ -79,6 +80,8 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.inter
     remediate_missing_accessible_name,
     remediate_missing_aria_state,
     remediate_invalid_aria_structure,
+    remediate_computed_contrast,
+    remediate_focus_order,
 )
 
 # Set up module-level logger
@@ -192,6 +195,11 @@ class RemediationManager:
             # "form-control-missing-label"; "missing-input-label" is kept as an alias.
             "form-control-missing-label": remediate_missing_form_labels,
             "missing-input-label": remediate_missing_form_labels,
+            # Duplicate ids break label[for]/aria references (a shared id resolves
+            # only to the first match). A deterministic document-wide de-dup that
+            # also repairs adjacent label associations.
+            "duplicate-id": remediate_duplicate_ids,
+            "duplicate-id-active": remediate_duplicate_ids,
             "missing-required-indicator": remediate_missing_required_indicators,
             # The audit emits "form-related-controls-no-fieldset" for ungrouped
             # related controls; "missing-fieldset" is kept as an alias.
@@ -213,6 +221,12 @@ class RemediationManager:
             "missing-aria-state": remediate_missing_aria_state,
             "missing-aria-expanded": remediate_missing_aria_state,
             "invalid-aria-structure": remediate_invalid_aria_structure,
+            # Computed contrast (WCAG 1.4.3) from the rendered audit. The agent
+            # path prefers author_css_rule (it can read the computed cascade);
+            # this deterministic nudge covers the disable_ai / no-model route.
+            "computed-contrast-insufficient": remediate_computed_contrast,
+            # Focus order (WCAG 2.4.3): neutralize a positive tabindex.
+            "focus-order-broken": remediate_focus_order,
         }
 
     @staticmethod
