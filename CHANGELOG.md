@@ -50,6 +50,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Bug Fixes
 
+- The browser-backed **agent now runs on single-file HTML**, not only on
+  multi-page (PDF-converted) bundles. Interactive single-page documents
+  (dashboards, widgets) are the agent's core case, and it was previously
+  unreachable for them, so computed-style/interactive issues went unremediated.
+- **Linked local CSS/JS is inlined before the agent renders** the page. The
+  probe renders an HTML string (and the hosted browser is a remote managed
+  service), so external `<link>`/`<script>` assets never loaded — hiding
+  computed-style issues defined in stylesheets (focus outlines via `outline`,
+  class-based contrast) from axe and the focus probe. Inlining makes them
+  visible so the agent can actually detect and fix them. Only same-origin
+  relative paths inside the document directory are inlined (absolute URLs and
+  path traversal are refused; oversized assets are skipped).
+- Model-agnostic `temperature` handling: newer Bedrock models (e.g. Claude
+  Sonnet 5, Opus 4) reject the `temperature` inference parameter with a
+  `ValidationException`, which previously caused every model-backed remediation
+  to silently fall back to generic rule-based output. The Converse client now
+  omits `temperature` proactively for models known to reject it (decided from
+  the model id, so rapid short-lived clients never lose the race by each
+  sending it once), with a reactive drop-and-retry as a fallback for unknown
+  future models. The Strands agent applies the same rule. Models that require
+  it (e.g. Nova) still receive `temperature=0.0`.
 - Added missing build dependency
 - Resolved audit issue with blended numbered html pages and non-numbered pages.
 - Improved table generation with solid borders

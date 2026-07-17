@@ -242,6 +242,13 @@ def _run_audit(
                     os.remove(audit_target)
                 except OSError:
                     pass
+            # Browser-backed agent pass on the single remediated page, when the
+            # audit flagged an agent-relevant issue (computed contrast, focus,
+            # name-role-value, …) the static path cannot resolve. Interactive
+            # single-file HTML (dashboards, widgets) is the agent's core case.
+            agent_pages = _run_agent_on_single_page(
+                remediated_file, options, audit_result
+            )
             publish_root = work
 
         out_prefix = f"{OUTPUT_PREFIX}{name}/"
@@ -289,6 +296,85 @@ _AGENT_RELEVANT_WCAG = {
 }
 
 
+# Largest single linked asset we will inline into the HTML (bytes). Keeps a
+# pathological stylesheet/script from bloating the payload sent to the remote
+# browser; anything larger is left as an external reference (and simply won't be
+# rendered by the probe, as before).
+_MAX_INLINE_ASSET_BYTES = 2_000_000
+
+
+def _inline_local_assets(html: str, base_dir: str) -> str:
+    """Inline linked *local* CSS/JS into the HTML so a browser probe renders it.
+
+    The agent's probe renders an HTML *string* (via ``page.set_content``) with no
+    base URL — and in the hosted path the browser is a remote managed service
+    with no access to our filesystem. Either way, relative ``<link href>`` /
+    ``<script src>`` assets never load, so computed-style and interactive issues
+    defined in external CSS/JS (focus outlines, class-based contrast, widget
+    behavior) are invisible to axe and the focus probe. Inlining those assets
+    into the document makes them part of what the probe renders.
+
+    Only same-origin *relative* paths that resolve inside ``base_dir`` are
+    inlined; absolute URLs (``http(s)://``, protocol-relative ``//``, ``data:``)
+    are left untouched. Returns the HTML unchanged if there is nothing to inline
+    or BeautifulSoup is unavailable.
+    """
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:  # pragma: no cover - bs4 is a core dep
+        return html
+
+    def _local_path(ref: str) -> Optional[str]:
+        if not ref:
+            return None
+        low = ref.strip().lower()
+        if low.startswith(("http://", "https://", "//", "data:", "#", "mailto:")):
+            return None
+        # Resolve relative to base_dir and confine to it (no path traversal).
+        candidate = os.path.normpath(os.path.join(base_dir, ref.split("?", 1)[0]))
+        base_abs = os.path.abspath(base_dir)
+        if os.path.commonpath([base_abs, os.path.abspath(candidate)]) != base_abs:
+            return None
+        return candidate if os.path.isfile(candidate) else None
+
+    def _read(path: str) -> Optional[str]:
+        try:
+            if os.path.getsize(path) > _MAX_INLINE_ASSET_BYTES:
+                return None
+            with open(path, "r", encoding="utf-8") as fh:
+                return fh.read()
+        except OSError:
+            return None
+
+    soup = BeautifulSoup(html, "html.parser")
+    changed = False
+
+    for link in soup.find_all("link"):
+        rels = [r.lower() for r in (link.get("rel") or [])]
+        if "stylesheet" not in rels:
+            continue
+        path = _local_path(link.get("href", ""))
+        css = _read(path) if path else None
+        if css is None:
+            continue
+        style = soup.new_tag("style")
+        style.string = css
+        link.replace_with(style)
+        changed = True
+
+    for script in soup.find_all("script", src=True):
+        path = _local_path(script.get("src", ""))
+        js = _read(path) if path else None
+        if js is None:
+            continue
+        new_script = soup.new_tag("script")
+        new_script.string = js
+        script.replace_with(new_script)
+        changed = True
+
+    return str(soup) if changed else html
+
+
 def _run_agent_on_candidate_pages(
     work_dir: str, options: Dict[str, Any], audit_result: Optional[Dict[str, Any]] = None
 ) -> int:
@@ -331,7 +417,10 @@ def _run_agent_on_candidate_pages(
             for page_path in candidates:
                 try:
                     with open(page_path, "r", encoding="utf-8") as f:
-                        html = f.read()
+                        raw = f.read()
+                    # Inline linked local CSS/JS so the probe renders the real
+                    # computed cascade (external assets never load in the probe).
+                    html = _inline_local_assets(raw, os.path.dirname(page_path))
                     result = run_agent(probe, html, options=options)
                     fixed = result.get("html")
                     # Persist the agent's output when it actually changed the
@@ -356,6 +445,75 @@ def _run_agent_on_candidate_pages(
 
     logger.info("Agent changed %d/%d candidate pages", processed, len(candidates))
     return processed
+
+
+def _run_agent_on_single_page(
+    page_path: str, options: Dict[str, Any], audit_result: Optional[Dict[str, Any]] = None
+) -> int:
+    """Run the browser-backed agent on a single remediated HTML file.
+
+    Runs only when the rendered/agent layer is enabled and the audit flagged at
+    least one *agent-relevant* issue (see :data:`_AGENT_RELEVANT_WCAG`) that the
+    static path cannot resolve. Returns 1 if the agent changed the page, else 0.
+    Any failure (browser unavailable, model error, missing agent stack) is
+    non-fatal: the statically-remediated page is left in place.
+    """
+    if not (options.get("agent") or options.get("rendered")):
+        return 0
+    if int(options.get("max_agent_pages", 0) or 0) <= 0:
+        return 0
+
+    # Consult the audit: only pay the browser+agent cost when there is an
+    # agent-relevant finding. When no audit result is available, fall back to a
+    # DOM interactive-control heuristic so the function is usable standalone.
+    if audit_result and audit_result.get("issues"):
+        if not _has_agent_relevant_issue(audit_result):
+            logger.info("No agent-relevant findings on page; skipping agent pass")
+            return 0
+
+    try:
+        from content_accessibility_utility_on_aws.agent.browser_probe import (
+            BrowserUnavailableError,
+            make_browser_probe,
+        )
+        from content_accessibility_utility_on_aws.agent.agent import run_agent
+    except ImportError as e:
+        logger.warning("Agent layer unavailable, skipping single-page agent: %s", e)
+        return 0
+
+    try:
+        with open(page_path, "r", encoding="utf-8") as f:
+            raw = f.read()
+    except OSError as e:
+        logger.warning("Could not read page for agent pass: %s", e)
+        return 0
+
+    # Inline linked local CSS/JS so the probe renders the real computed cascade
+    # (external assets do not load in a set_content / remote-browser render).
+    html = _inline_local_assets(raw, os.path.dirname(page_path))
+
+    try:
+        with make_browser_probe(options) as probe:
+            result = run_agent(probe, html, options=options)
+    except BrowserUnavailableError as e:
+        logger.warning("Browser unavailable, skipping single-page agent: %s", e)
+        return 0
+    except Exception as e:  # pragma: no cover - resilience
+        logger.warning("Single-page agent pass failed: %s", e)
+        return 0
+
+    fixed = result.get("html")
+    # Persist only when the agent actually changed the page (see the multi-page
+    # path for why we do not gate on result["resolved"]).
+    if fixed and fixed != html:
+        try:
+            with open(page_path, "w", encoding="utf-8") as f:
+                f.write(fixed)
+            logger.info("Agent changed the single page")
+            return 1
+        except OSError as e:  # pragma: no cover
+            logger.warning("Could not write agent output: %s", e)
+    return 0
 
 
 def _candidate_pages(
@@ -416,6 +574,22 @@ def _pages_with_agent_relevant_issues(audit_result: Dict[str, Any]) -> set:
         if fname:
             flagged.add(os.path.basename(fname))
     return flagged
+
+
+def _has_agent_relevant_issue(audit_result: Dict[str, Any]) -> bool:
+    """True if the audit has any unresolved agent-relevant issue (any page).
+
+    Used by the single-page path, where there is exactly one document so a
+    per-file-name match is unnecessary — we only need to know whether the agent
+    could add value at all.
+    """
+    for issue in audit_result.get("issues", []):
+        if issue.get("wcag_criterion") not in _AGENT_RELEVANT_WCAG:
+            continue
+        if issue.get("remediation_status") == "compliant":
+            continue
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
