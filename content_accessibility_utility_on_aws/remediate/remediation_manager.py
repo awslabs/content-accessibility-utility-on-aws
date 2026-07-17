@@ -76,6 +76,9 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.targe
 )
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.interactive_remediation import (
     remediate_focus_not_visible,
+    remediate_missing_accessible_name,
+    remediate_missing_aria_state,
+    remediate_invalid_aria_structure,
 )
 
 # Set up module-level logger
@@ -203,6 +206,13 @@ class RemediationManager:
             # is kept as an alias for the catalog type in issue_types.py.
             "focus-not-visible": remediate_focus_not_visible,
             "missing-focus-indicator": remediate_focus_not_visible,
+            # Name, Role, Value (WCAG 4.1.2) for custom widgets from the
+            # rendered/agent audit.
+            "missing-accessible-name": remediate_missing_accessible_name,
+            "missing-button-role": remediate_missing_accessible_name,
+            "missing-aria-state": remediate_missing_aria_state,
+            "missing-aria-expanded": remediate_missing_aria_state,
+            "invalid-aria-structure": remediate_invalid_aria_structure,
         }
 
     @staticmethod

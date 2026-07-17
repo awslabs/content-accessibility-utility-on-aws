@@ -27,9 +27,35 @@ from bs4 import BeautifulSoup
 from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
     find_element_from_issue,
 )
+from content_accessibility_utility_on_aws.remediate.helpers.text_generation import (
+    generate_short_text,
+)
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 
 logger = setup_logger(__name__)
+
+# Required-state defaults per ARIA role, applied when a widget declares a role
+# but omits the state attribute the role requires (WCAG 4.1.2).
+_ROLE_REQUIRED_STATE = {
+    "switch": ("aria-checked", "false"),
+    "checkbox": ("aria-checked", "false"),
+    "radio": ("aria-checked", "false"),
+    "menuitemcheckbox": ("aria-checked", "false"),
+    "menuitemradio": ("aria-checked", "false"),
+    "tab": ("aria-selected", "false"),
+    "option": ("aria-selected", "false"),
+    "combobox": ("aria-expanded", "false"),
+}
+
+# Role -> the parent/container role ARIA requires it to live under, and the
+# container's own role (used to wrap orphaned children; WCAG 4.1.2).
+_ROLE_REQUIRED_PARENT = {
+    "tab": "tablist",
+    "option": "listbox",
+    "menuitem": "menu",
+    "menuitemcheckbox": "menu",
+    "menuitemradio": "menu",
+}
 
 # Marker attribute so the injected style block is created once and reused, and
 # so tests / re-runs can find it deterministically.
@@ -117,3 +143,141 @@ def remediate_focus_not_visible(
         "Added a visible :focus-visible outline style to the document so "
         "keyboard focus is perceptible (WCAG 2.4.7)"
     )
+
+
+def _describe_from_context(element) -> Optional[str]:
+    """Rule-based accessible name from an element's own signals (no model).
+
+    Tries, in order: an icon class hint (e.g. ``icon-refresh`` -> "Refresh"),
+    a title/value/placeholder attribute, and the nearest following text sibling
+    (e.g. a toggle followed by a "Dark mode" label). Returns None if nothing
+    usable is found.
+    """
+    # Icon class hint: the last hyphen segment of a class like "icon-export".
+    for cls in element.get("class", []) or []:
+        parts = str(cls).replace("_", "-").split("-")
+        if len(parts) > 1 and parts[0] in ("icon", "btn", "ic", "fa"):
+            word = parts[-1]
+            if word.isalpha() and word not in ("btn", "icon"):
+                return word.capitalize()
+    for attr in ("title", "value", "placeholder", "alt"):
+        val = element.get(attr)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    # Adjacent label text (common for toggles/switches: <span switch><span>Label).
+    sib = element.find_next_sibling()
+    if sib is not None:
+        text = sib.get_text(strip=True) if hasattr(sib, "get_text") else ""
+        if text and len(text) <= 40:
+            return text
+    return None
+
+
+def remediate_missing_accessible_name(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """Give an interactive element an accessible name (WCAG 4.1.2).
+
+    Custom widgets (``role="button"``, toggles, icon buttons) and controls with
+    no text child have no accessible name, so assistive tech announces nothing.
+    Adds an ``aria-label`` authored by the model from the element's context
+    where available, falling back to a rule-based label from the element's own
+    signals (icon class, title, adjacent text). Never overwrites an existing
+    accessible name.
+    """
+    bedrock_client = args[0] if args else None
+
+    el = find_element_from_issue(soup, issue)
+    if el is None:
+        return None
+    # Respect an existing programmatic name.
+    if el.get("aria-label") or el.get("aria-labelledby"):
+        return "Element already has an accessible name; no change needed"
+    # For text-content controls (buttons/links/custom-role widgets), visible
+    # text IS the accessible name. For form controls (input/select/textarea) it
+    # is NOT — a <select>'s option text or an <input>'s value does not name the
+    # control — so those still need an aria-label even with inner text.
+    _text_named = el.name not in ("select", "input", "textarea")
+    if _text_named and el.get_text(strip=True):
+        return "Element already has an accessible name; no change needed"
+
+    role = el.get("role") or el.name
+    parent = el.find_parent(["div", "section", "nav", "header", "form", "li"])
+    surrounding = parent.get_text(separator=" ", strip=True)[:200] if parent else ""
+
+    label = generate_short_text(
+        bedrock_client,
+        instruction=(
+            f"Write a short accessible name (2-5 words) for this interactive "
+            f"'{role}' control so a screen-reader user knows what it does. No "
+            f"quotes or the word 'button'."
+        ),
+        context=(
+            f"Element: <{el.name} role='{el.get('role','')}'>\n"
+            f"Surrounding text: {surrounding}"
+        ),
+        purpose="accessible_name_generation",
+        max_words=6,
+    )
+    if not label:
+        label = _describe_from_context(el)
+    if not label:
+        return None
+
+    el["aria-label"] = label
+    return f"Added aria-label '{label}' to <{el.name}> (WCAG 4.1.2)"
+
+
+def remediate_missing_aria_state(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """Add the ARIA state attribute a widget's role requires (WCAG 4.1.2).
+
+    e.g. ``role="switch"``/``"checkbox"`` need ``aria-checked``; ``role="tab"``
+    needs ``aria-selected``. Sets the neutral default (``false``); the app's JS
+    should keep it in sync, but a present-and-default state is announced
+    correctly, whereas a missing one is not.
+    """
+    el = find_element_from_issue(soup, issue)
+    if el is None:
+        return None
+    role = (el.get("role") or "").lower()
+    spec = _ROLE_REQUIRED_STATE.get(role)
+    if not spec:
+        return None
+    attr, default = spec
+    if el.get(attr) is not None:
+        return f"<{el.name}> already declares {attr}; no change needed"
+    # Reflect the visual 'on'/'active' class into the initial state when present.
+    classes = " ".join(el.get("class", []) or []).lower()
+    if attr in ("aria-checked", "aria-selected") and (
+        "on" in classes.split() or "active" in classes.split() or "checked" in classes
+    ):
+        default = "true"
+    el[attr] = default
+    return f"Added {attr}='{default}' to role='{role}' widget (WCAG 4.1.2)"
+
+
+def remediate_invalid_aria_structure(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """Establish the required parent role for an ARIA widget (WCAG 4.1.2).
+
+    e.g. ``role="tab"`` must be owned by a ``role="tablist"``. If the element's
+    container lacks the required role, set it on the nearest common parent so
+    the relationship the role assumes actually exists.
+    """
+    el = find_element_from_issue(soup, issue)
+    if el is None:
+        return None
+    role = (el.get("role") or "").lower()
+    required_parent = _ROLE_REQUIRED_PARENT.get(role)
+    if not required_parent:
+        return None
+    parent = el.parent
+    if parent is None or not hasattr(parent, "get"):
+        return None
+    if (parent.get("role") or "").lower() == required_parent:
+        return f"Parent already has role='{required_parent}'; no change needed"
+    parent["role"] = required_parent
+    return f"Set parent role='{required_parent}' for role='{role}' (WCAG 4.1.2)"

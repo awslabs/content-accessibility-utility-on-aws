@@ -334,7 +334,14 @@ def _run_agent_on_candidate_pages(
                         html = f.read()
                     result = run_agent(probe, html, options=options)
                     fixed = result.get("html")
-                    if fixed and result.get("resolved"):
+                    # Persist the agent's output when it actually changed the
+                    # page. We intentionally do NOT gate on result["resolved"]:
+                    # the agent can apply many verified edits without the commit
+                    # ledger capturing every one, and discarding a changed-and-
+                    # improved page because the ledger is empty would throw away
+                    # real fixes. The rendered layer's own verify() already
+                    # guards fix *quality*; here we just avoid a no-op rewrite.
+                    if fixed and fixed != html:
                         with open(page_path, "w", encoding="utf-8") as f:
                             f.write(fixed)
                         processed += 1

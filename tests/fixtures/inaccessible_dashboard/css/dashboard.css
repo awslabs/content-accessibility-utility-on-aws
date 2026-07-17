@@ -1,0 +1,76 @@
+/*
+ * Copyright 2025 Amazon.com, Inc. or its affiliates.
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Stylesheet for a DELIBERATELY INACCESSIBLE dashboard fixture. The failures
+ * below are defined here (not inline) on purpose, so that static inline-CSS
+ * analysis cannot see them and only the rendered/agent pass catches them:
+ *   - outline:none on every control -> no visible focus indicator (WCAG 2.4.7)
+ *   - low-contrast text/controls (WCAG 1.4.3) computed from the cascade
+ *   - sub-24px icon targets (WCAG 2.5.8)
+ */
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #f4f6f8;
+  color: #333;
+}
+
+/* Focus indicator removed globally — a 2.4.7 failure across every control. */
+a, button, input, select, [tabindex], .tab, .kpi-menu, .icon-btn, .toggle, .close {
+  outline: none;
+}
+
+/* Top bar with low-contrast title text (~2.3:1 on the blue bar). */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #1f6feb;
+  padding: 10px 18px;
+}
+.topbar .title { color: #6fa8f5; font-size: 18px; font-weight: 600; }
+.topbar .spacer { flex: 1; }
+
+/* Sub-24px interactive icon targets (2.5.8). */
+.icon-btn {
+  width: 16px; height: 16px; padding: 0;
+  border: none; background: #1f6feb; border-radius: 3px; cursor: pointer;
+}
+
+/* Tabs — custom widgets, no button semantics in the markup. */
+.tabs { display: flex; gap: 4px; background: #fff; border-bottom: 1px solid #e1e4e8; }
+.tab {
+  padding: 12px 20px; cursor: pointer;
+  /* low-contrast inactive tab label (~2.1:1) */
+  color: #b8bcc2;
+}
+.tab.active { color: #1f6feb; border-bottom: 2px solid #1f6feb; }
+
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 16px; }
+.card { background: #fff; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; }
+.card h3 { margin: 0 0 8px; font-size: 14px; }
+
+/* KPI value in low-contrast light gray (~1.9:1 on white). */
+.kpi-value { font-size: 28px; font-weight: 700; color: #cfd3d8; }
+.kpi-delta.up { color: #2e7d32; }   /* status by color alone */
+.kpi-delta.down { color: #c62828; }
+
+/* Custom toggle switch — no role/state in markup. */
+.toggle { display: inline-block; width: 42px; height: 20px; background: #ccc; border-radius: 10px; position: relative; cursor: pointer; }
+.toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; background: #fff; border-radius: 50%; }
+.toggle.on { background: #1f6feb; }
+.toggle.on::after { left: 24px; }
+
+/* Modal dialog — no dialog role, no focus management. */
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: none; }
+.modal-backdrop.open { display: flex; align-items: center; justify-content: center; }
+.modal { background: #fff; border-radius: 8px; padding: 20px; width: 360px; }
+.modal .close { position: absolute; top: 10px; right: 10px; width: 14px; height: 14px; border: none; background: transparent; cursor: pointer; }
+
+.filter-bar { display: flex; gap: 10px; padding: 0 16px 16px; align-items: center; }
+.btn { background: #1f6feb; color: #cbd9f7; border: none; padding: 8px 14px; border-radius: 4px; cursor: pointer; } /* low-contrast label */
+table { border-collapse: collapse; width: 100%; }
+td, th { border: 1px solid #e1e4e8; padding: 6px 10px; text-align: left; }

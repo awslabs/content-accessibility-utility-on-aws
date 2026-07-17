@@ -47,21 +47,39 @@ AXE_RULE_MAP: Dict[str, Dict[str, str]] = {
         "wcag": "1.4.3",
         "severity": "major",
     },
-    # Name, Role, Value — accessible name/role resolved from the a11y tree.
+    # Name, Role, Value (WCAG 4.1.2) — accessible name resolved from the a11y
+    # tree. axe emits a distinct rule id per control kind; they all map to the
+    # same remediable "missing-accessible-name" type. Native buttons/links plus
+    # custom-widget roles (role="button"/"link"), toggles/switches/checkboxes,
+    # menu commands, and form inputs/selects without an accessible name.
     "button-name": {
-        "type": "missing-accessible-name",
-        "wcag": "4.1.2",
-        "severity": "critical",
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
     },
     "link-name": {
-        "type": "missing-accessible-name",
-        "wcag": "4.1.2",
-        "severity": "critical",
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
     },
+    "aria-command-name": {
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
+    },
+    "aria-toggle-field-name": {
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
+    },
+    "aria-input-field-name": {
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
+    },
+    "select-name": {
+        "type": "missing-accessible-name", "wcag": "4.1.2", "severity": "critical",
+    },
+    # Role/state integrity (WCAG 4.1.2) — an ARIA widget missing a required
+    # attribute or a required owned/parent relationship.
     "aria-required-attr": {
-        "type": "missing-aria-state",
-        "wcag": "4.1.2",
-        "severity": "major",
+        "type": "missing-aria-state", "wcag": "4.1.2", "severity": "major",
+    },
+    "aria-required-parent": {
+        "type": "invalid-aria-structure", "wcag": "4.1.2", "severity": "major",
+    },
+    "aria-required-children": {
+        "type": "invalid-aria-structure", "wcag": "4.1.2", "severity": "major",
     },
 }
 
