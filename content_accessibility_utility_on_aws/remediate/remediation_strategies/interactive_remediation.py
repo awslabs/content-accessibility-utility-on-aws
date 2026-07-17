@@ -173,6 +173,40 @@ def _describe_from_context(element) -> Optional[str]:
     return None
 
 
+def _accessible_name_context(el) -> str:
+    """Build per-element context that distinguishes THIS control from its peers.
+
+    Generic page text (e.g. the topbar) is nearly identical for every icon in a
+    toolbar, which is why the model tends to emit duplicate labels. This gathers
+    the element's OWN signals — its action handler, id/class, icon hint, href,
+    and the closest label text — so the model can name each control distinctly.
+    """
+    lines = [f"Element markup: {str(el)[:200]}"]
+
+    # The action a control invokes is the strongest intent signal.
+    for attr in ("onclick", "id", "name", "href", "title", "value", "placeholder"):
+        val = el.get(attr)
+        if isinstance(val, str) and val.strip():
+            lines.append(f"{attr}: {val.strip()[:80]}")
+    classes = el.get("class", []) or []
+    if classes:
+        lines.append(f"class: {' '.join(str(c) for c in classes)[:80]}")
+
+    # Closest meaningful text: an immediate label sibling, else a short slice of
+    # the nearest text-bearing ancestor (kept short so it does not dominate).
+    sib = el.find_next_sibling()
+    sib_text = sib.get_text(strip=True) if sib is not None and hasattr(sib, "get_text") else ""
+    if sib_text and len(sib_text) <= 40:
+        lines.append(f"Adjacent label: {sib_text}")
+    parent = el.find_parent(["div", "section", "nav", "header", "form", "li", "figure"])
+    if parent is not None:
+        heading = parent.find(["h1", "h2", "h3", "h4"])
+        if heading is not None and heading.get_text(strip=True):
+            lines.append(f"Section heading: {heading.get_text(strip=True)[:60]}")
+
+    return "\n".join(lines)
+
+
 def remediate_missing_accessible_name(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
@@ -202,20 +236,22 @@ def remediate_missing_accessible_name(
         return "Element already has an accessible name; no change needed"
 
     role = el.get("role") or el.name
-    parent = el.find_parent(["div", "section", "nav", "header", "form", "li"])
-    surrounding = parent.get_text(separator=" ", strip=True)[:200] if parent else ""
+    context = _accessible_name_context(el)
 
     label = generate_short_text(
         bedrock_client,
         instruction=(
-            f"Write a short accessible name (2-5 words) for this interactive "
-            f"'{role}' control so a screen-reader user knows what it does. No "
-            f"quotes or the word 'button'."
+            f"Write a UNIQUE, specific accessible name (2-5 words) for this one "
+            f"interactive '{role}' control, so a screen-reader user knows exactly "
+            f"what THIS control does and can tell it apart from other controls on "
+            f"the page. Base it on the control's OWN signals below — its action "
+            f"handler, id/class, icon, and the specific nearby label — not the "
+            f"page title. If it triggers an action (e.g. onclick=\"exportData()\"), "
+            f"name the action (\"Export data\"). Do not use the word 'button', do "
+            f"not use vague names like 'View' or 'Menu', and do not reuse a "
+            f"generic page-level phrase."
         ),
-        context=(
-            f"Element: <{el.name} role='{el.get('role','')}'>\n"
-            f"Surrounding text: {surrounding}"
-        ),
+        context=context,
         purpose="accessible_name_generation",
         max_words=6,
     )
