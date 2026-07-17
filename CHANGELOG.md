@@ -128,6 +128,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- Refresh the rendered/agent docs to match shipped capability: the guide now
+  lists the full agent toolbelt (incl. `author_css_rule`, `set_page_state`), the
+  broadened remediation coverage (contrast 1.4.3/1.4.11, name-role-value 4.1.2,
+  focus-order 2.4.3, duplicate-id 4.1.1), the managed pipeline's before/after +
+  `remediation_gap.json` outputs, and a corrected status section (AgentCore path
+  validated end-to-end). Parameter reference and remediation docs list the new
+  browser-backed issue types. README pip-only deploy shows the BDA env vars on
+  `agentcore launch`.
 - Update streamlit documentation to reference the correct python package
 
 

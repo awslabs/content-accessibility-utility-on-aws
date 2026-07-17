@@ -121,7 +121,8 @@ cd a11y-pipeline
 
 agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
   --requirements-file requirements.txt --region <region>
-agentcore launch                                  # note the runtime ARN
+# For the PDF path, pass BDA config as runtime env vars; note the runtime ARN.
+agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
 sam deploy --guided --parameter-overrides \
   AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
 ```

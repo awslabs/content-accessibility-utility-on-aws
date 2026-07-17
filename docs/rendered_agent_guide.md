@@ -91,9 +91,25 @@ common base (`_PlaywrightProbeBase`), so behavior is identical across them:
 | `AgentCoreBrowserProbe` | Managed Amazon Bedrock AgentCore Browser Tool over CDP | AWS / hosted; **no Chromium in your artifact** |
 
 The **agent** (`agent/agent.py`) is a [Strands](https://strandsagents.com)
-`Agent` given those operations as tools plus a goal ("make this page pass its
-failing checks"). The model decides which fix to apply and in what order; Strands
-runs the loop. When AI is disabled, a deterministic fixed-policy loop
+`Agent` given a toolbelt plus a goal ("make this page pass its failing checks").
+The model decides which fix to apply and in what order; Strands runs the loop.
+The tools are:
+
+- `render_and_probe()` — list outstanding issues (axe + focus/tab-order probes).
+- `get_element(selector)` — computed style, box, role, accessible name.
+- `apply_fix(selector, issue_type)` — apply the mapped remediation strategy.
+- `author_css_rule(selector, declarations)` — inject a real CSS cascade rule.
+  Needed for fixes an inline attribute cannot express against a stylesheet — most
+  importantly contrast (the agent reads computed colors, picks compliant ones,
+  applies the rule, then verifies).
+- `set_page_state(script)` — run JS after render (e.g. `openModal()`) so
+  runtime-only issues (a modal hidden until opened, a live region) become
+  observable; all later probes/verify then see that state.
+- `verify(selector, criterion)` — the source of truth (below).
+- `mark_issue_resolved(selector, criterion)` — gated: rejected unless a passing
+  `verify()` is on record.
+
+When AI is disabled, a deterministic fixed-policy loop
 (`agent/deterministic_loop.py`) runs the same render → fix → verify cycle without
 the model.
 
@@ -223,6 +239,15 @@ remediate. A single HTML with **external** images degrades to placeholder alt
 text (the image bytes are not available to describe) — upload a **zip** bundling
 the HTML with its images/CSS/JS to get full multimodal alt text.
 
+Each run writes these to `accessible/<name>/`:
+
+- `<name>.remediated.html` (plus the page's assets) — the fixed document.
+- `accessibility_audit_before.json` — findings before remediation.
+- `accessibility_audit.json` — findings **after** remediation (the residual).
+- `remediation_gap.json` — `issues_before` / `issues_after` / `issues_resolved`
+  and residual-by-criterion, so you can measure exactly what was fixed. The same
+  counts are recorded on the DynamoDB job record.
+
 ### How the connection works
 
 `AgentCoreBrowserProbe` starts a managed browser session
@@ -297,13 +322,21 @@ connect failure does not leak a managed session.
 
 ## Limitations and status
 
-- **Scope:** Phase 0 ships one interactive remediation end-to-end — focus
-  visibility (WCAG 2.4.7). The rendered audit also surfaces computed contrast and
-  accessible-name findings; broader interactive remediation (focus order,
-  name-role-value, forms) is planned.
-- **AgentCore live validation:** `AgentCoreBrowserProbe` is code-complete and
-  unit-tested against a faked SDK, but has not yet been validated against a live
-  provisioned AgentCore browser session. Validate in a non-production account
-  before relying on the hosted path.
+- **Scope:** the agent remediates a range of interactive/computed criteria
+  end-to-end (apply → re-render → verify): focus visibility (2.4.7), computed
+  contrast (1.4.3 / 1.4.11), name-role-value on custom widgets (4.1.2), focus
+  order / positive tabindex (2.4.3), and duplicate ids (4.1.1), plus
+  model-authored accessible names, link text, and image alt text. Purely
+  structural issues (headings, tables, landmarks, language, titles) are handled
+  by the static path and are not sent to the agent.
+- **Residual (needs human judgment):** issues that require a page-behavior change
+  the agent will not make automatically (e.g. the intended DOM reading order, or
+  a modal's default open/closed state) are reported but left for a human. The
+  agent honestly reports what it verified vs. left unresolved — see the gap
+  report below.
+- **AgentCore live validation:** the hosted path (`AgentCoreBrowserProbe` on
+  AgentCore Runtime driving the managed browser) has been validated end-to-end
+  against live provisioned sessions in a staging account. Still validate in your
+  own non-production account before relying on it.
 - **Determinism:** rendered runs use a fixed viewport, disable animations, wait
   for network idle, and pin the axe-core build so results are reproducible.

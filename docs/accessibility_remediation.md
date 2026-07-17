@@ -83,7 +83,7 @@ The remediation process uses specialized templates for common accessibility issu
 | `table-missing-headers` | Tables without headers | 1.3.1 |
 | `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
 | `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
-| `focus-not-visible` | Interactive element shows no visible focus indicator (detected in a rendered browser) | 2.4.7 |
+| `duplicate-link-text-different-url` | Same link text pointing to different URLs | 2.4.9 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 
@@ -91,13 +91,28 @@ The system can process additional issue types using a generic remediation templa
 
 ### Browser-backed (rendered) issue types
 
-`focus-not-visible` is produced by the optional **rendered audit**, which renders
-the page in a real headless browser (see the
-[Rendered & Agent Guide](rendered_agent_guide.md)). These interactive/computed
-issues cannot be detected by static HTML analysis. When the accessibility
-**agent** is used, each such fix is applied, the page is re-rendered, and the fix
-is **verified** to actually render correctly before the issue is marked resolved
-— unlike the static remediation path, which applies a fix without re-checking it.
+These issue types are produced only by the optional **rendered audit**, which
+renders the page in a real headless browser (see the
+[Rendered & Agent Guide](rendered_agent_guide.md)); static HTML analysis cannot
+detect them:
+
+| Issue Type | Description | WCAG Criterion |
+|------------|-------------|----------------|
+| `focus-not-visible` | No visible focus indicator on an interactive element | 2.4.7 |
+| `computed-contrast-insufficient` | Text/background contrast below threshold (computed from the full cascade, not just inline style) | 1.4.3 / 1.4.11 |
+| `missing-accessible-name` | Custom widget / control with no accessible name (model-authored `aria-label`) | 4.1.2 |
+| `missing-aria-state` | ARIA role missing its required state (e.g. `aria-checked`) | 4.1.2 |
+| `invalid-aria-structure` | ARIA role missing its required parent (e.g. `tab` without `tablist`) | 4.1.2 |
+| `focus-order-broken` | Positive `tabindex` distorts keyboard focus order | 2.4.3 |
+| `duplicate-id` | Colliding element ids break `label[for]`/aria references | 4.1.1 |
+
+When the accessibility **agent** is used, each such fix is applied, the page is
+re-rendered, and the fix is **verified** by a deterministic re-probe before the
+issue is marked resolved — unlike the static remediation path, which applies a
+fix without re-checking it. Contrast fixes use `author_css_rule` (a real cascade
+rule, since an inline attribute cannot beat a stylesheet); the agent can also
+call `set_page_state` to reach runtime-only issues (e.g. a modal hidden until
+opened) before probing.
 
 ## Processing Order and Image Handling
 

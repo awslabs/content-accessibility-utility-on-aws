@@ -22,9 +22,13 @@ Key pieces:
       deterministic probes (axe scan, focus-style diff, element inspection).
     - ``axe_adapter`` — maps browser probe output into the canonical issue-dict
       shape the existing auditor/report/remediation pipeline already consumes.
-    - ``tools`` — the four ``@tool`` functions the Strands agent is given.
-    - ``agent`` — the Strands ``Agent`` plus the steering hooks that enforce the
+    - ``agent`` — the Strands ``Agent``, its ``@tool`` functions (built by
+      ``build_tools``), and the steering hooks that enforce the
       detect-and-verify invariants.
+    - ``session`` — the shared per-run state the tools operate on (the page, the
+      probe, and the verification ledger).
+    - ``pipeline`` — the deployment-agnostic managed-pipeline core (S3 convert →
+      audit → agent-remediate → re-audit), invoked by the AgentCore entrypoint.
     - ``deterministic_loop`` — the no-LLM fallback used when ``disable_ai`` is set.
 """
 

@@ -134,6 +134,12 @@ Common issue types include:
 Issue types produced only by the browser-backed rendered audit (`--rendered` /
 `--agent`):
 - `focus-not-visible`: Interactive element shows no visible focus indicator (WCAG 2.4.7)
+- `computed-contrast-insufficient`: Contrast below threshold, computed from the full CSS cascade (WCAG 1.4.3 / 1.4.11)
+- `missing-accessible-name`: Custom widget/control with no accessible name (WCAG 4.1.2)
+- `missing-aria-state`: ARIA role missing its required state, e.g. `aria-checked` (WCAG 4.1.2)
+- `invalid-aria-structure`: ARIA role missing its required parent, e.g. `tab` without `tablist` (WCAG 4.1.2)
+- `focus-order-broken`: Positive `tabindex` distorts keyboard focus order (WCAG 2.4.3)
+- `duplicate-id`: Colliding element ids break `label[for]`/aria references (WCAG 4.1.1)
 
 ### Rendered / agent options
 
