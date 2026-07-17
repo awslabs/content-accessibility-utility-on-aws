@@ -21,6 +21,7 @@ from content_accessibility_utility_on_aws.utils.constants import (
     DEFAULT_MODEL_ID,
     DEFAULT_MAX_TOKENS,
     DEFAULT_TEMPERATURE,
+    model_supports_temperature,
 )
 
 # Set up module-level logger
@@ -68,6 +69,15 @@ class BedrockClient:
         """
         self.model_id = model_id
         self.profile = profile
+        # Some newer models (e.g. Claude Sonnet 5, Opus 4) reject `temperature`
+        # in inferenceConfig with a ValidationException, while others (e.g. Nova)
+        # still accept it. Decide proactively from the model id so known models
+        # never send it even once — a purely reactive "retry on first failure"
+        # loses the race when many short-lived clients each make one rapid call
+        # (as the per-issue remediation strategies do), so each still sends
+        # temperature and fails before any of them learns to stop. The reactive
+        # retry in ``_converse`` remains as a fallback for unknown future models.
+        self._supports_temperature = model_supports_temperature(model_id)
         # Shared adaptive-retry config so the client backs off automatically
         # under Bedrock throttling instead of failing the call immediately.
         boto_config = BEDROCK_BOTO_CONFIG
@@ -103,6 +113,48 @@ class BedrockClient:
         "HTML content to meet WCAG 2.1 and 2.2 accessibility standards. "
         "Produce accurate, concise output and follow the requested format exactly."
     )
+
+    def _converse(
+        self,
+        messages: list,
+        system_prompt: str,
+        max_tokens: int,
+        temperature: float,
+    ) -> dict:
+        """Call Bedrock Converse, omitting `temperature` for models that reject it.
+
+        Sends `temperature` on the first call; if the model responds with the
+        "temperature is deprecated for this model" ValidationException, it is
+        dropped and the call is retried once without it, and every subsequent
+        call on this client omits it too. All other errors propagate unchanged.
+        """
+        inference_config = {"maxTokens": max_tokens}
+        if self._supports_temperature:
+            inference_config["temperature"] = temperature
+
+        try:
+            return self.client.converse(
+                modelId=self.model_id,
+                messages=messages,
+                system=[{"text": system_prompt}],
+                inferenceConfig=inference_config,
+            )
+        except Exception as e:  # noqa: BLE001 - inspect message, then re-raise
+            if self._supports_temperature and "temperature" in str(e).lower():
+                logger.info(
+                    "Model %s rejected `temperature`; retrying without it and "
+                    "omitting it for the rest of this session.",
+                    self.model_id,
+                )
+                self._supports_temperature = False
+                inference_config.pop("temperature", None)
+                return self.client.converse(
+                    modelId=self.model_id,
+                    messages=messages,
+                    system=[{"text": system_prompt}],
+                    inferenceConfig=inference_config,
+                )
+            raise
 
     def _track_usage(
         self,
@@ -175,8 +227,7 @@ class BedrockClient:
             input_tokens = SessionUsageTracker.estimate_tokens(prompt)
 
             # Invoke the model
-            response = self.client.converse(
-                modelId=self.model_id,
+            response = self._converse(
                 messages=[
                     {
                         "role": "user",
@@ -187,11 +238,9 @@ class BedrockClient:
                         ],
                     }
                 ],
-                system=[{"text": system_prompt or self.DEFAULT_SYSTEM_PROMPT}],
-                inferenceConfig={
-                    "maxTokens": max_tokens,
-                    "temperature": temperature,
-                },
+                system_prompt=system_prompt or self.DEFAULT_SYSTEM_PROMPT,
+                max_tokens=max_tokens,
+                temperature=temperature,
             )
 
             # Warn if the model truncated its output so callers know the result
@@ -317,19 +366,16 @@ class BedrockClient:
             ]
 
             # Invoke the model using converse API
-            response = self.client.converse(
-                modelId=self.model_id,
+            response = self._converse(
                 messages=[
                     {
                         "role": "user",
                         "content": content,
                     }
                 ],
-                system=[{"text": self.DEFAULT_SYSTEM_PROMPT}],
-                inferenceConfig={
-                    "maxTokens": max_tokens,
-                    "temperature": DEFAULT_TEMPERATURE,
-                },
+                system_prompt=self.DEFAULT_SYSTEM_PROMPT,
+                max_tokens=max_tokens,
+                temperature=DEFAULT_TEMPERATURE,
             )
 
             if response.get("stopReason") == "max_tokens":

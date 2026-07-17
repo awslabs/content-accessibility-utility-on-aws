@@ -29,6 +29,26 @@ DEFAULT_MAX_TOKENS = 2000
 # repeatable, structured output over creative variation.
 DEFAULT_TEMPERATURE = 0.0
 
+# Some newer Bedrock models (e.g. the Claude Sonnet 5 family) reject the
+# `temperature` inference parameter with a ValidationException
+# ("temperature is deprecated for this model"), while older ones (e.g. Nova)
+# still require/accept it. Model ids matching any of these prefixes must have
+# `temperature` omitted from Converse / BedrockModel calls. Keep this list in
+# one place so every call site stays consistent.
+_TEMPERATURE_UNSUPPORTED_PREFIXES = (
+    "us.anthropic.claude-sonnet-5",
+    "anthropic.claude-sonnet-5",
+    "us.anthropic.claude-opus-4",
+    "anthropic.claude-opus-4",
+)
+
+
+def model_supports_temperature(model_id: str) -> bool:
+    """Return False for models known to reject the `temperature` parameter."""
+    mid = (model_id or "").lower()
+    return not any(mid.startswith(p) for p in _TEMPERATURE_UNSUPPORTED_PREFIXES)
+
+
 # WCAG 2.2 Success Criterion 2.5.8 minimum interactive target size, in CSS
 # pixels. Shared by the audit check and the remediation strategy so the size
 # they detect against and enforce to cannot drift apart.

@@ -36,7 +36,10 @@ from typing import Any, Dict, List, Optional
 
 from content_accessibility_utility_on_aws.agent.browser_probe import BrowserProbe
 from content_accessibility_utility_on_aws.agent.session import AgentSession
-from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
+from content_accessibility_utility_on_aws.utils.constants import (
+    DEFAULT_MODEL_ID,
+    model_supports_temperature,
+)
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 
 logger = setup_logger(__name__)
@@ -199,10 +202,14 @@ def run_agent(
     tools = build_tools(session)
     hook = build_verification_hook(session)
 
-    model = BedrockModel(
-        model_id=model_id or options.get("model_id", DEFAULT_MODEL_ID),
-        temperature=0.0,
-    )
+    resolved_model_id = model_id or options.get("model_id", DEFAULT_MODEL_ID)
+    # Some models (e.g. Claude Sonnet 5) reject `temperature`; omit it for those
+    # so the agent stays model-agnostic. Deterministic output for models that do
+    # accept it still comes from temperature=0.0.
+    model_kwargs = {"model_id": resolved_model_id}
+    if model_supports_temperature(resolved_model_id):
+        model_kwargs["temperature"] = 0.0
+    model = BedrockModel(**model_kwargs)
     agent = Agent(
         model=model,
         tools=tools,

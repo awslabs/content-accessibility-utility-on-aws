@@ -22,7 +22,10 @@ misc/
 htmlcov/
 .pytest_cache/
 
-# Deployment build/cache artifacts (regenerable; never commit)
+# Deployment build/cache artifacts (regenerable; never commit).
+# The AgentCore toolkit writes these into whatever directory it launches from,
+# so ignore both the intended deployment/ location and the repo root (a launch
+# run from the root leaves 20MB+ dependencies.zip / Dockerfile / config here).
 deployment/dependencies.zip
 deployment/dependencies.hash
 deployment/.bedrock_agentcore.yaml
@@ -30,6 +33,13 @@ deployment/.bedrock_agentcore/
 deployment/.aws-sam/
 deployment/dist/
 deployment/*.whl
+dependencies.zip
+dependencies.hash
+.bedrock_agentcore.yaml
+.bedrock_agentcore/
+Dockerfile
+.dockerignore
 
 # Content-security-review disposition artifacts (local only)
 agent-data/
+.holmes/
