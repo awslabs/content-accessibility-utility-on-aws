@@ -115,6 +115,17 @@ package. Scaffold the deployment files and deploy them; no clone required:
 pip install "content-accessibility-utility-on-aws[agent]"
 pip install bedrock-agentcore-starter-toolkit aws-sam-cli
 
+# One interactive command scaffolds the files and runs the whole deploy —
+# agentcore configure -> launch -> sam deploy — prompting for region, bucket,
+# and (for the PDF path) BDA config, and wiring the runtime ARN between steps
+# for you. Each cloud step is confirmed; add --yes for CI, --dry-run to preview.
+content-accessibility-utility-on-aws deploy-pipeline
+```
+
+<details>
+<summary>Prefer to run the steps yourself?</summary>
+
+```bash
 # Write the SAM template, AgentCore runtime app, and trigger Lambda into a dir:
 content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
 cd a11y-pipeline
@@ -126,6 +137,8 @@ agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project
 sam deploy --guided --parameter-overrides \
   AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
 ```
+
+</details>
 
 Then upload documents to the input bucket (`pdf/` for PDFs, `html/` for HTML or a
 `.zip` of HTML+CSS+JS); results land under `accessible/`. The generated
@@ -433,6 +446,24 @@ pipeline without checking out the repository. See
 
 Options:
 - `--force`: Overwrite existing files in the target directory
+
+### Deploy the managed cloud pipeline (interactive)
+
+```bash
+content-accessibility-utility-on-aws deploy-pipeline
+```
+
+Scaffolds the files and runs the whole deploy — `agentcore configure` →
+`agentcore launch` → `sam deploy` — prompting for values and wiring the runtime
+ARN between steps. Requires the `agentcore` and `sam` CLIs on PATH.
+
+Options:
+- `--region`, `--input-bucket`, `--bda-bucket`, `--bda-project-arn`: set values
+  non-interactively (anything omitted is prompted for)
+- `--runtime-name`: AgentCore runtime name (default `a11y_pipeline`)
+- `--yes` / `-y`: run every step without the per-step confirmation (for CI)
+- `--dry-run`: print the exact commands and exit without running anything
+- `--force`: overwrite existing scaffold files
 
 ### Use a configuration file
 

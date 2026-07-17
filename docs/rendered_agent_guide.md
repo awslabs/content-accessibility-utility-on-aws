@@ -196,25 +196,45 @@ Tool** so you do not bundle or patch a Chromium binary.
 
 A complete, event-driven pipeline — **document uploaded to S3 → convert (PDF) →
 audit → agent-remediate → accessible result written back to S3** — ships with the
-package. Scaffold and deploy it without cloning the repo:
+package. Deploy it without cloning the repo.
+
+**One-command interactive deploy (recommended).** `deploy-pipeline` scaffolds the
+files and runs the whole multi-step deploy for you — it prompts for region,
+bucket, and (for the PDF path) BDA config, runs `agentcore configure` →
+`agentcore launch` → `sam deploy` in order, and captures the runtime ARN from the
+launch output so you never copy it between steps. Every cloud-mutating step is
+confirmed first:
 
 ```bash
-# 1. Install the package (the agent extra) and the deploy tooling.
 pip install "content-accessibility-utility-on-aws[agent]"
 pip install bedrock-agentcore-starter-toolkit aws-sam-cli
 
-# 2. Write the deployment files (SAM template, runtime app, trigger Lambda).
+content-accessibility-utility-on-aws deploy-pipeline
+#   --dry-run                 preview the exact commands, run nothing
+#   --yes                     skip the per-step confirmation (CI)
+#   --region / --input-bucket / --bda-bucket / --bda-project-arn  set values non-interactively
+```
+
+It shells out to the `agentcore` and `sam` CLIs (it does not reimplement them),
+so those must be installed; if either is missing it tells you and stops. If the
+runtime ARN can't be parsed from the launch output it falls back to
+`.bedrock_agentcore.yaml` and finally prompts, so a parse miss never blocks you.
+
+**Manual steps** (equivalent, if you'd rather run each yourself):
+
+```bash
+# 1. Write the deployment files (SAM template, runtime app, trigger Lambda).
 content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
 cd a11y-pipeline
 
-# 3. Deploy the AgentCore Runtime (builds an ARM64 image in the cloud; no Docker).
+# 2. Deploy the AgentCore Runtime (builds an ARM64 image in the cloud; no Docker).
 #    For the PDF path, also pass BDA config as runtime env vars.
 agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
   --requirements-file requirements.txt --region <region>
 agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
 #    -> note the runtime ARN it prints.
 
-# 4. Deploy the S3 + Lambda + DynamoDB stack, wiring in that runtime ARN.
+# 3. Deploy the S3 + Lambda + DynamoDB stack, wiring in that runtime ARN.
 sam deploy --guided --parameter-overrides \
   AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
 ```

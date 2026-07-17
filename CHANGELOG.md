@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`deploy-pipeline` CLI command:** an interactive orchestrator that scaffolds
+  the deployment files and runs the full multi-step deploy end to end —
+  `agentcore configure` → `agentcore launch` → `sam deploy` — prompting for
+  region / bucket / (optional) BDA config and capturing the runtime ARN from the
+  launch output (falling back to `.bedrock_agentcore.yaml`, then a prompt) so it
+  is wired between steps automatically. Each cloud-mutating step is confirmed;
+  `--yes` skips confirmation for CI and `--dry-run` previews the exact commands.
+  It orchestrates the `agentcore`/`sam` CLIs and stops with guidance if either is
+  missing. `init-pipeline` (scaffold only) is unchanged.
 - **Post-remediation re-audit + gap report.** After remediation the pipeline
   re-audits the final HTML and publishes `accessibility_audit_before.json`,
   `accessibility_audit.json` (now the post-remediation state), and

@@ -477,6 +477,47 @@ def create_parser() -> argparse.ArgumentParser:
         "--quiet", "-q", action="store_true", help="Suppress non-essential output"
     )
 
+    # deploy-pipeline command: interactively run the full multi-step deploy.
+    deploy_parser = subparsers.add_parser(
+        "deploy-pipeline",
+        help="Scaffold and deploy the managed pipeline end to end "
+        "(agentcore configure + launch + sam deploy), prompting for values",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    deploy_parser.add_argument(
+        "directory", nargs="?", default="a11y-pipeline",
+        help="Directory to scaffold the deployment files into",
+    )
+    deploy_parser.add_argument("--region", default="", help="AWS region")
+    deploy_parser.add_argument(
+        "--runtime-name", default="a11y_pipeline", help="AgentCore runtime name"
+    )
+    deploy_parser.add_argument(
+        "--input-bucket", default="", help="Input S3 bucket name (globally unique)"
+    )
+    deploy_parser.add_argument(
+        "--bda-bucket", default="",
+        help="BDA S3 bucket (needed only for the PDF path; omit for HTML/zip only)",
+    )
+    deploy_parser.add_argument(
+        "--bda-project-arn", default="", help="BDA project ARN (for the PDF path)"
+    )
+    deploy_parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing scaffold files"
+    )
+    deploy_parser.add_argument(
+        "--yes", "-y", action="store_true",
+        help="Run every step without the per-step confirmation prompt",
+    )
+    deploy_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the deployment plan and exit without running anything",
+    )
+    deploy_parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    deploy_parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress non-essential output"
+    )
+
     # Version information
     parser.add_argument(
         "--version", action="store_true", help="Show version information"
@@ -1231,10 +1272,89 @@ def run_init_pipeline_command(args: Dict[str, Any]) -> int:
         "  agentcore launch   # note the runtime ARN it prints\n"
         "  sam deploy --guided --parameter-overrides "
         "AgentRuntimeArn=<arn> InputBucketName=<unique-bucket>\n"
+        "\nOr run all of this interactively with:\n"
+        "  content-accessibility-utility-on-aws deploy-pipeline\n"
         "\nSee README.md in that directory (and docs/rendered_agent_guide.md) "
         "for IAM, BDA setup, and usage."
     )
     return 0
+
+
+def scaffold_pipeline_assets(directory: str, force: bool) -> None:
+    """Write the bundled deployment files into ``directory``.
+
+    Shared by ``init-pipeline`` and ``deploy-pipeline`` so the two commands copy
+    the exact same assets. Raises on missing bundled assets.
+    """
+    import importlib.resources as resources
+
+    target = os.path.abspath(directory)
+    try:
+        assets = resources.files(
+            "content_accessibility_utility_on_aws.deployment_assets"
+        )
+    except ModuleNotFoundError as e:
+        raise RuntimeError(
+            "Bundled deployment assets not found in this install. Reinstall the "
+            "package, or use the repository's deployment/ directory."
+        ) from e
+
+    def _copy_tree(node, dest_dir: str) -> None:
+        for entry in node.iterdir():
+            name = entry.name
+            if name in ("__init__.py", "__pycache__"):
+                continue
+            if entry.is_dir():
+                _copy_tree(entry, os.path.join(dest_dir, name))
+                continue
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, name)
+            if os.path.exists(dest) and not force:
+                continue
+            with entry.open("rb") as src, open(dest, "wb") as out:
+                out.write(src.read())
+
+    _copy_tree(assets, target)
+
+
+def run_deploy_pipeline_command(args: Dict[str, Any]) -> int:
+    """Interactively scaffold + deploy the managed pipeline end to end.
+
+    Orchestrates ``agentcore configure`` -> ``agentcore launch`` -> ``sam
+    deploy``, prompting for any values not passed as flags and confirming each
+    cloud-mutating step (unless ``--yes``). ``--dry-run`` prints the plan only.
+    """
+    from content_accessibility_utility_on_aws import deploy as deploy_mod
+
+    cfg = deploy_mod.DeployConfig(
+        directory=args.get("directory") or deploy_mod.DEFAULT_DIRECTORY,
+        region=args.get("region") or "",
+        runtime_name=args.get("runtime_name") or deploy_mod.DEFAULT_RUNTIME_NAME,
+        input_bucket=args.get("input_bucket") or "",
+        bda_bucket=args.get("bda_bucket") or "",
+        bda_project_arn=args.get("bda_project_arn") or "",
+        force=args.get("force", False),
+    )
+
+    dry_run = args.get("dry_run", False)
+    # Prompt for missing values (skipped on dry-run so it needs no input).
+    if not dry_run:
+        try:
+            cfg = deploy_mod.prompt_for_config(cfg)
+        except deploy_mod.DeployError as e:
+            print(f"Error: {e}")
+            return 1
+
+    try:
+        return deploy_mod.run_deploy(
+            cfg,
+            scaffold=scaffold_pipeline_assets,
+            assume_yes=args.get("yes", False),
+            dry_run=dry_run,
+        )
+    except deploy_mod.DeployError as e:
+        print(f"Deployment failed: {e}")
+        return 1
 
 
 def main() -> int:
@@ -1255,6 +1375,8 @@ def main() -> int:
             return run_process_command(args)
         elif args["command"] == "init-pipeline":
             return run_init_pipeline_command(args)
+        elif args["command"] == "deploy-pipeline":
+            return run_deploy_pipeline_command(args)
         else:
             print("No command specified")
             return 1
