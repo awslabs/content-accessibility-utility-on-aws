@@ -231,6 +231,7 @@ def _run_audit(
             # pages the audit flagged with issues the browser agent can improve.
             agent_pages = _run_agent_on_candidate_pages(work, options, audit_result)
             publish_root = work
+            reaudit_target = audit_target
         else:
             remediated_file = os.path.join(work, f"{name}.remediated.html")
             remediate_html_accessibility(
@@ -250,24 +251,70 @@ def _run_audit(
                 remediated_file, options, audit_result
             )
             publish_root = work
+            reaudit_target = remediated_file
+
+        # Re-audit the FINAL remediated HTML so the published report reflects
+        # what static + agent actually fixed — not just the pre-remediation
+        # state. Without this, the report always shows the original issues
+        # ("agent on N pages" in the log but a report that credits nothing),
+        # which makes the residual gap impossible to measure. Non-fatal.
+        final_report = os.path.join(tmp, "audit_after.json")
+        gap = _reaudit_final(
+            reaudit_target, work, options, audit_result, final_report
+        )
 
         out_prefix = f"{OUTPUT_PREFIX}{name}/"
         published = _publish_tree(publish_root, output_bucket, out_prefix)
+        # Publish the BEFORE report (original findings) and, when the re-audit
+        # succeeded, the AFTER report (residual findings) + a gap summary.
         if os.path.isfile(audit_report):
+            s3_client.upload_file(
+                audit_report, output_bucket, f"{out_prefix}accessibility_audit_before.json"
+            )
+            published.append(f"{out_prefix}accessibility_audit_before.json")
+        if os.path.isfile(final_report):
+            # The canonical report name now points at the post-remediation state.
+            s3_client.upload_file(
+                final_report, output_bucket, f"{out_prefix}accessibility_audit.json"
+            )
+            published.append(f"{out_prefix}accessibility_audit.json")
+        elif os.path.isfile(audit_report):
+            # Re-audit unavailable (e.g. no browser): fall back to the before
+            # report under the canonical name so a report is always published.
             s3_client.upload_file(
                 audit_report, output_bucket, f"{out_prefix}accessibility_audit.json"
             )
             published.append(f"{out_prefix}accessibility_audit.json")
+        if gap is not None:
+            gap_path = os.path.join(tmp, "remediation_gap.json")
+            with open(gap_path, "w", encoding="utf-8") as fh:
+                json.dump(gap, fh, indent=2)
+            s3_client.upload_file(
+                gap_path, output_bucket, f"{out_prefix}remediation_gap.json"
+            )
+            published.append(f"{out_prefix}remediation_gap.json")
 
-    update_job_status(
-        job_id, STATUS_COMPLETED, STAGE_COMPLETE,
-        {"output_prefix": out_prefix, "output_bucket": output_bucket,
-         "files": len(published), "agent_pages": agent_pages},
-    )
-    logger.info(
-        "Audit+remediate complete: job=%s -> s3://%s/%s (%d files, agent on %d pages)",
-        job_id, output_bucket, out_prefix, len(published), agent_pages,
-    )
+    status_detail = {
+        "output_prefix": out_prefix, "output_bucket": output_bucket,
+        "files": len(published), "agent_pages": agent_pages,
+    }
+    if gap is not None:
+        status_detail["issues_before"] = gap["issues_before"]
+        status_detail["issues_after"] = gap["issues_after"]
+        status_detail["issues_resolved"] = gap["issues_resolved"]
+    update_job_status(job_id, STATUS_COMPLETED, STAGE_COMPLETE, status_detail)
+    if gap is not None:
+        logger.info(
+            "Audit+remediate complete: job=%s -> s3://%s/%s (%d files, agent on %d "
+            "pages, %d->%d issues, %d resolved)",
+            job_id, output_bucket, out_prefix, len(published), agent_pages,
+            gap["issues_before"], gap["issues_after"], gap["issues_resolved"],
+        )
+    else:
+        logger.info(
+            "Audit+remediate complete: job=%s -> s3://%s/%s (%d files, agent on %d pages)",
+            job_id, output_bucket, out_prefix, len(published), agent_pages,
+        )
     return {
         "status": "completed", "stage": "audit", "job_id": job_id,
         "output_bucket": output_bucket, "output_prefix": out_prefix,
@@ -294,6 +341,60 @@ _AGENT_RELEVANT_WCAG = {
     "4.1.2",   # Name, Role, Value
     "4.1.3",   # Status Messages
 }
+
+
+def _reaudit_final(
+    audit_target: str,
+    work_dir: str,
+    options: Dict[str, Any],
+    before_result: Dict[str, Any],
+    output_path: str,
+) -> Optional[Dict[str, Any]]:
+    """Re-audit the final remediated HTML and return a before/after gap summary.
+
+    Runs the SAME audit (static + rendered, per ``options``) against the
+    post-remediation document so the published report reflects what was actually
+    fixed. Returns a dict with before/after issue counts, per-criterion residual
+    counts, and the resolved delta — or ``None`` if the re-audit could not run
+    (never fatal; the caller falls back to the before report).
+    """
+    try:
+        after_result = audit_html_accessibility(
+            html_path=audit_target, image_dir=work_dir,
+            options=options, output_path=output_path,
+        )
+    except Exception as e:  # pragma: no cover - re-audit is best-effort
+        logger.warning("Post-remediation re-audit failed: %s", e)
+        return None
+
+    def _open_count(result: Dict[str, Any]) -> int:
+        summary = result.get("summary") or {}
+        if "needs_remediation" in summary:
+            return int(summary.get("needs_remediation") or 0)
+        # Fall back to counting unresolved issues directly.
+        return sum(
+            1 for i in result.get("issues", [])
+            if i.get("remediation_status") not in ("compliant", "remediated", "resolved")
+        )
+
+    def _by_criterion(result: Dict[str, Any]) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for i in result.get("issues", []):
+            if i.get("remediation_status") in ("compliant", "remediated", "resolved"):
+                continue
+            crit = i.get("wcag_criterion") or "unknown"
+            counts[crit] = counts.get(crit, 0) + 1
+        return dict(sorted(counts.items()))
+
+    before_open = _open_count(before_result)
+    after_open = _open_count(after_result)
+    return {
+        "issues_before": before_open,
+        "issues_after": after_open,
+        "issues_resolved": max(0, before_open - after_open),
+        "residual_by_criterion": _by_criterion(after_result),
+        "before_by_criterion": _by_criterion(before_result),
+    }
 
 
 # Largest single linked asset we will inline into the HTML (bytes). Keeps a

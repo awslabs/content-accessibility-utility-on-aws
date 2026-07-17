@@ -267,3 +267,55 @@ def test_inline_skips_oversized_asset(tmp_path, monkeypatch):
     html = '<html><head><link rel="stylesheet" href="big.css"></head><body></body></html>'
     out = pipe._inline_local_assets(html, str(tmp_path))
     assert 'href="big.css"' in out  # not inlined
+
+
+# --- post-agent re-audit / gap summary (#1) ----------------------------------
+# The published report must reflect what was actually fixed, not the pre-
+# remediation state, or the residual gap is impossible to measure.
+
+def _result(needs, issues):
+    return {"summary": {"needs_remediation": needs}, "issues": issues}
+
+
+def test_reaudit_computes_gap(tmp_path, monkeypatch):
+    before = _result(9, [{"wcag_criterion": "1.1.1", "remediation_status": "needs_remediation"}])
+    after = _result(6, [
+        {"wcag_criterion": "1.3.1", "remediation_status": "needs_remediation"},
+        {"wcag_criterion": "1.3.1", "remediation_status": "needs_remediation"},
+        {"wcag_criterion": "2.4.1", "remediation_status": "needs_remediation"},
+        {"wcag_criterion": "1.1.1", "remediation_status": "compliant"},  # resolved
+    ])
+    monkeypatch.setattr(pipe, "audit_html_accessibility", lambda **k: after)
+    page = tmp_path / "p.remediated.html"
+    page.write_text("<html><body>x</body></html>")
+
+    gap = pipe._reaudit_final(str(page), str(tmp_path), {}, before, str(tmp_path / "a.json"))
+    assert gap["issues_before"] == 9
+    assert gap["issues_after"] == 6
+    assert gap["issues_resolved"] == 3
+    # Residual counted by criterion, compliant excluded.
+    assert gap["residual_by_criterion"] == {"1.3.1": 2, "2.4.1": 1}
+
+
+def test_reaudit_none_on_failure(tmp_path, monkeypatch):
+    def _boom(**k):
+        raise RuntimeError("browser gone")
+    monkeypatch.setattr(pipe, "audit_html_accessibility", _boom)
+    page = tmp_path / "p.remediated.html"
+    page.write_text("<html><body>x</body></html>")
+    # Re-audit failure must be non-fatal (caller falls back to the before report).
+    assert pipe._reaudit_final(str(page), str(tmp_path), {}, _result(3, []), str(tmp_path / "a.json")) is None
+
+
+def test_reaudit_counts_issues_when_no_summary(tmp_path, monkeypatch):
+    # Some audit results may lack summary.needs_remediation; fall back to
+    # counting unresolved issues directly.
+    after = {"issues": [
+        {"wcag_criterion": "1.1.1", "remediation_status": "needs_remediation"},
+        {"wcag_criterion": "1.1.1", "remediation_status": "remediated"},
+    ]}
+    monkeypatch.setattr(pipe, "audit_html_accessibility", lambda **k: after)
+    page = tmp_path / "p.remediated.html"
+    page.write_text("<html><body>x</body></html>")
+    gap = pipe._reaudit_final(str(page), str(tmp_path), {}, {"issues": []}, str(tmp_path / "a.json"))
+    assert gap["issues_after"] == 1  # only the unresolved one
