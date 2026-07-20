@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<!--
+  Copyright 2025 Amazon.com, Inc. or its affiliates.
+  SPDX-License-Identifier: Apache-2.0
+
+  DELIBERATELY INACCESSIBLE interactive dashboard — a TEST FIXTURE. Do NOT fix.
+
+  Unlike the flat, BDA-converted PDF pages (which have only structural issues the
+  static remediation handles), this fixture is built to TRIGGER THE BROWSER-BACKED
+  AGENT: its failures land in the agent-relevant WCAG set the pipeline's
+  candidate filter selects on, so the render -> fix -> verify loop will engage.
+
+  Agent-relevant failures (the ones that route to the agent):
+    2.4.7  Focus Visible          — outline:none on every control (in the stylesheet)
+    1.4.3  Contrast (Minimum)     — low-contrast title/KPI/tab/button text (in CSS)
+    4.1.2  Name, Role, Value      — div/span tabs, toggles, icon buttons with no
+                                     role / accessible name / state
+    2.5.8  Target Size (Minimum)  — 16px icon buttons, 14px modal close
+    2.1.1  Keyboard               — widgets have click handlers only, no keyboard
+
+  Plus supporting failures (some static, some rendered):
+    1.1.1  images with missing / empty / generic alt (charts, avatar)
+    4.1.2  modal with no dialog role, no labelling, no focus management
+    3.3.2  form controls with no labels
+    1.4.1  status shown by color alone
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Operations Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="css/dashboard.css">
+</head>
+<body>
+
+  <!-- Top bar: low-contrast title; icon buttons with no accessible name and a
+       12–16px target; avatar image with no alt. -->
+  <div class="topbar">
+    <span class="title">Q3 Operations Dashboard</span>
+    <span class="spacer"></span>
+    <span class="icon-btn" role="button" tabindex="0" onclick="refresh()"></span>
+    <span class="icon-btn" role="button" tabindex="0" onclick="exportData()"></span>
+    <span class="icon-btn" role="button" tabindex="0" onclick="openModal()"></span>
+    <img src="images/avatar.png" width="28" height="28">
+  </div>
+
+  <!-- Tab bar: div/span acting as tabs — no role="tab"/tablist, no
+       aria-selected, no keyboard support (4.1.2 / 2.1.1). -->
+  <div class="tabs">
+    <div class="tab active" role="tab" tabindex="0" onclick="switchTab(this)">Overview</div>
+    <div class="tab" role="tab" tabindex="0" onclick="switchTab(this)">Revenue</div>
+    <div class="tab" role="tab" tabindex="0" onclick="switchTab(this)">Operations</div>
+    <div class="tab" role="tab" tabindex="0" onclick="switchTab(this)">Alerts</div>
+  </div>
+
+  <!-- Filter controls with no labels (3.3.2) and a low-contrast submit. -->
+  <div class="filter-bar">
+    <input type="text" placeholder="Search metrics">
+    <select>
+      <option>Last 7 days</option>
+      <option>Last 30 days</option>
+      <option>This quarter</option>
+    </select>
+    <span>Live</span>
+    <span class="toggle on" role="switch" tabindex="0" onclick="toggleSwitch(this)"></span>
+    <button class="btn">Apply</button>
+  </div>
+
+  <div class="grid">
+    <!-- KPI cards: low-contrast values (1.4.3); color-only deltas (1.4.1);
+         a div acting as a menu button with no role/name. -->
+    <div class="card">
+      <h3>Total Revenue</h3>
+      <div class="kpi-value">$4.28M</div>
+      <div class="kpi-delta up">+12%</div>
+      <div class="kpi-menu icon-btn" onclick="openModal()"></div>
+    </div>
+    <div class="card">
+      <h3>Active Incidents</h3>
+      <div class="kpi-value">17</div>
+      <div class="kpi-delta down">+5</div>
+    </div>
+    <div class="card">
+      <h3>SLA Compliance</h3>
+      <div class="kpi-value">98.1%</div>
+      <div class="kpi-delta up">+0.4%</div>
+    </div>
+
+    <!-- Charts as images: missing alt, empty alt. -->
+    <div class="card">
+      <h3>Revenue Trend</h3>
+      <img src="images/revenue_trend.png" width="320" height="180">
+    </div>
+    <div class="card">
+      <h3>Status Breakdown</h3>
+      <img src="images/status_breakdown.png" width="180" height="180" alt="">
+    </div>
+
+    <!-- Data table with no header cells / scope. -->
+    <div class="card">
+      <h3>Top Regions</h3>
+      <table>
+        <tr><td>Region</td><td>Revenue</td><td>Status</td></tr>
+        <tr><td>North</td><td>$1.9M</td><td class="kpi-delta up">&#9679;</td></tr>
+        <tr><td>South</td><td>$1.1M</td><td class="kpi-delta down">&#9679;</td></tr>
+        <tr><td>West</td><td>$1.28M</td><td class="kpi-delta up">&#9679;</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal: no role="dialog", no aria-modal, no aria-label, no focus trap;
+       close control is a 14px unnamed target. -->
+  <div class="modal-backdrop" id="settings-modal">
+    <div class="modal">
+      <span class="close" onclick="closeModal()"></span>
+      <h3>Widget Settings</h3>
+      <div>
+        <input type="checkbox"> Show deltas
+      </div>
+      <div>
+        <input type="checkbox"> Auto-refresh
+      </div>
+      <div style="margin-top:12px">
+        <span class="toggle" onclick="toggleSwitch(this)"></span>
+        <span>Dark mode</span>
+      </div>
+      <button class="btn" onclick="closeModal()">Save</button>
+    </div>
+  </div>
+
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

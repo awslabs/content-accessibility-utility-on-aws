@@ -117,6 +117,62 @@ def remediate_missing_form_labels(
     return f"Added label '{label_text}' for form control"
 
 
+def remediate_duplicate_ids(soup: BeautifulSoup, issue: Dict[str, Any], *args) -> Optional[str]:
+    """Make all element ``id`` values unique, repairing label associations.
+
+    Duplicate ids break accessibility in two ways: ``getElementById`` and
+    ``aria-*``/``label[for]`` references resolve to only the FIRST match, so a
+    ``<label for="x">`` can point at the wrong control, and a second control
+    sharing that id has no accessible name at all. This is a deterministic,
+    document-wide repair (not per-element): it scans the whole document once,
+    renames every id after the first occurrence to a unique value, and rewrites
+    the references that pointed at the *duplicate* so associations are preserved
+    where the intent is unambiguous.
+
+    Because it fixes every collision in one pass, it is idempotent and safe to
+    run once regardless of how many duplicate-id issues the audit reported.
+    """
+    seen: Dict[str, Any] = {}
+    renames = 0
+
+    # Assign a fresh unique id, avoiding any id already present in the document.
+    existing_ids = {el.get("id") for el in soup.find_all(id=True)}
+
+    def _unique(base: str) -> str:
+        n = 2
+        while f"{base}-{n}" in existing_ids:
+            n += 1
+        new_id = f"{base}-{n}"
+        existing_ids.add(new_id)
+        return new_id
+
+    for el in soup.find_all(id=True):
+        el_id = el.get("id")
+        if not el_id:
+            continue
+        if el_id not in seen:
+            seen[el_id] = el
+            continue
+        # This is a duplicate occurrence: give it a new id.
+        new_id = _unique(el_id)
+        el["id"] = new_id
+        renames += 1
+
+        # If a <label for="el_id"> immediately precedes/wraps THIS control (the
+        # common duplicated-widget case), repoint that label at the new id so the
+        # association follows the control it visually belongs to. We only move a
+        # label that is adjacent to this control, to avoid stealing the label of
+        # the first (legitimate) occurrence.
+        if el.name in ("input", "select", "textarea"):
+            prev = el.find_previous_sibling()
+            if prev is not None and getattr(prev, "name", None) == "label" and prev.get("for") == el_id:
+                prev["for"] = new_id
+
+    if renames == 0:
+        return "No duplicate ids found; no change needed"
+    return f"Made {renames} duplicate id value(s) unique and repaired label associations"
+
+
 def remediate_missing_required_indicators(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:

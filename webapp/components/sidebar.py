@@ -47,7 +47,7 @@ def create_sidebar() -> (
         process_button = st.button("Process Document", type="primary")
 
         st.markdown(f"Using document-accessibility v{current_version}")
-        st.markdown("Bedrock Model: `us.amazon.nova-2-lite-v1:0`")
+        st.markdown("Bedrock Model: `us.anthropic.claude-sonnet-5`")
 
         return uploaded_file, processing_options, process_button
 

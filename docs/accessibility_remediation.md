@@ -23,14 +23,15 @@ The accessibility remediation functionality:
 
 You can remediate accessibility issues in two ways:
 
-1. **As part of PDF conversion**:
+1. **As part of PDF conversion** (the `process` command remediates by default;
+   pass `--skip-remediation` to opt out):
    ```bash
-   content-accessibilty-utility-on-aws process --input path/to/input.pdf --output output/ --perform-remediation
+   content-accessibility-utility-on-aws process --input path/to/input.pdf --output output/
    ```
 
 2. **For an existing HTML file with an audit report**:
    ```bash
-   content-accessibilty-utility-on-aws remediate --input path/to/existing.html --output remediated.html
+   content-accessibility-utility-on-aws remediate --input path/to/existing.html --output remediated.html
    ```
 
 #### Available CLI Options
@@ -43,14 +44,16 @@ Accessibility remediation options:
   --model-id MODEL_ID  Bedrock model ID to use for remediation
   --severity-threshold {critical,major,minor}
                       Minimum severity level to remediate. Default: minor
-  --issue-types ISSUE_TYPES
-                      Comma-separated list of specific issue types to remediate (e.g., missing-alt-text,empty-alt-text)
 ```
+
+To restrict remediation to specific issue types, use the Python API with
+`options={"issue_types": ["missing-alt-text", "empty-alt-text"]}` (there is no
+`--issue-types` CLI flag on the `remediate` command).
 
 ### From Python Code
 
 ```python
-from content_accessibility_with_aws.api import remediate_html_accessibility
+from content_accessibility_utility_on_aws.api import remediate_html_accessibility
 
 # After performing an accessibility audit that generates an audit report:
 remediation_result = remediate_html_accessibility(
@@ -59,7 +62,7 @@ remediation_result = remediate_html_accessibility(
     image_dir='path/to/images_folder',  # For image-related issues
     output_path='path/to/output.html',  # Where to save remediated HTML
     options={
-        'model_id': 'us.amazon.nova-2-lite-v1:0',
+        'model_id': 'us.anthropic.claude-sonnet-5',
         'max_issues': 10,  # Limit number of issues to process
         'issue_types': ['missing-alt-text', 'empty-alt-text'],  # Only process specific issues
         'severity_threshold': 'major'  # Only 'major' and 'critical' issues
@@ -81,12 +84,38 @@ The remediation process uses specialized templates for common accessibility issu
 | `skipped-heading-level` | Heading levels that skip (e.g., h1 to h3) | 1.3.1 |
 | `empty-heading` | Headings with no content | 1.3.1 |
 | `table-missing-headers` | Tables without headers | 1.3.1 |
-| `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
+| `table-missing-scope` | Table headers missing scope attribute | 1.3.1 |
 | `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
+| `duplicate-link-text-different-url` | Same link text pointing to different URLs | 2.4.9 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 
 The system can process additional issue types using a generic remediation template, but specialized templates provide better results.
+
+### Browser-backed (rendered) issue types
+
+These issue types are produced only by the optional **rendered audit**, which
+renders the page in a real headless browser (see the
+[Rendered & Agent Guide](rendered_agent_guide.md)); static HTML analysis cannot
+detect them:
+
+| Issue Type | Description | WCAG Criterion |
+|------------|-------------|----------------|
+| `focus-not-visible` | No visible focus indicator on an interactive element | 2.4.7 |
+| `computed-contrast-insufficient` | Text/background contrast below threshold (computed from the full cascade, not just inline style) | 1.4.3 / 1.4.11 |
+| `missing-accessible-name` | Custom widget / control with no accessible name (model-authored `aria-label`) | 4.1.2 |
+| `missing-aria-state` | ARIA role missing its required state (e.g. `aria-checked`) | 4.1.2 |
+| `invalid-aria-structure` | ARIA role missing its required parent (e.g. `tab` without `tablist`) | 4.1.2 |
+| `focus-order-broken` | Positive `tabindex` distorts keyboard focus order | 2.4.3 |
+| `duplicate-id` | Colliding element ids break `label[for]`/aria references | 4.1.1 |
+
+When the accessibility **agent** is used, each such fix is applied, the page is
+re-rendered, and the fix is **verified** by a deterministic re-probe before the
+issue is marked resolved — unlike the static remediation path, which applies a
+fix without re-checking it. Contrast fixes use `author_css_rule` (a real cascade
+rule, since an inline attribute cannot beat a stylesheet); the agent can also
+call `set_page_state` to reach runtime-only issues (e.g. a modal hidden until
+opened) before probing.
 
 ## Processing Order and Image Handling
 
@@ -104,7 +133,8 @@ A complete remediation workflow typically includes:
 2. Auditing for accessibility issues (`audit_html_accessibility`)
 3. Remediating the identified issues (`remediate_html_accessibility`)
 
-See the `tests/test_accessibility_remediation.py` script for a complete example.
+See the tests under `tests/remediate/` (e.g.
+`tests/remediate/test_model_backed_remediation.py`) for complete examples.
 
 ## Advanced Usage
 
@@ -113,15 +143,20 @@ See the `tests/test_accessibility_remediation.py` script for a complete example.
 You can specify different Bedrock model IDs for remediation:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --model-id us.amazon.nova-2-lite-v1:0
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --model-id us.anthropic.claude-sonnet-5
 ```
 
 ### Filtered Remediation
 
-Process only specific issue types:
+Process only specific issue types via the Python API's `options` dict:
 
-```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --issue-types missing-alt-text,empty-alt-text
+```python
+remediate_html_accessibility(
+    html_path="document.html",
+    audit_report=audit_report,
+    output_path="remediated.html",
+    options={"issue_types": ["missing-alt-text", "empty-alt-text"]},
+)
 ```
 
 ### Severity-Based Remediation
@@ -129,7 +164,7 @@ content-accessibilty-utility-on-aws remediate --input document.html --output rem
 Focus on the most important issues:
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input document.html --output remediated.html --severity-threshold critical
+content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --severity-threshold critical
 ```
 
 ## Limitations

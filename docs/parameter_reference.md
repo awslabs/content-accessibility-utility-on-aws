@@ -58,19 +58,30 @@ The following table shows the standardized parameter names used across the tool:
 ### Convert a PDF to HTML
 
 ```bash
-document-accessibility convert --input document.pdf --output output_dir/ --single-file --extract-images
+content-accessibility-utility convert --input document.pdf --output output_dir/ --single-file --extract-images
 ```
 
 ### Audit an HTML File
 
 ```bash
-document-accessibility audit --input document.html --output audit_report.json --format json --severity major
+content-accessibility-utility audit --input document.html --output audit_report.json --format json --severity major
+```
+
+### Audit with the browser-backed (rendered) pass
+
+```bash
+# Add computed-style / interactive detection (requires the [rendered] extra
+# and `playwright install chromium`)
+content-accessibility-utility audit --input document.html --output audit_report.json --rendered
+
+# Use the browser-backed agent to also fix and verify (requires the [agent] extra)
+content-accessibility-utility audit --input document.html --output audit_report.json --agent
 ```
 
 ### Remediate Accessibility Issues
 
 ```bash
-document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id us.amazon.nova-2-lite-v1:0
+content-accessibility-utility remediate --input document.html --output remediated.html --auto-fix --model-id us.anthropic.claude-sonnet-5
 ```
 
 ## Process Command (Full Pipeline)
@@ -78,23 +89,23 @@ document-accessibility remediate --input document.html --output remediated.html 
 The `process` command combines conversion, auditing, and remediation into a single workflow. It accepts parameters from all three operations, using the following pattern:
 
 ```bash
-document-accessibility process --input document.pdf --output output_dir/ [options]
+content-accessibility-utility process --input document.pdf --output output_dir/ [options]
 ```
 
 Common configurations include:
 
 ```bash
 # Basic process with default settings
-document-accessibility process --input document.pdf --output output_dir/
+content-accessibility-utility process --input document.pdf --output output_dir/
 
 # Process with specific AWS settings
-document-accessibility process --input document.pdf --output output_dir/ --s3-bucket my-bucket --profile my-profile
+content-accessibility-utility process --input document.pdf --output output_dir/ --s3-bucket my-bucket --profile my-profile
 
 # Process with audit only (no remediation)
-document-accessibility process --input document.pdf --output output_dir/ --skip-remediation
+content-accessibility-utility process --input document.pdf --output output_dir/ --skip-remediation
 
 # Full processing with custom settings
-document-accessibility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id us.amazon.nova-2-lite-v1:0
+content-accessibility-utility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id us.anthropic.claude-sonnet-5
 ```
 
 ## Parameter Value Standards
@@ -120,12 +131,40 @@ Common issue types include:
 - `table-structure`: Tables without proper headers or structure
 - `document-structure`: Issues with overall document structure and landmarks
 
+Issue types produced only by the browser-backed rendered audit (`--rendered` /
+`--agent`):
+- `focus-not-visible`: Interactive element shows no visible focus indicator (WCAG 2.4.7)
+- `computed-contrast-insufficient`: Contrast below threshold, computed from the full CSS cascade (WCAG 1.4.3 / 1.4.11)
+- `missing-accessible-name`: Custom widget/control with no accessible name (WCAG 4.1.2)
+- `missing-aria-state`: ARIA role missing its required state, e.g. `aria-checked` (WCAG 4.1.2)
+- `invalid-aria-structure`: ARIA role missing its required parent, e.g. `tab` without `tablist` (WCAG 4.1.2)
+- `focus-order-broken`: Positive `tabindex` distorts keyboard focus order (WCAG 2.4.3)
+- `duplicate-id`: Colliding element ids break `label[for]`/aria references (WCAG 4.1.1)
+
+### Rendered / agent options
+
+Set via CLI flags or the audit `options` dict / configuration file:
+- `rendered` (`--rendered`): run the browser-backed rendered audit in addition
+  to the static audit.
+- `agent` (`--agent`): use the Strands agent to drive the render → fix → verify
+  loop; implies `rendered`.
+- `browser_backend`: `local` (default) for local Playwright Chromium, or
+  `agentcore` for the managed Amazon Bedrock AgentCore browser. Can also be set
+  with the `A11Y_BROWSER_BACKEND` environment variable.
+- `agentcore_region`: AWS region for the AgentCore browser (defaults to
+  `AWS_REGION` / `AWS_DEFAULT_REGION`).
+- `agentcore_browser_id`: optional AgentCore browser identifier (defaults to the
+  AWS-managed `aws.browser.v1`).
+
+See the [Rendered & Agent Guide](rendered_agent_guide.md) for details and cloud
+deployment.
+
 ## Python API Examples
 
 ### Full Processing Pipeline
 
 ```python
-from document_accessibility.api import process_pdf_accessibility
+from content_accessibility_utility_on_aws.api import process_pdf_accessibility
 
 # Process a PDF through the full pipeline
 result = process_pdf_accessibility(
@@ -140,7 +179,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     },
     perform_audit=True,
@@ -151,7 +190,7 @@ result = process_pdf_accessibility(
 ### Individual Components
 
 ```python
-from document_accessibility.api import (
+from content_accessibility_utility_on_aws.api import (
     convert_pdf_to_html,
     audit_html_accessibility,
     remediate_html_accessibility
@@ -181,7 +220,7 @@ remediation_result = remediate_html_accessibility(
     html_path="output/document.html",
     audit_report=audit_result,
     options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     }
 )
@@ -193,12 +232,14 @@ The tool supports configuration through the following environment variables:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `BDA_S3_BUCKET` or `DOCUMENT_ACCESSIBILITY_S3_BUCKET` | S3 bucket name for storing input/output files | Yes |
-| `BDA_PROJECT_ARN` or `DOCUMENT_ACCESSIBILITY_BDA_PROJECT_ARN` | ARN for the BDA project | Yes |
-| `AWS_PROFILE` | AWS profile to use for credentials | No |
-| `CONTENT_ACCESSIBILITY_WORK_DIR` | Directory for temporary files | No |
+| `BDA_S3_BUCKET` | S3 bucket for BDA input/output (PDF conversion only) | Yes for the PDF path |
+| `BDA_PROJECT_ARN` | ARN of the BDA project (PDF conversion only) | Yes for the PDF path |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | AWS region for AWS clients | Recommended |
+| `A11Y_BROWSER_BACKEND` | `local` (default) or `agentcore` — selects the rendered/agent browser backend | No |
 
-Ensure these variables are set before running the tool.
+`BDA_S3_BUCKET` / `BDA_PROJECT_ARN` are only consulted for PDF conversion; the
+HTML/zip audit and remediation paths do not need them. Standard AWS credential
+environment variables (`AWS_PROFILE`, etc.) are honored by boto3 as usual.
 
 ## Streamlit Interface Options
 

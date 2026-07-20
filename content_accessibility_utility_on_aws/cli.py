@@ -201,6 +201,48 @@ def _add_audit_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Only include summary information in report",
     )
+    _add_rendered_arguments(parser)
+
+
+def _add_rendered_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add the browser-backed (rendered) accessibility options.
+
+    Shared by the audit and process commands. These opt into rendering the page
+    in a real headless browser to detect computed-style and interactive issues
+    (e.g. focus visibility) the static analysis cannot see. Requires the
+    optional dependency: ``pip install content-accessibility-utility-on-aws[rendered]``
+    (and ``playwright install chromium``); ``--agent`` additionally needs the
+    ``[agent]`` extra.
+    """
+    parser.add_argument(
+        "--rendered",
+        action="store_true",
+        help=(
+            "Render each page in a headless browser to detect computed-style and "
+            "interactive issues (e.g. focus visibility) static analysis misses. "
+            "Requires the [rendered] extra and 'playwright install chromium'."
+        ),
+    )
+    parser.add_argument(
+        "--agent",
+        action="store_true",
+        help=(
+            "Use the browser-backed agent for the rendered pass (implies "
+            "--rendered). Requires the [agent] extra."
+        ),
+    )
+
+
+def _apply_rendered_options(args: Dict[str, Any], options: Dict[str, Any]) -> None:
+    """Thread the --rendered/--agent flags into an audit options dict.
+
+    ``--agent`` implies ``--rendered`` (the agent drives the rendered pass).
+    Shared by the audit and process commands so the two cannot drift.
+    """
+    if args.get("rendered") or args.get("agent"):
+        options["rendered"] = True
+    if args.get("agent"):
+        options["agent"] = True
 
 
 def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
@@ -280,6 +322,7 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         default="json",
         help="Format for the audit report",
     )
+    _add_rendered_arguments(parser)
 
     # Add conversion options
     parser.add_argument(
@@ -408,6 +451,73 @@ def create_parser() -> argparse.ArgumentParser:
     )
     _add_process_arguments(process_parser)
 
+    # init-pipeline command: scaffold the managed AgentCore deployment.
+    init_parser = subparsers.add_parser(
+        "init-pipeline",
+        help="Write the managed-pipeline deployment files (SAM template, "
+        "AgentCore runtime app, trigger Lambda) to a directory for deployment",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    init_parser.add_argument(
+        "directory",
+        nargs="?",
+        default="a11y-pipeline",
+        help="Target directory to write the deployment files into",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite existing files in the target directory",
+    )
+    # Logging flags are read by parse_arguments for every command.
+    init_parser.add_argument(
+        "--debug", action="store_true", help="Enable debug logging"
+    )
+    init_parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress non-essential output"
+    )
+
+    # deploy-pipeline command: interactively run the full multi-step deploy.
+    deploy_parser = subparsers.add_parser(
+        "deploy-pipeline",
+        help="Scaffold and deploy the managed pipeline end to end "
+        "(agentcore configure + launch + sam deploy), prompting for values",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    deploy_parser.add_argument(
+        "directory", nargs="?", default="a11y-pipeline",
+        help="Directory to scaffold the deployment files into",
+    )
+    deploy_parser.add_argument("--region", default="", help="AWS region")
+    deploy_parser.add_argument(
+        "--runtime-name", default="a11y_pipeline", help="AgentCore runtime name"
+    )
+    deploy_parser.add_argument(
+        "--input-bucket", default="", help="Input S3 bucket name (globally unique)"
+    )
+    deploy_parser.add_argument(
+        "--bda-bucket", default="",
+        help="BDA S3 bucket (needed only for the PDF path; omit for HTML/zip only)",
+    )
+    deploy_parser.add_argument(
+        "--bda-project-arn", default="", help="BDA project ARN (for the PDF path)"
+    )
+    deploy_parser.add_argument(
+        "--force", action="store_true", help="Overwrite existing scaffold files"
+    )
+    deploy_parser.add_argument(
+        "--yes", "-y", action="store_true",
+        help="Run every step without the per-step confirmation prompt",
+    )
+    deploy_parser.add_argument(
+        "--dry-run", action="store_true",
+        help="Print the deployment plan and exit without running anything",
+    )
+    deploy_parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    deploy_parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress non-essential output"
+    )
+
     # Version information
     parser.add_argument(
         "--version", action="store_true", help="Show version information"
@@ -463,8 +573,14 @@ def parse_arguments() -> Dict[str, Any]:
             print(f"Error: {e}")
             sys.exit(1)
 
-    # Set default output path if not provided
-    if args.command and not args_dict.get("output"):
+    # Set default output path if not provided. Only applies to the
+    # document-processing commands, which take an --input; scaffolding commands
+    # like init-pipeline have no input and are skipped.
+    if (
+        args.command
+        and args_dict.get("input")
+        and not args_dict.get("output")
+    ):
         args_dict["output"] = get_default_output_path(
             args_dict["input"], args.command, args_dict.get("format")
         )
@@ -633,6 +749,8 @@ def run_audit_command(args: Dict[str, Any]) -> int:
 
         if args.get("checks"):
             options["issue_types"] = [t.strip() for t in args["checks"].split(",")]
+
+        _apply_rendered_options(args, options)
 
         if not args.get("quiet"):
             logger.info(f"Auditing HTML for accessibility: {args['input']}")
@@ -873,6 +991,8 @@ def run_process_command(args: Dict[str, Any]) -> int:
                     t.strip() for t in args["checks"].split(",")
                 ]
 
+            _apply_rendered_options(args, audit_options)
+
             # Save the audit report with the appropriate file extension
             audit_output = os.path.join(output_dir, f"audit_report.{audit_format}")
 
@@ -1081,6 +1201,171 @@ def run_process_command(args: Dict[str, Any]) -> int:
         return 1
 
 
+def run_init_pipeline_command(args: Dict[str, Any]) -> int:
+    """Write the bundled managed-pipeline deployment files to a directory.
+
+    Lets users deploy the event-driven S3 -> AgentCore -> S3 pipeline from a pip
+    install alone (no repo checkout): the SAM template, the AgentCore runtime
+    entrypoint, the trigger Lambda, and the runtime requirements are copied out
+    of the installed package into the chosen directory, ready for
+    ``agentcore launch`` + ``sam deploy``.
+    """
+    import importlib.resources as resources
+
+    target = os.path.abspath(args.get("directory") or "a11y-pipeline")
+    force = args.get("force", False)
+
+    try:
+        assets = resources.files(
+            "content_accessibility_utility_on_aws.deployment_assets"
+        )
+    except ModuleNotFoundError:
+        print(
+            "Error: bundled deployment assets not found in this install. "
+            "Reinstall the package, or use the repository's deployment/ directory."
+        )
+        return 1
+
+    # Copy every bundled file (skip Python package machinery) preserving layout.
+    written, skipped = [], []
+
+    def _copy_tree(node, dest_dir: str) -> None:
+        for entry in node.iterdir():
+            name = entry.name
+            if name in ("__init__.py", "__pycache__"):
+                continue
+            if entry.is_dir():
+                _copy_tree(entry, os.path.join(dest_dir, name))
+                continue
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, name)
+            if os.path.exists(dest) and not force:
+                skipped.append(dest)
+                continue
+            with entry.open("rb") as src, open(dest, "wb") as out:
+                out.write(src.read())
+            written.append(dest)
+
+    _copy_tree(assets, target)
+
+    if not written and skipped:
+        print(
+            f"All deployment files already exist in {target}. "
+            "Re-run with --force to overwrite."
+        )
+        return 0
+
+    print(f"Wrote managed-pipeline deployment files to: {target}")
+    for path in written:
+        print(f"  + {os.path.relpath(path, target)}")
+    if skipped:
+        print("Skipped (already exist; use --force to overwrite):")
+        for path in skipped:
+            print(f"  = {os.path.relpath(path, target)}")
+
+    print(
+        "\nNext steps:\n"
+        f"  cd {os.path.relpath(target)}\n"
+        "  pip install bedrock-agentcore-starter-toolkit aws-sam-cli\n"
+        "  agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline "
+        "--requirements-file requirements.txt --region <region>\n"
+        "  agentcore launch   # note the runtime ARN it prints\n"
+        "  sam deploy --guided --parameter-overrides "
+        "AgentRuntimeArn=<arn> InputBucketName=<unique-bucket>\n"
+        "\nOr run all of this interactively with:\n"
+        "  content-accessibility-utility-on-aws deploy-pipeline\n"
+        "\nSee README.md in that directory (and docs/rendered_agent_guide.md) "
+        "for IAM, BDA setup, and usage."
+    )
+    return 0
+
+
+def scaffold_pipeline_assets(directory: str, force: bool) -> None:
+    """Write the bundled deployment files into ``directory``.
+
+    Shared by ``init-pipeline`` and ``deploy-pipeline`` so the two commands copy
+    the exact same assets. Raises on missing bundled assets.
+    """
+    import importlib.resources as resources
+
+    target = os.path.abspath(directory)
+    try:
+        assets = resources.files(
+            "content_accessibility_utility_on_aws.deployment_assets"
+        )
+    except ModuleNotFoundError as e:
+        raise RuntimeError(
+            "Bundled deployment assets not found in this install. Reinstall the "
+            "package, or use the repository's deployment/ directory."
+        ) from e
+
+    def _copy_tree(node, dest_dir: str) -> None:
+        for entry in node.iterdir():
+            name = entry.name
+            if name in ("__init__.py", "__pycache__"):
+                continue
+            if entry.is_dir():
+                _copy_tree(entry, os.path.join(dest_dir, name))
+                continue
+            os.makedirs(dest_dir, exist_ok=True)
+            dest = os.path.join(dest_dir, name)
+            if os.path.exists(dest) and not force:
+                continue
+            with entry.open("rb") as src, open(dest, "wb") as out:
+                out.write(src.read())
+
+    _copy_tree(assets, target)
+
+
+def run_deploy_pipeline_command(args: Dict[str, Any]) -> int:
+    """Interactively scaffold + deploy the managed pipeline end to end.
+
+    Orchestrates ``agentcore configure`` -> ``agentcore launch`` -> ``sam
+    deploy``, prompting for any values not passed as flags and confirming each
+    cloud-mutating step (unless ``--yes``). ``--dry-run`` prints the plan only.
+    """
+    from content_accessibility_utility_on_aws import deploy as deploy_mod
+
+    cfg = deploy_mod.DeployConfig(
+        directory=args.get("directory") or deploy_mod.DEFAULT_DIRECTORY,
+        region=args.get("region") or "",
+        runtime_name=args.get("runtime_name") or deploy_mod.DEFAULT_RUNTIME_NAME,
+        input_bucket=args.get("input_bucket") or "",
+        bda_bucket=args.get("bda_bucket") or "",
+        bda_project_arn=args.get("bda_project_arn") or "",
+        force=args.get("force", False),
+    )
+
+    dry_run = args.get("dry_run", False)
+    # Prompt for missing values (skipped on dry-run so it needs no input).
+    if not dry_run:
+        # Check prerequisites BEFORE prompting, so a user without agentcore/sam
+        # isn't asked for region/bucket/BDA only to be told the tools are missing.
+        missing = deploy_mod.check_prerequisites()
+        if missing:
+            print(
+                "Missing required tool(s): " + ", ".join(missing) + "\n"
+                + deploy_mod.MISSING_TOOLS_HELP
+            )
+            return 1
+        try:
+            cfg = deploy_mod.prompt_for_config(cfg)
+        except deploy_mod.DeployError as e:
+            print(f"Error: {e}")
+            return 1
+
+    try:
+        return deploy_mod.run_deploy(
+            cfg,
+            scaffold=scaffold_pipeline_assets,
+            assume_yes=args.get("yes", False),
+            dry_run=dry_run,
+        )
+    except deploy_mod.DeployError as e:
+        print(f"Deployment failed: {e}")
+        return 1
+
+
 def main() -> int:
     """Main entry point for the CLI."""
     try:
@@ -1097,6 +1382,10 @@ def main() -> int:
             return run_remediate_command(args)
         elif args["command"] == "process":
             return run_process_command(args)
+        elif args["command"] == "init-pipeline":
+            return run_init_pipeline_command(args)
+        elif args["command"] == "deploy-pipeline":
+            return run_deploy_pipeline_command(args)
         else:
             print("No command specified")
             return 1

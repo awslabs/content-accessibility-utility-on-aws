@@ -24,7 +24,7 @@ audit:
 # Accessibility remediation options
 remediate:
   severity_threshold: "minor"  # Matches the audit parameter name
-  model_id: "us.amazon.nova-2-lite-v1:0"
+  model_id: "us.anthropic.claude-sonnet-5"
 
 # AWS service options
 aws:

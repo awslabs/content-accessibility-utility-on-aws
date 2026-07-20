@@ -1,0 +1,216 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Managed accessibility pipeline. A PDF uploaded to the input bucket triggers a
+  Lambda that invokes the AgentCore Runtime (deployed separately via the
+  agentcore CLI), which converts, audits, and agent-remediates the document and
+  writes the accessible result to the output location.
+
+Parameters:
+  AgentRuntimeArn:
+    Type: String
+    Description: >
+      ARN of the AgentCore Runtime hosting the pipeline entrypoint. Deploy the
+      runtime first with `agentcore launch`, then pass its ARN here.
+  InputBucketName:
+    Type: String
+    Description: Name for the S3 bucket that receives uploaded PDFs.
+  OutputPrefix:
+    Type: String
+    Default: "accessible/"
+    Description: Key prefix under which accessible results are written.
+  JobTableKmsKeyId:
+    Type: String
+    Default: ""
+    Description: >
+      Optional KMS key (ID or ARN) to encrypt the DynamoDB job table. Leave empty
+      to use the AWS-managed DynamoDB KMS key (no extra key to manage or pay for);
+      supply a customer-managed CMK if your compliance posture requires one.
+
+Conditions:
+  UseCustomerManagedKey: !Not [!Equals [!Ref JobTableKmsKeyId, ""]]
+
+Resources:
+  # Bucket documents are uploaded to. Output is written to the same bucket under
+  # OutputPrefix; the trigger only fires on .pdf keys, so writing HTML output
+  # back here does not recurse.
+  # Access-log bucket for the input bucket (S3 server access logging target).
+  # Hardened the same way. Uses OwnershipControls + a bucket policy for log
+  # delivery (the modern replacement for the legacy LogDeliveryWrite ACL).
+  LogBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${InputBucketName}-logs"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerPreferred
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+
+  # Allow the S3 logging service to write access logs into the log bucket, and
+  # deny any non-TLS access (S3_BUCKET_SSL_REQUESTS_ONLY).
+  LogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LogBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: S3ServerAccessLogsWrite
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub "arn:aws:s3:::${InputBucketName}-logs/input-access-logs/*"
+            Condition:
+              ArnLike:
+                "aws:SourceArn": !Sub "arn:aws:s3:::${InputBucketName}"
+              StringEquals:
+                "aws:SourceAccount": !Ref AWS::AccountId
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${InputBucketName}-logs"
+              - !Sub "arn:aws:s3:::${InputBucketName}-logs/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+
+  InputBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref InputBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # Versioning + server access logging (security best practice; CKV_AWS_21,
+      # CKV_AWS_18). Logs land in the dedicated LogBucket above.
+      VersioningConfiguration:
+        Status: Enabled
+      LoggingConfiguration:
+        DestinationBucketName: !Ref LogBucket
+        LogFilePrefix: input-access-logs/
+      # Notify on ALL object-created events. The trigger Lambda does the
+      # prefix routing (pdf/ -> convert, html/ -> audit) and — importantly —
+      # skips converted-bundle asset objects so audit fires once per document
+      # via the manifest. S3 filters cannot express that logic, and overlapping
+      # prefix rules for one event type are disallowed, so routing lives in code.
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt TriggerFunction.Arn
+    DependsOn: TriggerFunctionS3Permission
+
+  # Deny any non-TLS access to the input bucket (S3_BUCKET_SSL_REQUESTS_ONLY).
+  InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InputBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !Sub "arn:aws:s3:::${InputBucketName}"
+              - !Sub "arn:aws:s3:::${InputBucketName}/*"
+            Condition:
+              Bool:
+                "aws:SecureTransport": false
+
+  # DynamoDB job-tracking table the batch stage helpers read/write. Name matches
+  # the default the code expects (JOB_STATUS_TABLE / "DocumentAccessibilityJobs").
+  JobTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: DocumentAccessibilityJobs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: job_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: job_id
+          KeyType: HASH
+      # Encryption at rest with KMS + point-in-time recovery (CKV_AWS_119,
+      # CKV_AWS_28). Uses the AWS-managed DynamoDB KMS key by default, or a
+      # customer-managed CMK when JobTableKmsKeyId is supplied.
+      SSESpecification:
+        SSEEnabled: true
+        SSEType: KMS
+        KMSMasterKeyId: !If [UseCustomerManagedKey, !Ref JobTableKmsKeyId, !Ref "AWS::NoValue"]
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+
+  # Thin S3 -> AgentCore trigger. Does no accessibility work itself.
+  TriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: accessibility-pipeline-trigger
+      Runtime: python3.12
+      Handler: handler.handler
+      CodeUri: trigger_lambda/
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          AGENT_RUNTIME_ARN: !Ref AgentRuntimeArn
+          OUTPUT_BUCKET: !Ref InputBucketName
+          OUTPUT_PREFIX: !Ref OutputPrefix
+      Policies:
+        - Statement:
+            - Sid: InvokeAgentRuntime
+              Effect: Allow
+              Action: bedrock-agentcore:InvokeAgentRuntime
+              # InvokeAgentRuntime authorizes against the runtime AND its
+              # endpoint sub-resource (.../runtime-endpoint/DEFAULT), so both
+              # the runtime ARN and its child resources must be allowed.
+              Resource:
+                - !Ref AgentRuntimeArn
+                - !Sub "${AgentRuntimeArn}/*"
+
+  # Allow S3 to invoke the trigger function (bucket-scoped by account/name to
+  # avoid a circular dependency with the bucket resource).
+  TriggerFunctionS3Permission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub "arn:aws:s3:::${InputBucketName}"
+
+Outputs:
+  InputBucket:
+    Description: Upload PDFs here to trigger the pipeline.
+    Value: !Ref InputBucket
+  OutputLocation:
+    Description: Accessible results are written under this prefix in the input bucket.
+    Value: !Sub "s3://${InputBucketName}/${OutputPrefix}"
+  JobTable:
+    Description: DynamoDB table tracking per-document job status.
+    Value: !Ref JobTable
+  TriggerFunction:
+    Description: The S3-triggered Lambda that invokes the AgentCore Runtime.
+    Value: !Ref TriggerFunction

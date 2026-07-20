@@ -43,6 +43,47 @@ def _domain_of(url: str) -> Optional[str]:
     return match.group(1) if match else None
 
 
+def _set_link_text(link, new_text: str) -> None:
+    """Set an anchor's accessible text without destroying nested markup.
+
+    Assigning ``link.string`` replaces *all* children, which silently discards
+    nested elements such as icons (``<i>``) or images inside the anchor. To
+    preserve them, this replaces only the anchor's own text nodes with the new
+    text, and — when the anchor has no direct text node to replace (e.g. it
+    contains only an ``<img>``) — appends a screen-reader-only span so the link
+    gets an accessible name while its visual content stays intact.
+    """
+    from bs4 import NavigableString
+
+    text_nodes = [c for c in link.contents if isinstance(c, NavigableString) and c.strip()]
+    has_child_tags = any(getattr(c, "name", None) for c in link.contents)
+
+    if not has_child_tags:
+        # Plain text link: safe to replace wholesale.
+        link.string = new_text
+        return
+
+    if text_nodes:
+        # Replace the first meaningful text node; blank out any others.
+        text_nodes[0].replace_with(new_text)
+        for extra in text_nodes[1:]:
+            extra.replace_with("")
+        return
+
+    # Only non-text children (e.g. an <img>): add sr-only text, keep the markup.
+    # Walk up to the BeautifulSoup document, which owns new_tag().
+    root = link
+    while root.parent is not None:
+        root = root.parent
+    if hasattr(root, "new_tag"):
+        sr = root.new_tag("span")
+        sr["class"] = "sr-only"
+        sr.string = new_text
+        link.append(sr)
+    else:  # pragma: no cover - defensive
+        link.append(new_text)
+
+
 def remediate_empty_link_text(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
@@ -233,3 +274,89 @@ def remediate_new_window_link_no_warning(
         link["title"] = f"{text} (opens in new window)"
 
     return "Added screen reader text and title to indicate link opens in new window"
+
+
+def remediate_duplicate_link_text(
+    soup: BeautifulSoup, issue: Dict[str, Any], *args
+) -> Optional[str]:
+    """
+    Disambiguate links that share the same text but point to different URLs.
+
+    WCAG 2.4.9: when several links read the same (e.g. two "click here" links
+    going to different destinations), a user cannot tell them apart out of
+    context. There is no mechanical rewrite for this — the fix depends on what
+    each destination *is*, which is exactly the kind of judgment the model layer
+    is for. This strategy rewrites the specific link the issue points at with
+    descriptive text derived from that link's own destination and surrounding
+    text, so each formerly-identical link ends up distinct and meaningful.
+
+    Falls back (no model / no context) to appending the destination domain to
+    the existing text, which still makes same-text links distinguishable.
+
+    Args:
+        soup: The BeautifulSoup document.
+        issue: The accessibility issue (points at one of the duplicate links).
+        *args: Optional BedrockClient used to author the descriptive text.
+
+    Returns:
+        A message describing the remediation, or None if it could not be applied.
+    """
+    bedrock_client = args[0] if args else None
+
+    link, href = _resolve_link(soup, issue)
+    if link is None:
+        return None
+
+    current_text = link.get_text(strip=True)
+
+    # An earlier strategy (e.g. generic-link-text) may have already rewritten
+    # this link so it no longer collides with its former twins. If no other link
+    # on the page still shares this exact text, the ambiguity is already
+    # resolved — report success rather than a spurious failure.
+    same_text_siblings = [
+        a for a in soup.find_all("a")
+        if a is not link and a.get_text(strip=True).lower() == current_text.lower()
+    ]
+    if not same_text_siblings:
+        return f"Link text '{current_text}' is already unique; no change needed"
+
+    # Prefer model-authored descriptive text grounded in this link's own
+    # destination and the sentence around it, so the two same-text links diverge
+    # into meaningful, distinct labels.
+    parent = link.find_parent(["p", "li", "td", "div"])
+    surrounding = parent.get_text(separator=" ", strip=True) if parent else ""
+    generated = generate_short_text(
+        bedrock_client,
+        instruction=(
+            "Several links on this page share the same text but go to different "
+            "places, which is ambiguous. Rewrite this one link's text into "
+            "descriptive text (2-6 words) that uniquely says where THIS link "
+            f"goes. Do not reuse the current generic text. The link points to: {href}"
+        ),
+        context=(
+            f"Current (ambiguous) link text: '{current_text}'\n"
+            f"This link's destination: {href}\n"
+            f"Surrounding text: {surrounding}"
+        ),
+        purpose="link_text_generation",
+        max_words=8,
+    )
+    if generated and generated.lower() != current_text.lower():
+        _set_link_text(link, generated)
+        return (
+            f"Disambiguated duplicate link text '{current_text}' -> '{generated}'"
+        )
+
+    # Fallback: append a destination hint so same-text links differ. Prefer the
+    # most specific stable part of the URL that is NOT already in the text. The
+    # bare domain alone does not distinguish same-host/different-path links
+    # (e.g. x.com/a vs x.com/b), so try a path segment first, then the domain.
+    path_hint = (href or "").strip("/").split("/")[-1].replace("-", " ").replace("_", " ")
+    domain = _domain_of(href)
+    for hint in (path_hint, domain):
+        if hint and hint.lower() not in current_text.lower():
+            new_text = f"{current_text} ({hint})" if current_text else f"Visit {hint}"
+            _set_link_text(link, new_text)
+            return f"Disambiguated duplicate link text with destination: {new_text}"
+
+    return None

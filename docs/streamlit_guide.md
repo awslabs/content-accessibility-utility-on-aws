@@ -63,10 +63,10 @@ The Document Accessibility Streamlit interface provides a user-friendly web appl
 
 ### Installation
 
-1. Install the Content Accessibility package:
+1. Install the Content Accessibility package with the web-app extra (pulls in
+   Streamlit):
    ```bash
-   pip install content-accessibility-utility-on-aws
-   pip install streamlit
+   pip install "content-accessibility-utility-on-aws[WebApp]"
    ```
 
 2. Configure AWS credentials:
@@ -76,10 +76,13 @@ The Document Accessibility Streamlit interface provides a user-friendly web appl
 
 ### Starting the Application
 
-Run the Streamlit interface:
+The Streamlit app lives in the `webapp/` directory of the repository and loads
+its config relative to that directory, so launch it from there (a repository
+checkout is required for the web UI):
 
 ```bash
-streamlit run /path/to/content-accessibilty-utility-on-aws/streamlit_app.py
+cd webapp
+streamlit run app.py
 ```
 
 This will launch a local web server and open the application in your default browser.
@@ -148,10 +151,13 @@ The sidebar contains expandable sections for configuring different aspects of pr
 - Severity threshold: Set minimum severity level (minor, major, critical)
 
 #### Remediation Options
-- Fix categories: Select which issue types to remediate
-- Auto-fix: Enable automatic remediation
-- Model ID: Select Bedrock model to use for remediation
-- Severity threshold: Set minimum severity level for remediation
+- Fix image issues: Remediate image accessibility issues (e.g. alt text)
+- Fix heading issues: Remediate heading-structure issues
+- Fix link issues: Remediate link accessibility issues
+
+The Bedrock model is shown read-only in the sidebar (it is not selectable in the
+UI); it defaults to the package default and can be overridden via configuration.
+Severity threshold is set under **Audit Options** above.
 
 ## Viewing Results
 
@@ -270,4 +276,4 @@ For large documents:
 If you encounter persistent issues:
 1. Enable debug mode to capture detailed logs
 2. Check the terminal window where Streamlit is running for error messages
-3. Refer to the [project documentation](https://github.com/yourusername/document-accessibility) for further assistance
+3. Refer to the [project documentation](https://github.com/awslabs/content-accessibility-utility-on-aws) for further assistance

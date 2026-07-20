@@ -31,6 +31,12 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Audit HTML for WCAG 2.1 and 2.2 accessibility compliance
 - Remediate common accessibility issues using Bedrock models
 - Advanced table remediation strategies
+- Optional **browser-backed (rendered) audit** that detects computed-style and
+  interactive issues static HTML analysis cannot see (e.g. focus visibility),
+  using a real headless browser and [axe-core](https://github.com/dequelabs/axe-core)
+- Optional **accessibility agent** ([Strands](https://strandsagents.com)) that
+  drives a render &rarr; fix &rarr; **verify** loop, confirming each fix actually
+  renders correctly before marking it resolved
 - Support for single-page and multi-page output formats
 - Batch processing capabilities for large-scale document processing
 - Detailed usage tracking for BDA pages and Bedrock tokens
@@ -64,12 +70,80 @@ Before using the Content Accessibility with AWS tool, ensure the following prere
 
 ```bash
 # From PyPI
-pip install content-accessibilty-utility-on-aws
+pip install content-accessibility-utility-on-aws
 
 # From source
 pip install .
 
 ```
+
+### Optional extras
+
+The core install is static-only (no browser). The browser-backed audit and the
+accessibility agent are opt-in extras so the base dependency footprint stays
+small:
+
+```bash
+# Rendered audit: detect computed-style / interactive issues in a real browser
+pip install "content-accessibility-utility-on-aws[rendered]"
+
+# Agent: the render -> fix -> verify loop (implies the rendered layer)
+pip install "content-accessibility-utility-on-aws[agent]"
+```
+
+Both extras use a headless browser via [Playwright](https://playwright.dev/python/).
+After installing either extra, download the browser binary once:
+
+```bash
+playwright install chromium
+```
+
+> The core package never imports the browser or agent stack, so existing
+> static-only workflows are unaffected. When an extra is not installed, the
+> `--rendered`/`--agent` options log a warning and fall back to the static audit.
+> For running the rendered layer in AWS **without bundling a browser**, see the
+> [Rendered & Agent Guide](docs/rendered_agent_guide.md) (Amazon Bedrock
+> AgentCore Browser Tool).
+
+### Deploy the managed pipeline (pip only, no repo checkout)
+
+A complete event-driven pipeline — **upload a document to S3 → convert (PDF) →
+audit → agent-remediate → accessible result written back to S3** — ships with the
+package. Scaffold the deployment files and deploy them; no clone required:
+
+```bash
+pip install "content-accessibility-utility-on-aws[agent]"
+pip install bedrock-agentcore-starter-toolkit aws-sam-cli
+
+# One interactive command scaffolds the files and runs the whole deploy —
+# agentcore configure -> launch -> sam deploy — prompting for region, bucket,
+# and (for the PDF path) BDA config, and wiring the runtime ARN between steps
+# for you. Each cloud step is confirmed; add --yes for CI, --dry-run to preview.
+content-accessibility-utility-on-aws deploy-pipeline
+```
+
+<details>
+<summary>Prefer to run the steps yourself?</summary>
+
+```bash
+# Write the SAM template, AgentCore runtime app, and trigger Lambda into a dir:
+content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
+cd a11y-pipeline
+
+agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
+  --requirements-file requirements.txt --region <region>
+# For the PDF path, pass BDA config as runtime env vars; note the runtime ARN.
+agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
+sam deploy --guided --parameter-overrides \
+  AgentRuntimeArn=<runtime-arn> InputBucketName=<globally-unique-bucket>
+```
+
+</details>
+
+Then upload documents to the input bucket (`pdf/` for PDFs, `html/` for HTML or a
+`.zip` of HTML+CSS+JS); results land under `accessible/`. The generated
+`README.md` and the [Rendered & Agent Guide](docs/rendered_agent_guide.md) cover
+IAM, BDA setup, and usage in full.
 
 ## Configuration
 
@@ -113,7 +187,7 @@ audit:
 # Remediation settings
 remediate:
   max_issues: 100
-  model_id: us.amazon.nova-2-lite-v1:0
+  model_id: us.anthropic.claude-sonnet-5
   issue_types: null
   severity_threshold: minor
   report_format: json
@@ -133,7 +207,7 @@ aws:
 
 ## Architecture
 
-The package consists of four main modules working together to convert, audit, remediate, and batch process documents:
+The package consists of four main modules working together to convert, audit, remediate, and batch process documents, plus an optional browser-backed **agent** layer on top:
 
 ```mermaid
 graph TD
@@ -144,11 +218,22 @@ graph TD
     F --> H[Generate Remediation Reports]
     I[Batch] --> J[Orchestrate Large-scale Processing]
     I --> K[Track Jobs & Handle AWS Integration]
-    
+    L[Agent - optional] --> M[Render in a real browser]
+    L --> N[Detect computed-style & interactive issues]
+    L --> O[Apply fix, re-render, verify]
+
     A --> I
     D --> I
     F --> I
+    D --> L
+    F --> L
 ```
+
+The optional agent layer (`agent/`) renders pages in a real headless browser to
+find issues static analysis cannot (computed contrast, focus visibility, the
+accessibility tree) and closes the loop by re-rendering to **verify** each fix.
+It is fully additive and off by default. See the
+[Rendered & Agent Guide](docs/rendered_agent_guide.md).
 
 ## Core Packages
 
@@ -260,7 +345,7 @@ The package provides a command-line interface with several subcommands:
 ### PDF to HTML Conversion
 
 ```bash
-content-accessibilty-utility-on-aws convert --input path/to/document.pdf --output output/directory
+content-accessibility-utility-on-aws convert --input path/to/document.pdf --output output/directory
 ```
 
 Options:
@@ -278,13 +363,21 @@ Options:
 ### Accessibility Audit
 
 ```bash
-content-accessibilty-utility-on-aws audit --input path/to/document.html --output accessibility-report.json --format json
+content-accessibility-utility-on-aws audit --input path/to/document.html --output accessibility-report.json --format json
 ```
 
 For HTML report:
 
 ```bash
-content-accessibilty-utility-on-aws audit --input path/to/document.html --output accessibility-report.html --format html
+content-accessibility-utility-on-aws audit --input path/to/document.html --output accessibility-report.html --format html
+```
+
+To additionally run the browser-backed (rendered) audit, which detects
+computed-style and interactive issues (e.g. focus visibility) the static audit
+cannot see:
+
+```bash
+content-accessibility-utility-on-aws audit --input path/to/document.html --output report.json --rendered
 ```
 
 Options:
@@ -293,12 +386,17 @@ Options:
 - `--severity [minor|major|critical]`: Minimum severity level to include in report
 - `--detailed`: Include detailed context information in report (default: True)
 - `--summary-only`: Only include summary information in report
+- `--rendered`: Also render each page in a headless browser to detect
+  computed-style/interactive issues static analysis misses (requires the
+  `[rendered]` extra and `playwright install chromium`)
+- `--agent`: Use the browser-backed agent for the rendered pass (implies
+  `--rendered`; requires the `[agent]` extra)
 - `--config`: Path to configuration file
 
 ### Remediation
 
 ```bash
-content-accessibilty-utility-on-aws remediate --input path/to/document.html --output remediated.html
+content-accessibility-utility-on-aws remediate --input path/to/document.html --output remediated.html
 ```
 
 Options:
@@ -316,7 +414,7 @@ Options:
 ### Complete Processing
 
 ```bash
-content-accessibilty-utility-on-aws process --input path/to/document.pdf --output output/directory
+content-accessibility-utility-on-aws process --input path/to/document.pdf --output output/directory
 ```
 
 This command runs the full workflow:
@@ -330,19 +428,54 @@ Options:
 - `--audit-format [json|html|text]`: Format for the audit report
 - `--severity [minor|major|critical]`: Minimum severity level for audit and remediation
 - `--auto-fix`: Automatically fix issues where possible
+- `--rendered`: Include the browser-backed rendered audit (see Audit above)
+- `--agent`: Use the browser-backed agent for the rendered pass (implies `--rendered`)
 - Plus all options available in the individual commands
 - `--config`: Path to configuration file
+
+### Scaffold the managed cloud pipeline
+
+```bash
+content-accessibility-utility-on-aws init-pipeline ./a11y-pipeline
+```
+
+Writes the deployment files (SAM template, AgentCore runtime app, trigger Lambda,
+requirements) into the given directory so you can deploy the event-driven S3
+pipeline without checking out the repository. See
+[Deploy the managed pipeline](#deploy-the-managed-pipeline-pip-only-no-repo-checkout).
+
+Options:
+- `--force`: Overwrite existing files in the target directory
+
+### Deploy the managed cloud pipeline (interactive)
+
+```bash
+content-accessibility-utility-on-aws deploy-pipeline
+```
+
+Scaffolds the files and runs the whole deploy — `agentcore configure` →
+`agentcore launch` → `sam deploy` — prompting for values and wiring the runtime
+ARN between steps. Requires the `agentcore` and `sam` CLIs on PATH.
+
+Options:
+- `--region`, `--input-bucket`, `--bda-bucket`, `--bda-project-arn`: set values
+  non-interactively (anything omitted is prompted for)
+- `--runtime-name`: AgentCore runtime name (default `a11y_pipeline`)
+- `--yes` / `-y`: unattended (CI) — skips the per-step confirmations and runs
+  `sam deploy` non-interactively (explicit flags instead of `--guided`)
+- `--dry-run`: print the exact commands and exit without running anything
+- `--force`: overwrite existing scaffold files
 
 ### Use a configuration file
 
 ```bash
-content-accessibilty-utility-on-aws convert --config my-config.yaml --input document.pdf
+content-accessibility-utility-on-aws convert --config my-config.yaml --input document.pdf
 ```
 
 ### Override config file settings with command-line arguments
 
 ```bash
-content-accessibilty-utility-on-aws audit --config my-config.yaml --severity major --input document.html
+content-accessibility-utility-on-aws audit --config my-config.yaml --severity major --input document.html
 ```
 
 ## Common Options
@@ -377,10 +510,11 @@ output-directory/
 
 ```
 output-directory/
-├── html/                        # Directory with HTML files
-├── images/                      # Directory with extracted images
+├── html/                        # Converted HTML + extracted images
 ├── audit_report.[json|html|txt] # Audit report
-└── remediated_document.html     # Final remediated HTML file
+└── remediated_<name>.html       # Final remediated HTML
+                                  #   (remediated_document.html with --single-page;
+                                  #    remediated_html/ with --multi-page)
 ```
 
 ## Streamlit Sample Web Interface
@@ -394,7 +528,7 @@ The package provides a Python API for programmatic use:
 ### Complete Processing Pipeline
 
 ```python
-from content_accessibility_with_aws.api import process_pdf_accessibility
+from content_accessibility_utility_on_aws.api import process_pdf_accessibility
 
 # Process a PDF through the full pipeline
 result = process_pdf_accessibility(
@@ -409,7 +543,7 @@ result = process_pdf_accessibility(
         "detailed": True
     },
     remediation_options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     },
     perform_audit=True,
@@ -420,7 +554,7 @@ result = process_pdf_accessibility(
 ### Individual Components
 
 ```python
-from content_accessibility_with_aws.api import (
+from content_accessibility_utility_on_aws.api import (
     convert_pdf_to_html,
     audit_html_accessibility,
     remediate_html_accessibility
@@ -450,40 +584,101 @@ remediation_result = remediate_html_accessibility(
     html_path="output/document.html",
     audit_report=audit_result,
     options={
-        "model_id": "us.amazon.nova-2-lite-v1:0",
+        "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     }
 )
 ```
 
-### Batch Processing
+### Browser-backed (rendered) audit and agent
+
+The rendered layer is enabled through the same `audit_html_accessibility` API by
+setting `options["rendered"]` (or `options["agent"]`). Rendered findings use the
+identical issue shape as the static audit, so the returned report and any
+downstream remediation work unchanged. Requires the `[rendered]`/`[agent]`
+extra and `playwright install chromium`.
 
 ```python
-from content_accessibility_with_aws.batch import (
-    submit_batch_job,
-    check_job_status,
-    get_job_results
+from content_accessibility_utility_on_aws.api import audit_html_accessibility
+
+# Static audit + rendered pass (adds e.g. focus-visible findings)
+audit_result = audit_html_accessibility(
+    html_path="output/document.html",
+    options={"rendered": True},
+    output_path="report.json",
 )
-
-# Submit a batch job
-job_id = submit_batch_job(
-    input_bucket="my-bucket",
-    input_key="documents/file.pdf",
-    output_bucket="my-bucket",
-    output_prefix="results/",
-    process_options={
-        "perform_audit": True,
-        "perform_remediation": True
-    }
-)
-
-# Check job status
-status = check_job_status(job_id)
-
-# Get job results when complete
-if status["status"] == "COMPLETED":
-    results = get_job_results(job_id)
 ```
+
+To drive the full render &rarr; fix &rarr; **verify** loop directly with the
+Strands agent (returns the remediated HTML, the committed resolutions, and the
+agent's tool-call trace):
+
+```python
+from content_accessibility_utility_on_aws.agent.browser_probe import make_browser_probe
+from content_accessibility_utility_on_aws.agent.agent import run_agent
+
+with open("output/document.html") as f:
+    html = f.read()
+
+# make_browser_probe() selects the browser backend from options/env:
+#   local Playwright Chromium by default, or the managed AgentCore browser
+#   when options["browser_backend"] == "agentcore" (see the guide below).
+with make_browser_probe() as probe:
+    result = run_agent(probe, html)
+
+print(result["resolved"])   # issues confirmed fixed by a passing verify()
+print(result["tool_log"])   # the agent's render/apply_fix/verify/commit trace
+```
+
+See the [Rendered & Agent Guide](docs/rendered_agent_guide.md) for the
+architecture, the verify-before-commit guarantee, and cloud deployment on Amazon
+Bedrock AgentCore.
+
+### Batch Processing
+
+The `batch` package is a set of per-stage processors plus S3/DynamoDB/SQS
+helpers, designed to be wired into an event-driven pipeline (e.g. Lambda
+functions triggered by S3 events or SQS messages). Each stage takes a job id and
+S3 locations, does its work, and writes results back to S3.
+
+```python
+from content_accessibility_utility_on_aws.batch.common import (
+    generate_job_id,
+    create_job_record,
+    get_job_status,
+)
+from content_accessibility_utility_on_aws.batch.pdf2html import process_pdf_document
+from content_accessibility_utility_on_aws.batch.audit import process_html_document
+
+# Create a job record (tracked in DynamoDB)
+job_id = generate_job_id("my-bucket", "documents/file.pdf")
+create_job_record(job_id, document_key="documents/file.pdf", stage="PDF_TO_HTML")
+
+# Stage 1: convert a PDF from S3 to HTML, writing results back to S3
+conversion = process_pdf_document(
+    job_id=job_id,
+    source_bucket="my-bucket",
+    source_key="documents/file.pdf",
+    destination_bucket="my-bucket",
+    options={"single_file": True},
+)
+
+# Stage 2: audit the produced HTML (see batch.remediate for the remediation stage)
+audit = process_html_document(
+    job_id=job_id,
+    source_bucket="my-bucket",
+    source_key=conversion["html_key"],
+    destination_bucket="my-bucket",
+    options={"severity_threshold": "minor"},
+)
+
+# Inspect job status at any time
+status = get_job_status(job_id)
+```
+
+> In production these stages run as separate Lambda functions chained by S3/SQS
+> events; `batch.common` provides `parse_s3_event`, `parse_sqs_event`,
+> `send_sqs_message`, and `update_job_status` for that wiring.
 
 ## Requirements
 

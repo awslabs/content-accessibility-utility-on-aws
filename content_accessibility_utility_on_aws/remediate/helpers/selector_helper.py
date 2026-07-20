@@ -31,44 +31,253 @@ def find_element_from_issue(
     prefixes the path with the BeautifulSoup root token ``[document]``, which is
     not a valid selector, so it is stripped before matching.
 
-    As a secondary fallback, when ``issue["element"]`` happens to contain element
-    HTML (rather than just the tag name the auditor normally stores), an
-    anchor's ``href`` is used to locate it.
+    **Resilience to DOM mutation.** Remediation applies fixes sequentially, and
+    several of them restructure the tree — e.g. wrapping the body in ``<main>``
+    or inserting ``<header>``/``<nav>``/skip links. That shifts the depth and
+    ``:nth-of-type`` indices the audit-time path depends on, so a later issue's
+    absolute path can silently resolve to nothing, and its fix is skipped. To
+    stay correct regardless of remediation order, this resolver tries the exact
+    path first and then falls back to identifiers that survive restructuring:
+    recorded attributes (id/name/src/href/type/value), then the element's
+    document-wide position among its tag, then its text content.
 
     Args:
         soup: The parsed HTML document.
-        issue: The accessibility issue, which may carry ``location.path`` and/or
-            ``element``.
+        issue: The accessibility issue, which may carry ``location.path``,
+            ``element``, and ``context`` (element_name/attributes/position/text).
 
     Returns:
         The matching element, or None if it cannot be resolved.
     """
-    location = issue.get("location") or {}
-    path = location.get("path")
-    if path:
-        # Drop the synthetic BeautifulSoup root token and any empty segments.
-        selector = " > ".join(
-            seg for seg in path.split(" > ") if seg and seg != "[document]"
-        )
-        if selector:
-            try:
-                element = soup.select_one(selector)
-            except Exception as e:
-                logger.debug(f"Could not resolve issue path '{selector}': {e}")
-                element = None
-            if element is not None:
-                return element
+    # 1. Exact path (fast, unambiguous when the tree is unchanged). Guard
+    # against a *stale* generic path (e.g. "html > body > img" with no
+    # nth-of-type) resolving to the wrong surviving element after the real one
+    # was removed: if the issue recorded distinctive attributes, the path match
+    # must be consistent with them, otherwise fall through to attribute-based
+    # resolution (which finds the right element, or None if it is gone).
+    element = _match_by_path(soup, issue)
+    if element is not None and _element_matches_recorded_attributes(element, issue):
+        return element
 
-    # The audit-time path can be invalidated when earlier remediations inject
-    # elements (e.g. skip links, landmarks) and shift positional/nth-of-type
-    # selectors. Fall back to matching an anchor by its recorded href, which is
-    # stable across such mutations.
+    # 2. Recorded anchor href (stable across restructuring).
     href = _recorded_href(issue)
     if href:
         candidates = soup.find_all("a", href=href)
         if candidates:
             return candidates[0]
 
+    # 3. Recorded distinctive attributes (id/name/src/data-bda-id/type/value).
+    element = _match_by_attributes(soup, issue)
+    if element is not None:
+        return element
+
+    # If the issue recorded distinctive identifying attributes but none of them
+    # matched any element, the target element was almost certainly removed by an
+    # earlier remediation. The ordinal position/text fallbacks below would then
+    # silently return a DIFFERENT element of the same tag and mutate it, so they
+    # are unsafe here — return None instead (matching the pre-hardening behavior
+    # for a genuinely-gone element).
+    if _has_distinctive_attributes(issue):
+        return None
+
+    # 4. Recorded document-wide position among elements of the same tag. Only
+    # safe when the element carried no distinctive attributes to match on (so we
+    # are recovering from a shifted path, not a deletion).
+    element = _match_by_position(soup, issue)
+    if element is not None:
+        return element
+
+    # 5. Recorded text content (last resort, for text-bearing elements).
+    element = _match_by_text(soup, issue)
+    if element is not None:
+        return element
+
+    return None
+
+
+def _element_matches_recorded_attributes(element: Tag, issue: Dict[str, Any]) -> bool:
+    """Whether ``element`` is consistent with the issue's recorded attributes.
+
+    Returns True when the issue recorded no distinctive attributes (nothing to
+    contradict a path match) or when the element's own attributes agree with at
+    least one recorded distinctive attribute. Returns False only when a
+    distinctive attribute was recorded and the element's value conflicts — the
+    signal that the path resolved to the wrong (surviving) element.
+    """
+    attrs = _issue_context(issue).get("attributes")
+    if not isinstance(attrs, dict):
+        return True
+
+    # Unique identifiers are authoritative: if one was recorded, the element
+    # MUST match it — a conflict means the path resolved to the wrong element,
+    # even if a weaker attribute (like a shared src) happens to agree.
+    for key in ("id", "data-bda-id"):
+        if attrs.get(key):
+            return element.get(key) == attrs[key]
+
+    checks = []
+    for key in ("name", "href"):
+        if attrs.get(key):
+            checks.append(element.get(key) == attrs[key])
+    if attrs.get("src"):
+        import os as _os
+
+        rec = _os.path.basename(attrs["src"])
+        got = element.get("src")
+        checks.append(bool(got) and _os.path.basename(got) == rec)
+    if not checks:
+        return True
+    return any(checks)
+
+
+def _has_distinctive_attributes(issue: Dict[str, Any]) -> bool:
+    """Whether the issue recorded an attribute that uniquely identifies its element.
+
+    If such an attribute exists but did not match any element, the element is
+    gone and ordinal fallbacks must not guess a replacement.
+    """
+    attrs = _issue_context(issue).get("attributes")
+    if not isinstance(attrs, dict):
+        return False
+    return any(attrs.get(k) for k in ("id", "data-bda-id", "src", "name", "href"))
+
+
+def _match_by_path(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[Tag]:
+    """Resolve via the audit-time CSS path (root token stripped)."""
+    location = issue.get("location") or {}
+    path = location.get("path")
+    if not path:
+        return None
+    selector = " > ".join(
+        seg for seg in path.split(" > ") if seg and seg != "[document]"
+    )
+    if not selector:
+        return None
+    try:
+        return soup.select_one(selector)
+    except Exception as e:
+        logger.debug(f"Could not resolve issue path '{selector}': {e}")
+        return None
+
+
+def _issue_context(issue: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the issue context dict (never None)."""
+    context = issue.get("context")
+    return context if isinstance(context, dict) else {}
+
+
+def _recorded_tag(issue: Dict[str, Any]) -> Optional[str]:
+    """The element's tag name, from context or the ``element`` field."""
+    context = _issue_context(issue)
+    name = context.get("element_name")
+    if isinstance(name, str) and name:
+        return name
+    element_str = issue.get("element")
+    # The auditor normally stores the bare tag name in ``element``.
+    if isinstance(element_str, str) and element_str and "<" not in element_str:
+        return element_str
+    return None
+
+
+def _match_by_attributes(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[Tag]:
+    """Match by distinctive recorded attributes, which survive restructuring.
+
+    Uses the most specific stable attribute available. ``id`` is unique;
+    ``name``/``src`` are usually unique for the tag; ``type``+``value`` narrows
+    form controls. When a tag name is recorded the search is scoped to it.
+    """
+    context = _issue_context(issue)
+    attrs = context.get("attributes")
+    if not isinstance(attrs, dict) or not attrs:
+        return None
+
+    tag = _recorded_tag(issue)
+
+    # id is unique by definition.
+    if attrs.get("id"):
+        found = soup.find(attrs=({"id": attrs["id"]}))
+        if found is not None:
+            return found
+
+    # data-bda-id uniquely identifies a BDA-generated element and is the right
+    # primary discriminator when several elements share a src (e.g. duplicate
+    # images from document conversion).
+    if attrs.get("data-bda-id"):
+        found = soup.find(attrs={"data-bda-id": attrs["data-bda-id"]})
+        if found is not None:
+            return found
+
+    # Try progressively less unique attribute combinations, scoped to the tag.
+    for keys in (("name",), ("src",), ("type", "value"), ("type", "name")):
+        if all(attrs.get(k) for k in keys):
+            match_attrs = {k: attrs[k] for k in keys}
+            candidates = soup.find_all(tag or True, attrs=match_attrs)
+            if len(candidates) == 1:
+                return candidates[0]
+            # If multiple, fall through to position disambiguation below.
+            if candidates:
+                idx = _recorded_index(issue)
+                if idx is not None:
+                    same_tag = soup.find_all(candidates[0].name)
+                    if 0 <= idx < len(same_tag) and same_tag[idx] in candidates:
+                        return same_tag[idx]
+                return candidates[0]
+
+    # Fallback for images whose src path prefix changed (e.g. rewritten during
+    # conversion) but the filename is stable: match on basename.
+    src = attrs.get("src")
+    if src:
+        import os as _os
+
+        filename = _os.path.basename(src)
+        by_name = [
+            el for el in soup.find_all(tag or "img")
+            if el.get("src") and _os.path.basename(el.get("src")) == filename
+        ]
+        if len(by_name) == 1:
+            return by_name[0]
+    return None
+
+
+def _recorded_index(issue: Dict[str, Any]) -> Optional[int]:
+    """The element's document-wide index among its tag (from context.position)."""
+    position = _issue_context(issue).get("position")
+    if isinstance(position, dict):
+        idx = position.get("index")
+        if isinstance(idx, int) and idx >= 0:
+            return idx
+    return None
+
+
+def _match_by_position(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[Tag]:
+    """Match the Nth element of the recorded tag (document order).
+
+    ``position.index`` from the audit is the element's index among all elements
+    of its tag in the whole document. Wrapping/insertion of ancestor elements
+    does not reorder elements of a given tag, so this index stays valid even
+    when the ``:nth-of-type`` path does not.
+    """
+    tag = _recorded_tag(issue)
+    idx = _recorded_index(issue)
+    if not tag or idx is None:
+        return None
+    same_tag = soup.find_all(tag)
+    if 0 <= idx < len(same_tag):
+        return same_tag[idx]
+    return None
+
+
+def _match_by_text(soup: BeautifulSoup, issue: Dict[str, Any]) -> Optional[Tag]:
+    """Match a text-bearing element of the recorded tag by exact text content."""
+    context = _issue_context(issue)
+    text = context.get("text_content")
+    tag = _recorded_tag(issue)
+    if not tag or not isinstance(text, str) or not text.strip():
+        return None
+    target = text.strip()
+    for el in soup.find_all(tag):
+        if el.get_text(strip=True) == target:
+            return el
     return None
 
 
