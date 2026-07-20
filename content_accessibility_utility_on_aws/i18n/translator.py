@@ -106,10 +106,12 @@ _TRANSLATABLE_META_PROPERTIES = {
 # cleanly and never collides with real HTML tags.
 _PLACEHOLDER_TAG = "x-i18n"
 
-# Default batch size (number of text segments per Bedrock call). Chosen to keep
-# each request comfortably within output-token limits while minimizing the
-# number of round trips.
-DEFAULT_BATCH_SIZE = 40
+# Default batch size (number of text segments per Bedrock call). Kept modest so
+# each call's JSON array stays well within the model's output-token budget even
+# for verbose target languages and reasoning-capable models that also spend
+# output tokens on a hidden reasoning block; the per-call max_tokens is sized
+# from the batch's input length (see _make_bedrock_translate_fn).
+DEFAULT_BATCH_SIZE = 20
 
 
 class HTMLTranslator:
@@ -697,10 +699,19 @@ def _make_bedrock_translate_fn(
             f"Input:\n{json.dumps(segments, ensure_ascii=False)}"
         )
 
+        # Translation output is roughly as long as the (already-escaped) input
+        # plus expansion for verbose target languages, and reasoning-capable
+        # models (Sonnet 5) spend additional output tokens on a hidden reasoning
+        # block. The 2000-token remediation default truncates multi-segment
+        # batches (stopReason=max_tokens -> invalid/partial JSON), so size the
+        # budget from the input with generous headroom and a floor.
+        input_chars = sum(len(s) for s in segments)
+        max_tokens = max(4000, int(input_chars / 2) + 4000)
         raw = client.generate_text(
             prompt=prompt,
             purpose="content_translation",
             system_prompt=system_prompt,
+            max_tokens=max_tokens,
         )
         return _parse_translation_array(raw, len(segments), segments)
 

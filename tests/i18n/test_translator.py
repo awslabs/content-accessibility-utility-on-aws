@@ -357,3 +357,32 @@ def test_og_description_translated():
     )
     out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
     assert 'content="[es]Share text"' in out
+
+
+# --- Regression: max_tokens sizing for the default Bedrock translator --------
+
+
+def test_default_translator_sizes_max_tokens_to_input(monkeypatch):
+    # A multi-segment batch must request far more than the 2000-token remediation
+    # default, or Sonnet 5 truncates the JSON array (stopReason=max_tokens).
+    import content_accessibility_utility_on_aws.remediate.services.bedrock_client as bc
+
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def generate_text(self, prompt, purpose="general", max_tokens=None, **kw):
+            import json
+
+            seen["max_tokens"] = max_tokens
+            arr = json.loads(prompt[prompt.find("Input:\n") + 7 :])
+            return json.dumps(list(arr), ensure_ascii=False)
+
+    monkeypatch.setattr(bc, "BedrockClient", FakeClient)
+    # A long paragraph -> large input -> large max_tokens request.
+    big = "word " * 400
+    html = f"<html><body><p>{big}</p></body></html>"
+    HTMLTranslator(source_lang="en").translate_html(html, "es")
+    assert seen["max_tokens"] >= 4000
