@@ -54,3 +54,10 @@ def model_supports_temperature(model_id: str) -> bool:
 # they detect against and enforce to cannot drift apart.
 MIN_TARGET_SIZE_PX = 24
 
+# Default number of translatable segments per Bedrock call for the i18n package.
+# Kept modest so each call's JSON array stays within the model's output-token
+# budget even for verbose target languages and reasoning-capable models. Defined
+# here (rather than in the translator) so the config defaults and the API/CLI
+# layer share one value and cannot drift.
+DEFAULT_TRANSLATION_BATCH_SIZE = 20
+

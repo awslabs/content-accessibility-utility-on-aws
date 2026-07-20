@@ -156,6 +156,24 @@ class BedrockClient:
                 )
             raise
 
+    @staticmethod
+    def _extract_text(response: dict) -> Optional[str]:
+        """Return the first text block from a Converse response, or None.
+
+        Reasoning-capable models (e.g. Claude Sonnet 5) may prepend a
+        ``reasoningContent`` block before the ``text`` block, so the text is not
+        always at ``content[0]``. Scan the content blocks and return the first
+        one that actually carries ``text`` rather than assuming position 0
+        (which raised ``KeyError: 'text'``).
+        """
+        content = (
+            response.get("output", {}).get("message", {}).get("content", [])
+        )
+        for block in content:
+            if isinstance(block, dict) and "text" in block:
+                return block["text"]
+        return None
+
     def _track_usage(
         self,
         response: dict,
@@ -251,16 +269,9 @@ class BedrockClient:
                     f"(stopReason=max_tokens, maxTokens={max_tokens})"
                 )
 
-            # Extract the generated text
-            generated_text = ""
-            if (
-                "output" in response
-                and "message" in response["output"]
-                and "content" in response["output"]["message"]
-                and len(response["output"]["message"]["content"]) > 0
-            ):
-                generated_text = response["output"]["message"]["content"][0]["text"]
-
+            # Extract the generated text (skips any leading reasoning block).
+            generated_text = self._extract_text(response)
+            if generated_text is not None:
                 self._track_usage(
                     response, purpose, input_tokens, generated_text, start_time
                 )
@@ -384,15 +395,9 @@ class BedrockClient:
                     f"(stopReason=max_tokens, maxTokens={max_tokens})"
                 )
 
-            # Extract the generated text
-            if (
-                "output" in response
-                and "message" in response["output"]
-                and "content" in response["output"]["message"]
-                and len(response["output"]["message"]["content"]) > 0
-            ):
-                generated_text = response["output"]["message"]["content"][0]["text"]
-
+            # Extract the generated text (skips any leading reasoning block).
+            generated_text = self._extract_text(response)
+            if generated_text is not None:
                 self._track_usage(
                     response,
                     "alt_text_generation",

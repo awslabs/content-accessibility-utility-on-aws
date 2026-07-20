@@ -16,7 +16,10 @@ from typing import Dict, Any, Optional
 from copy import deepcopy
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger, ConfigurationError
-from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
+from content_accessibility_utility_on_aws.utils.constants import (
+    DEFAULT_MODEL_ID,
+    DEFAULT_TRANSLATION_BATCH_SIZE,
+)
 
 # Configure module-level logger
 logger = setup_logger(__name__)
@@ -301,6 +304,17 @@ config_manager = ConfigManager(
             "create_bda_project": False,
             "bda_project_name": None,
             "bda_profile_name": None,
+        },
+        # Internationalization (translation) defaults. Requires the optional
+        # [i18n] extra. ``target_languages`` must be supplied by the caller.
+        "i18n": {
+            "target_languages": None,  # list[str] of BCP-47 codes, required
+            "source_language": None,  # auto-detected when None
+            "multilingual": False,  # one combined document vs. one file per language
+            "add_language_selector": True,  # visible selector in multilingual output
+            "use_browser_language": True,  # auto-detect the visitor's browser language
+            "batch_size": DEFAULT_TRANSLATION_BATCH_SIZE,  # segments per Bedrock call
+            "model_id": DEFAULT_MODEL_ID,
         },
     }
 )

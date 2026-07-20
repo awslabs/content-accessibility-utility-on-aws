@@ -37,6 +37,12 @@ Digital content stakeholders across industries aim to streamline how they meet a
 - Optional **accessibility agent** ([Strands](https://strandsagents.com)) that
   drives a render &rarr; fix &rarr; **verify** loop, confirming each fix actually
   renders correctly before marking it resolved
+- Optional **internationalization ([i18n])** that translates the worked-on
+  content into one or more target languages via Amazon Bedrock &mdash;
+  preserving markup and screen-reader-announced attributes (`alt`, `title`,
+  `aria-label`), setting per-language `lang`/`dir` (WCAG Language of Parts), and
+  optionally emitting a single multilingual document with an accessible
+  language selector and **browser-language auto-detection**
 - Support for single-page and multi-page output formats
 - Batch processing capabilities for large-scale document processing
 - Detailed usage tracking for BDA pages and Bedrock tokens
@@ -89,6 +95,9 @@ pip install "content-accessibility-utility-on-aws[rendered]"
 
 # Agent: the render -> fix -> verify loop (implies the rendered layer)
 pip install "content-accessibility-utility-on-aws[agent]"
+
+# i18n: translate content into target languages + multilingual output
+pip install "content-accessibility-utility-on-aws[i18n]"
 ```
 
 Both extras use a headless browser via [Playwright](https://playwright.dev/python/).
@@ -411,6 +420,44 @@ Options:
 - `--report-format [html|json|text]`: Format for the remediation report
 - `--config`: Path to configuration file
 
+### Translation (i18n)
+
+Translate the worked-on HTML into one or more target languages. Requires the
+`[i18n]` extra. The translation itself runs on Amazon Bedrock (the same core
+dependency remediation uses); the extra adds localized language names and
+source-language auto-detection.
+
+```bash
+# One accessible HTML file per language (doc.es.html, doc.fr.html, ...)
+content-accessibility-utility-on-aws translate \
+  --input remediated.html --output out/ --target-languages es,fr,ja
+
+# A single multilingual document with a language selector that auto-selects the
+# visitor's browser language on first load
+content-accessibility-utility-on-aws translate \
+  --input remediated.html --output multilingual.html \
+  --target-languages es,fr,ar --multilingual
+```
+
+Options:
+- `--target-languages` (alias `--languages`): Comma-separated BCP-47 codes to
+  translate into, e.g. `es,fr,ja` (**required**)
+- `--source-language`: Source language; auto-detected from the document if omitted
+- `--multilingual`: Emit one combined document with an accessible language
+  selector instead of one file per language
+- `--no-language-selector`: Omit the visible selector from multilingual output
+- `--no-browser-language`: Do not auto-select the visitor's browser language on
+  first load
+- `--model-id`: Bedrock model ID to use for translation
+- `--config`: Path to configuration file
+
+The translator preserves all markup and translates screen-reader-announced
+attributes (`alt`, `title`, `aria-label`), sets `lang`/`dir` on each language
+block (WCAG 3.1.2 Language of Parts), and skips `<script>`/`<style>`/`<code>`
+and any element marked `translate="no"`. The language selector and browser
+detection are progressive enhancements — with JavaScript disabled the default
+language stays visible and no content is hidden.
+
 ### Complete Processing
 
 ```bash
@@ -421,6 +468,7 @@ This command runs the full workflow:
 1. Converts PDF to HTML
 2. Audits the HTML for accessibility issues
 3. Remediates the issues found
+4. Optionally translates the remediated HTML (when `--target-languages` is given)
 
 Options:
 - `--skip-audit`: Skip the audit step
@@ -430,6 +478,9 @@ Options:
 - `--auto-fix`: Automatically fix issues where possible
 - `--rendered`: Include the browser-backed rendered audit (see Audit above)
 - `--agent`: Use the browser-backed agent for the rendered pass (implies `--rendered`)
+- `--target-languages es,fr,...`: Also translate the result (requires `[i18n]`;
+  see Translation above). Add `--multilingual` for a single selectable document.
+  Per-language files are written to a `translations/` subdirectory.
 - Plus all options available in the individual commands
 - `--config`: Path to configuration file
 
@@ -587,6 +638,36 @@ remediation_result = remediate_html_accessibility(
         "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     }
+)
+```
+
+### Translation (i18n)
+
+Translate the (remediated) HTML into one or more target languages. Requires the
+`[i18n]` extra. Returns the source language, the target languages, and a mapping
+of language &rarr; output file path.
+
+```python
+from content_accessibility_utility_on_aws.api import translate_html_accessibility
+
+# One accessible file per language
+result = translate_html_accessibility(
+    html_path="output/remediated.html",
+    options={"target_languages": ["es", "fr", "ja"]},
+    output_path="output/translations/",
+)
+
+# Or a single multilingual document with a language selector that auto-detects
+# the visitor's browser language on first load
+result = translate_html_accessibility(
+    html_path="output/remediated.html",
+    options={
+        "target_languages": ["es", "fr", "ar"],
+        "multilingual": True,
+        "add_language_selector": True,   # default
+        "use_browser_language": True,    # default
+    },
+    output_path="output/multilingual.html",
 )
 ```
 
