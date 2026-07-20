@@ -344,12 +344,13 @@ connect failure does not leak a managed session.
 ## Limitations and status
 
 - **Scope:** the agent remediates a range of interactive/computed criteria
-  end-to-end (apply → re-render → verify): focus visibility (2.4.7), computed
-  contrast (1.4.3 / 1.4.11), name-role-value on custom widgets (4.1.2), focus
-  order / positive tabindex (2.4.3), and duplicate ids (4.1.1), plus
-  model-authored accessible names, link text, and image alt text. Purely
-  structural issues (headings, tables, landmarks, language, titles) are handled
-  by the static path and are not sent to the agent.
+  end-to-end (apply → re-render → **verify**): focus visibility (2.4.7), computed
+  contrast (1.4.3 / 1.4.11), name-role-value on custom widgets (4.1.2), and focus
+  order / positive tabindex (2.4.3), plus model-authored accessible names, link
+  text, and image alt text. Some fixes are applied by the **static path only**
+  (no rendered re-verify) — notably duplicate ids (4.1.1) and structural issues
+  (headings, tables, landmarks, language, titles); those pages are not sent to
+  the agent.
 - **Residual (needs human judgment):** issues that require a page-behavior change
   the agent will not make automatically (e.g. the intended DOM reading order, or
   a modal's default open/closed state) are reported but left for a human. The

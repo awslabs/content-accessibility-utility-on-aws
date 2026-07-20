@@ -58,13 +58,13 @@ The following table shows the standardized parameter names used across the tool:
 ### Convert a PDF to HTML
 
 ```bash
-document-accessibility convert --input document.pdf --output output_dir/ --single-file --extract-images
+content-accessibility-utility convert --input document.pdf --output output_dir/ --single-file --extract-images
 ```
 
 ### Audit an HTML File
 
 ```bash
-document-accessibility audit --input document.html --output audit_report.json --format json --severity major
+content-accessibility-utility audit --input document.html --output audit_report.json --format json --severity major
 ```
 
 ### Audit with the browser-backed (rendered) pass
@@ -72,16 +72,16 @@ document-accessibility audit --input document.html --output audit_report.json --
 ```bash
 # Add computed-style / interactive detection (requires the [rendered] extra
 # and `playwright install chromium`)
-document-accessibility audit --input document.html --output audit_report.json --rendered
+content-accessibility-utility audit --input document.html --output audit_report.json --rendered
 
 # Use the browser-backed agent to also fix and verify (requires the [agent] extra)
-document-accessibility audit --input document.html --output audit_report.json --agent
+content-accessibility-utility audit --input document.html --output audit_report.json --agent
 ```
 
 ### Remediate Accessibility Issues
 
 ```bash
-document-accessibility remediate --input document.html --output remediated.html --auto-fix --model-id us.anthropic.claude-sonnet-5
+content-accessibility-utility remediate --input document.html --output remediated.html --auto-fix --model-id us.anthropic.claude-sonnet-5
 ```
 
 ## Process Command (Full Pipeline)
@@ -89,23 +89,23 @@ document-accessibility remediate --input document.html --output remediated.html 
 The `process` command combines conversion, auditing, and remediation into a single workflow. It accepts parameters from all three operations, using the following pattern:
 
 ```bash
-document-accessibility process --input document.pdf --output output_dir/ [options]
+content-accessibility-utility process --input document.pdf --output output_dir/ [options]
 ```
 
 Common configurations include:
 
 ```bash
 # Basic process with default settings
-document-accessibility process --input document.pdf --output output_dir/
+content-accessibility-utility process --input document.pdf --output output_dir/
 
 # Process with specific AWS settings
-document-accessibility process --input document.pdf --output output_dir/ --s3-bucket my-bucket --profile my-profile
+content-accessibility-utility process --input document.pdf --output output_dir/ --s3-bucket my-bucket --profile my-profile
 
 # Process with audit only (no remediation)
-document-accessibility process --input document.pdf --output output_dir/ --skip-remediation
+content-accessibility-utility process --input document.pdf --output output_dir/ --skip-remediation
 
 # Full processing with custom settings
-document-accessibility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id us.anthropic.claude-sonnet-5
+content-accessibility-utility process --input document.pdf --output output_dir/ --severity major --auto-fix --model-id us.anthropic.claude-sonnet-5
 ```
 
 ## Parameter Value Standards
@@ -164,7 +164,7 @@ deployment.
 ### Full Processing Pipeline
 
 ```python
-from document_accessibility.api import process_pdf_accessibility
+from content_accessibility_utility_on_aws.api import process_pdf_accessibility
 
 # Process a PDF through the full pipeline
 result = process_pdf_accessibility(
@@ -190,7 +190,7 @@ result = process_pdf_accessibility(
 ### Individual Components
 
 ```python
-from document_accessibility.api import (
+from content_accessibility_utility_on_aws.api import (
     convert_pdf_to_html,
     audit_html_accessibility,
     remediate_html_accessibility
@@ -232,12 +232,14 @@ The tool supports configuration through the following environment variables:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `BDA_S3_BUCKET` or `DOCUMENT_ACCESSIBILITY_S3_BUCKET` | S3 bucket name for storing input/output files | Yes |
-| `BDA_PROJECT_ARN` or `DOCUMENT_ACCESSIBILITY_BDA_PROJECT_ARN` | ARN for the BDA project | Yes |
-| `AWS_PROFILE` | AWS profile to use for credentials | No |
-| `CONTENT_ACCESSIBILITY_WORK_DIR` | Directory for temporary files | No |
+| `BDA_S3_BUCKET` | S3 bucket for BDA input/output (PDF conversion only) | Yes for the PDF path |
+| `BDA_PROJECT_ARN` | ARN of the BDA project (PDF conversion only) | Yes for the PDF path |
+| `AWS_REGION` / `AWS_DEFAULT_REGION` | AWS region for AWS clients | Recommended |
+| `A11Y_BROWSER_BACKEND` | `local` (default) or `agentcore` — selects the rendered/agent browser backend | No |
 
-Ensure these variables are set before running the tool.
+`BDA_S3_BUCKET` / `BDA_PROJECT_ARN` are only consulted for PDF conversion; the
+HTML/zip audit and remediation paths do not need them. Standard AWS credential
+environment variables (`AWS_PROFILE`, etc.) are honored by boto3 as usual.
 
 ## Streamlit Interface Options
 

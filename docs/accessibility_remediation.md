@@ -23,9 +23,10 @@ The accessibility remediation functionality:
 
 You can remediate accessibility issues in two ways:
 
-1. **As part of PDF conversion**:
+1. **As part of PDF conversion** (the `process` command remediates by default;
+   pass `--skip-remediation` to opt out):
    ```bash
-   content-accessibility-utility-on-aws process --input path/to/input.pdf --output output/ --perform-remediation
+   content-accessibility-utility-on-aws process --input path/to/input.pdf --output output/
    ```
 
 2. **For an existing HTML file with an audit report**:
@@ -43,9 +44,11 @@ Accessibility remediation options:
   --model-id MODEL_ID  Bedrock model ID to use for remediation
   --severity-threshold {critical,major,minor}
                       Minimum severity level to remediate. Default: minor
-  --issue-types ISSUE_TYPES
-                      Comma-separated list of specific issue types to remediate (e.g., missing-alt-text,empty-alt-text)
 ```
+
+To restrict remediation to specific issue types, use the Python API with
+`options={"issue_types": ["missing-alt-text", "empty-alt-text"]}` (there is no
+`--issue-types` CLI flag on the `remediate` command).
 
 ### From Python Code
 
@@ -81,7 +84,7 @@ The remediation process uses specialized templates for common accessibility issu
 | `skipped-heading-level` | Heading levels that skip (e.g., h1 to h3) | 1.3.1 |
 | `empty-heading` | Headings with no content | 1.3.1 |
 | `table-missing-headers` | Tables without headers | 1.3.1 |
-| `th-missing-scope` | Table headers missing scope attribute | 1.3.1 |
+| `table-missing-scope` | Table headers missing scope attribute | 1.3.1 |
 | `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
 | `duplicate-link-text-different-url` | Same link text pointing to different URLs | 2.4.9 |
 | Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
@@ -130,7 +133,8 @@ A complete remediation workflow typically includes:
 2. Auditing for accessibility issues (`audit_html_accessibility`)
 3. Remediating the identified issues (`remediate_html_accessibility`)
 
-See the `tests/test_accessibility_remediation.py` script for a complete example.
+See the tests under `tests/remediate/` (e.g.
+`tests/remediate/test_model_backed_remediation.py`) for complete examples.
 
 ## Advanced Usage
 
@@ -144,10 +148,15 @@ content-accessibility-utility-on-aws remediate --input document.html --output re
 
 ### Filtered Remediation
 
-Process only specific issue types:
+Process only specific issue types via the Python API's `options` dict:
 
-```bash
-content-accessibility-utility-on-aws remediate --input document.html --output remediated.html --issue-types missing-alt-text,empty-alt-text
+```python
+remediate_html_accessibility(
+    html_path="document.html",
+    audit_report=audit_report,
+    output_path="remediated.html",
+    options={"issue_types": ["missing-alt-text", "empty-alt-text"]},
+)
 ```
 
 ### Severity-Based Remediation

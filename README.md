@@ -510,10 +510,11 @@ output-directory/
 
 ```
 output-directory/
-├── html/                        # Directory with HTML files
-├── images/                      # Directory with extracted images
+├── html/                        # Converted HTML + extracted images
 ├── audit_report.[json|html|txt] # Audit report
-└── remediated_document.html     # Final remediated HTML file
+└── remediated_<name>.html       # Final remediated HTML
+                                  #   (remediated_document.html with --single-page;
+                                  #    remediated_html/ with --multi-page)
 ```
 
 ## Streamlit Sample Web Interface
@@ -650,7 +651,7 @@ from content_accessibility_utility_on_aws.batch.pdf2html import process_pdf_docu
 from content_accessibility_utility_on_aws.batch.audit import process_html_document
 
 # Create a job record (tracked in DynamoDB)
-job_id = generate_job_id()
+job_id = generate_job_id("my-bucket", "documents/file.pdf")
 create_job_record(job_id, document_key="documents/file.pdf", stage="PDF_TO_HTML")
 
 # Stage 1: convert a PDF from S3 to HTML, writing results back to S3
