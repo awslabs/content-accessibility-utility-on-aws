@@ -52,6 +52,10 @@ def test_factory_selects_agentcore_by_env(monkeypatch):
 
 
 def test_agentcore_requires_region(monkeypatch):
+    # _connect_browser imports the AgentCore SDK before checking the region, so
+    # without the [agent] extra installed it raises the SDK-missing error, not
+    # the region error this test asserts. Skip when the SDK is absent (offline CI).
+    pytest.importorskip("bedrock_agentcore.tools.browser_client")
     monkeypatch.delenv("AWS_REGION", raising=False)
     monkeypatch.delenv("AWS_DEFAULT_REGION", raising=False)
     probe = AgentCoreBrowserProbe(region=None)
@@ -168,6 +172,9 @@ def test_partial_connect_failure_does_not_leak_session(monkeypatch):
     BrowserUnavailableError, so without cleanup on failure each retry would
     orphan a billable AgentCore session.
     """
+    # Needs the real Playwright module (the test fakes sync_playwright on it);
+    # skip when the [rendered] extra is absent (offline CI).
+    pytest.importorskip("playwright.sync_api")
     _StartThenFailClient.started = 0
     _StartThenFailClient.stopped = 0
 

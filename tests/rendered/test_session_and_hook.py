@@ -10,6 +10,8 @@ Bedrock. They use ``FakeProbe`` and drive the hook by constructing the same
 ``BeforeToolCallEvent`` Strands would.
 """
 
+import pytest
+
 from content_accessibility_utility_on_aws.agent.session import AgentSession
 from tests.rendered.conftest import FOCUS_FAIL_HTML, FakeProbe
 
@@ -56,6 +58,7 @@ def _fire_before_tool(hook, name, tool_input):
 
 
 def test_steering_hook_blocks_unverified_commit(focus_fail_probe_result):
+    pytest.importorskip("strands")  # hook is built via agent.py, which imports strands
     from content_accessibility_utility_on_aws.agent.agent import (
         build_verification_hook,
     )
@@ -73,6 +76,7 @@ def test_steering_hook_blocks_unverified_commit(focus_fail_probe_result):
 
 
 def test_steering_hook_allows_verified_commit(focus_fail_probe_result):
+    pytest.importorskip("strands")
     from content_accessibility_utility_on_aws.agent.agent import (
         build_verification_hook,
     )
@@ -89,6 +93,7 @@ def test_steering_hook_allows_verified_commit(focus_fail_probe_result):
 
 
 def test_steering_hook_ignores_other_tools(focus_fail_probe_result):
+    pytest.importorskip("strands")
     from content_accessibility_utility_on_aws.agent.agent import (
         build_verification_hook,
     )
