@@ -32,6 +32,7 @@ probes and proposes edits between them.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -42,7 +43,14 @@ from content_accessibility_utility_on_aws.utils.logging_helper import setup_logg
 logger = setup_logger(__name__)
 
 # axe-core is vendored (pinned) so rendered audits are reproducible and do not
-# depend on network access at runtime. See agent/vendor/README.md.
+# depend on network access at runtime. The pinned version and its SHA-256 are
+# recorded here and in agent/vendor/README.md; `_load_axe` verifies the file
+# matches this hash on load, so a truncated, tampered, or accidentally-swapped
+# copy (e.g. a Git LFS pointer packaged instead of the real bytes) fails loudly
+# instead of running a different rule set. Update both this constant and the
+# file together via agent/vendor/update_axe.sh (which re-derives the hash).
+_AXE_VERSION = "4.10.2"
+_AXE_SHA256 = "b511cd9dec01c76f4b2ad1723b66b6db37d4c2eb4ed199076e1829d9ee7b75e3"
 _AXE_JS_PATH = os.path.join(os.path.dirname(__file__), "vendor", "axe.min.js")
 
 # Interactive elements that must show a visible focus indicator (WCAG 2.4.7).
@@ -329,12 +337,23 @@ class _PlaywrightProbeBase(BrowserProbe):
     @staticmethod
     def _load_axe() -> str:
         try:
-            with open(_AXE_JS_PATH, "r", encoding="utf-8") as f:
-                return f.read()
+            data = open(_AXE_JS_PATH, "rb").read()
         except OSError as e:  # pragma: no cover - only if vendoring is broken
             raise BrowserUnavailableError(
                 f"Vendored axe-core not found at {_AXE_JS_PATH}: {e}"
             ) from e
+        # Verify the file is the exact pinned build. This catches truncation, a
+        # tampered/mismatched copy, or a Git LFS pointer stub packaged in place
+        # of the real bytes — any of which would silently run a different (or no)
+        # rule set. Reproducible, offline audits depend on this being the pin.
+        actual = hashlib.sha256(data).hexdigest()
+        if actual != _AXE_SHA256:
+            raise BrowserUnavailableError(
+                f"Vendored axe-core at {_AXE_JS_PATH} does not match the pinned "
+                f"axe-core {_AXE_VERSION} (sha256 {actual[:12]}… != "
+                f"{_AXE_SHA256[:12]}…). Re-vendor with agent/vendor/update_axe.sh."
+            )
+        return data.decode("utf-8")
 
     def _connect_browser(self, playwright):
         """Return a Playwright ``Browser`` handle. Implemented by subclasses."""
