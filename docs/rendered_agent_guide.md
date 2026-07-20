@@ -211,7 +211,8 @@ pip install bedrock-agentcore-starter-toolkit aws-sam-cli
 
 content-accessibility-utility-on-aws deploy-pipeline
 #   --dry-run                 preview the exact commands, run nothing
-#   --yes                     skip the per-step confirmation (CI)
+#   --yes                     unattended (CI): skips confirmations AND runs
+#                             `sam deploy` non-interactively (no --guided prompts)
 #   --region / --input-bucket / --bda-bucket / --bda-project-arn  set values non-interactively
 ```
 

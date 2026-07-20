@@ -1339,6 +1339,15 @@ def run_deploy_pipeline_command(args: Dict[str, Any]) -> int:
     dry_run = args.get("dry_run", False)
     # Prompt for missing values (skipped on dry-run so it needs no input).
     if not dry_run:
+        # Check prerequisites BEFORE prompting, so a user without agentcore/sam
+        # isn't asked for region/bucket/BDA only to be told the tools are missing.
+        missing = deploy_mod.check_prerequisites()
+        if missing:
+            print(
+                "Missing required tool(s): " + ", ".join(missing) + "\n"
+                + deploy_mod.MISSING_TOOLS_HELP
+            )
+            return 1
         try:
             cfg = deploy_mod.prompt_for_config(cfg)
         except deploy_mod.DeployError as e:

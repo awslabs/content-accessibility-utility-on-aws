@@ -33,7 +33,7 @@ import os
 import re
 import shutil
 import subprocess  # nosec B404 - orchestrating agentcore/sam CLIs is the point
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
@@ -109,8 +109,12 @@ class Step:
     title: str
     argv: List[str]
     cwd: Optional[str] = None
-    # env vars to add for this step (e.g. AWS_REGION); never secrets.
-    env: dict = field(default_factory=dict)
+    # Whether to capture this step's output (so a return value can be parsed)
+    # vs. let it inherit the terminal. Interactive steps (agentcore configure,
+    # sam deploy --guided) MUST NOT be captured or their prompts are buffered
+    # invisibly and the child blocks on stdin the user cannot see. Only
+    # ``agentcore launch`` is captured, to parse the runtime ARN from its output.
+    capture: bool = False
 
 
 def build_plan(cfg: DeployConfig) -> List[Step]:
@@ -140,27 +144,62 @@ def build_plan(cfg: DeployConfig) -> List[Step]:
                 "--region", cfg.region,
             ],
             cwd=workdir,
+            capture=False,  # configure prompts interactively for role/ECR/etc.
         ),
         Step(
             title="Launch the AgentCore runtime (builds an ARM64 image in the cloud)",
             argv=launch_argv,
             cwd=workdir,
+            capture=True,  # non-interactive; captured so we can parse the ARN
         ),
         # The sam deploy step's AgentRuntimeArn is filled in after launch, so it
         # is built dynamically in run_deploy, not here.
     ]
 
 
-def format_plan(cfg: DeployConfig) -> str:
+def sam_deploy_argv(cfg: DeployConfig, runtime_arn: str, assume_yes: bool) -> List[str]:
+    """Build the ``sam deploy`` argv.
+
+    Interactive by default (``--guided`` walks the user through stack name,
+    region, and change-set confirmation). With ``assume_yes`` (``--yes`` / CI)
+    ``--guided`` would still prompt, so use the non-interactive flags instead:
+    an explicit stack name, ``--resolve-s3`` for the deployment bucket, and the
+    IAM capability the template's Lambda role requires. CloudFormation stack
+    names disallow ``_``, so the runtime name is hyphenated.
+    """
+    argv = ["sam", "deploy"]
+    if assume_yes:
+        argv += [
+            "--stack-name", cfg.runtime_name.replace("_", "-"),
+            "--resolve-s3",
+            "--capabilities", "CAPABILITY_IAM",
+            "--no-confirm-changeset",
+            "--no-fail-on-empty-changeset",
+        ]
+        if cfg.region:
+            argv += ["--region", cfg.region]
+    else:
+        argv += ["--guided"]
+    argv += [
+        "--parameter-overrides",
+        f"AgentRuntimeArn={runtime_arn}",
+        f"InputBucketName={cfg.input_bucket}",
+    ]
+    return argv
+
+
+def format_plan(cfg: DeployConfig, assume_yes: bool = False) -> str:
     """Human-readable dry-run plan (commands, in order)."""
-    lines = ["Deployment plan:", f"  scaffold files into {os.path.abspath(cfg.directory)}"]
-    for i, step in enumerate(build_plan(cfg), start=1):
+    lines = [
+        "Deployment plan (4 steps):",
+        f"  1. scaffold files into {os.path.abspath(cfg.directory)}",
+    ]
+    for i, step in enumerate(build_plan(cfg), start=2):
         lines.append(f"  {i}. {step.title}")
         lines.append("       " + " ".join(step.argv))
-    lines.append("  3. Deploy the SAM stack (uses the runtime ARN from launch)")
+    lines.append("  4. Deploy the SAM stack (uses the runtime ARN from launch)")
     lines.append(
-        "       sam deploy --guided --parameter-overrides "
-        f"AgentRuntimeArn=<from-launch> InputBucketName={cfg.input_bucket or '<bucket>'}"
+        "       " + " ".join(sam_deploy_argv(cfg, "<from-launch>", assume_yes))
     )
     if not (cfg.bda_bucket and cfg.bda_project_arn):
         lines.append(
@@ -190,26 +229,42 @@ def _confirm(prompt: str, assume_yes: bool, input_fn: Callable[[str], str]) -> b
     return answer in ("y", "yes")
 
 
-def _run(step_argv: List[str], cwd: Optional[str], extra_env: Optional[dict] = None) -> str:
-    """Run a command, streaming is not needed; capture combined output.
+MISSING_TOOLS_HELP = (
+    "Install them first:\n"
+    "  pip install bedrock-agentcore-starter-toolkit aws-sam-cli"
+)
 
-    Raises DeployError on non-zero exit. Returns captured stdout+stderr so the
-    caller can parse it (e.g. for the runtime ARN).
+
+def _run(
+    step_argv: List[str],
+    cwd: Optional[str],
+    extra_env: Optional[dict] = None,
+    capture: bool = False,
+) -> str:
+    """Run a command; raise DeployError on non-zero exit.
+
+    ``capture=True`` pipes stdout (returned to the caller so it can be parsed,
+    e.g. for the runtime ARN) and prints it after the process exits.
+    ``capture=False`` lets the child inherit this process's stdin/stdout/stderr
+    so INTERACTIVE tools (agentcore configure, sam deploy --guided) can prompt
+    and read the user's answers live — capturing them would buffer the prompts
+    invisibly and block on stdin. Returns "" when not capturing.
     """
     env = dict(os.environ)
     if extra_env:
         env.update(extra_env)
     logger.info("Running: %s (cwd=%s)", " ".join(step_argv), cwd or ".")
-    proc = subprocess.run(  # nosec B603 - argv list, no shell; tools are trusted CLIs
-        step_argv,
-        cwd=cwd,
-        env=env,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    output = proc.stdout or ""
-    print(output, end="" if output.endswith("\n") else "\n")
+    if capture:
+        proc = subprocess.run(  # nosec B603 - argv list, no shell; trusted CLIs
+            step_argv, cwd=cwd, env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+        )
+        output = proc.stdout or ""
+        print(output, end="" if output.endswith("\n") else "\n")
+    else:
+        # Inherit the terminal so the child's prompts stream to the user.
+        proc = subprocess.run(step_argv, cwd=cwd, env=env)  # nosec B603
+        output = ""
     if proc.returncode != 0:
         raise DeployError(
             f"Command failed (exit {proc.returncode}): {' '.join(step_argv)}"
@@ -267,17 +322,8 @@ def run_deploy(
     a command and returns its output (injected for offline tests).
     """
     if dry_run:
-        print(format_plan(cfg))
+        print(format_plan(cfg, assume_yes))
         return 0
-
-    missing = check_prerequisites()
-    if missing:
-        print(
-            "Missing required tool(s): " + ", ".join(missing) + "\n"
-            "Install them first:\n"
-            "  pip install bedrock-agentcore-starter-toolkit aws-sam-cli"
-        )
-        return 1
 
     workdir = os.path.abspath(cfg.directory)
 
@@ -294,7 +340,12 @@ def run_deploy(
         if not _confirm("Proceed?", assume_yes, input_fn):
             print("Aborted by user.")
             return 1
-        out = runner(step.argv, step.cwd, {"AWS_REGION": cfg.region} if cfg.region else None)
+        out = runner(
+            step.argv,
+            step.cwd,
+            {"AWS_REGION": cfg.region} if cfg.region else None,
+            step.capture,
+        )
         if step.argv[:2] == ["agentcore", "launch"]:
             launch_output = out
 
@@ -313,19 +364,15 @@ def run_deploy(
         raise DeployError("No runtime ARN available; cannot deploy the SAM stack.")
     print(f"\nRuntime ARN: {runtime_arn}")
 
-    # 4. sam deploy, wiring in the captured ARN + bucket.
-    sam_argv = [
-        "sam", "deploy", "--guided",
-        "--parameter-overrides",
-        f"AgentRuntimeArn={runtime_arn}",
-        f"InputBucketName={cfg.input_bucket}",
-    ]
+    # 4. sam deploy, wiring in the captured ARN + bucket. Interactive (--guided)
+    # unless --yes, so it must run uncaptured to prompt the user.
+    sam_argv = sam_deploy_argv(cfg, runtime_arn, assume_yes)
     print("\n== Step 4/4: deploy the SAM stack ==")
     print("  " + " ".join(sam_argv))
     if not _confirm("Proceed?", assume_yes, input_fn):
         print("Aborted by user (runtime is deployed; re-run to finish the stack).")
         return 1
-    runner(sam_argv, workdir, None)
+    runner(sam_argv, workdir, None, False)
 
     print(
         "\nDeployment complete.\n"

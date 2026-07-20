@@ -461,7 +461,8 @@ Options:
 - `--region`, `--input-bucket`, `--bda-bucket`, `--bda-project-arn`: set values
   non-interactively (anything omitted is prompted for)
 - `--runtime-name`: AgentCore runtime name (default `a11y_pipeline`)
-- `--yes` / `-y`: run every step without the per-step confirmation (for CI)
+- `--yes` / `-y`: unattended (CI) — skips the per-step confirmations and runs
+  `sam deploy` non-interactively (explicit flags instead of `--guided`)
 - `--dry-run`: print the exact commands and exit without running anything
 - `--force`: overwrite existing scaffold files
 

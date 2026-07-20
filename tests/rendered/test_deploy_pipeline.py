@@ -63,8 +63,8 @@ class _Recorder:
         self.calls = []
         self._launch_arn = launch_arn
 
-    def __call__(self, argv, cwd, extra_env=None):
-        self.calls.append(argv)
+    def __call__(self, argv, cwd, extra_env=None, capture=False):
+        self.calls.append((argv, capture))
         if argv[:2] == ["agentcore", "launch"]:
             return f"Deployment completed successfully - Agent: {self._launch_arn}"
         return ""
@@ -86,15 +86,13 @@ def test_dry_run_runs_nothing(capsys):
     )
     assert rc == 0
     assert "RAN" not in calls  # nothing executed
-    assert "Deployment plan:" in capsys.readouterr().out
+    assert "Deployment plan" in capsys.readouterr().out
 
 
 def test_full_flow_captures_arn_and_deploys(monkeypatch):
     arn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/a11y_pipeline-ZZZ"
     rec = _Recorder(arn)
     scaffolded = []
-    # All prerequisites present.
-    monkeypatch.setattr(deploy, "check_prerequisites", lambda *a, **k: [])
 
     rc = deploy.run_deploy(
         _cfg(bda_bucket="b", bda_project_arn="arn:proj"),
@@ -104,18 +102,54 @@ def test_full_flow_captures_arn_and_deploys(monkeypatch):
     )
     assert rc == 0
     assert scaffolded == ["a11y-x"]
+    argvs = [c[0] for c in rec.calls]
     # Order: configure, launch, then sam deploy with the captured ARN.
-    assert rec.calls[0][:2] == ["agentcore", "configure"]
-    assert rec.calls[1][:2] == ["agentcore", "launch"]
-    sam = rec.calls[2]
+    assert argvs[0][:2] == ["agentcore", "configure"]
+    assert argvs[1][:2] == ["agentcore", "launch"]
+    sam = argvs[2]
     assert sam[:2] == ["sam", "deploy"]
     assert f"AgentRuntimeArn={arn}" in sam
     assert "InputBucketName=bkt" in sam
 
 
-def test_arn_falls_back_to_yaml(tmp_path, monkeypatch):
+def test_only_launch_is_captured():
+    # The interactive steps (configure, sam deploy) must run UNCAPTURED so their
+    # prompts stream to the user; only launch is captured to parse the ARN.
+    arn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/x-Y"
+    rec = _Recorder(arn)
+    deploy.run_deploy(_cfg(), scaffold=lambda d, f: None, assume_yes=True, runner=rec)
+    cap = {tuple(argv[:2]): capture for argv, capture in rec.calls}
+    assert cap[("agentcore", "configure")] is False
+    assert cap[("agentcore", "launch")] is True
+    assert cap[("sam", "deploy")] is False
+
+
+def test_yes_uses_noninteractive_sam():
+    # --yes must NOT use `sam deploy --guided` (which would still prompt); it
+    # uses explicit non-interactive flags instead.
+    rec = _Recorder("arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/x-Y")
+    deploy.run_deploy(
+        _cfg(runtime_name="a11y_pipeline"),
+        scaffold=lambda d, f: None, assume_yes=True, runner=rec,
+    )
+    sam = [c[0] for c in rec.calls if c[0][:2] == ["sam", "deploy"]][0]
+    assert "--guided" not in sam
+    assert "--no-confirm-changeset" in sam
+    assert "--stack-name" in sam and "a11y-pipeline" in sam  # underscores -> hyphens
+
+
+def test_interactive_uses_guided_sam():
+    rec = _Recorder("arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/x-Y")
+    deploy.run_deploy(
+        _cfg(), scaffold=lambda d, f: None, assume_yes=False,
+        input_fn=lambda p: "y", runner=rec,
+    )
+    sam = [c[0] for c in rec.calls if c[0][:2] == ["sam", "deploy"]][0]
+    assert "--guided" in sam
+
+
+def test_arn_falls_back_to_yaml(tmp_path):
     # Launch output has no ARN; the toolkit yaml does.
-    monkeypatch.setattr(deploy, "check_prerequisites", lambda *a, **k: [])
     workdir = tmp_path / "a11y-x"
     workdir.mkdir()
     arn = "arn:aws:bedrock-agentcore:us-east-1:111122223333:runtime/from-yaml"
@@ -125,7 +159,7 @@ def test_arn_falls_back_to_yaml(tmp_path, monkeypatch):
         def __init__(self):
             self.calls = []
 
-        def __call__(self, argv, cwd, extra_env=None):
+        def __call__(self, argv, cwd, extra_env=None, capture=False):
             self.calls.append(argv)
             return "launched, but no arn printed"
 
@@ -141,17 +175,7 @@ def test_arn_falls_back_to_yaml(tmp_path, monkeypatch):
     assert f"AgentRuntimeArn={arn}" in sam
 
 
-def test_missing_prerequisites_aborts(monkeypatch, capsys):
-    monkeypatch.setattr(deploy, "check_prerequisites", lambda *a, **k: ["agentcore", "sam"])
-    rc = deploy.run_deploy(
-        _cfg(), scaffold=lambda d, f: None, assume_yes=True, runner=lambda *a, **k: ""
-    )
-    assert rc == 1
-    assert "Missing required tool" in capsys.readouterr().out
-
-
-def test_declining_confirmation_aborts_before_running(monkeypatch):
-    monkeypatch.setattr(deploy, "check_prerequisites", lambda *a, **k: [])
+def test_declining_confirmation_aborts_before_running():
     calls = []
     rc = deploy.run_deploy(
         _cfg(),
@@ -197,3 +221,26 @@ def test_prompt_errors_without_region(monkeypatch):
             deploy.DeployConfig(directory="", region="", input_bucket=""),
             input_fn=lambda p: next(answers),
         )
+
+
+# --- CLI handler: prerequisites checked BEFORE prompting ---------------------
+
+def test_cli_checks_prereqs_before_prompting(monkeypatch, capsys):
+    # A user without agentcore/sam must be told up front, NOT after answering
+    # every prompt. So prompt_for_config must never be called when tools missing.
+    from content_accessibility_utility_on_aws import cli
+
+    monkeypatch.setattr(deploy, "check_prerequisites", lambda *a, **k: ["agentcore", "sam"])
+    prompted = []
+    monkeypatch.setattr(
+        deploy, "prompt_for_config",
+        lambda *a, **k: prompted.append(True),
+    )
+    ran = []
+    monkeypatch.setattr(deploy, "run_deploy", lambda *a, **k: ran.append(True) or 0)
+
+    rc = cli.run_deploy_pipeline_command({"dry_run": False})
+    assert rc == 1
+    assert prompted == []  # never prompted
+    assert ran == []       # never reached the deploy
+    assert "Missing required tool" in capsys.readouterr().out
