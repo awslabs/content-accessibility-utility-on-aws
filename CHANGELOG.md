@@ -18,7 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   single multilingual document with an accessible language selector and
   browser-language auto-detection. Directory input (multi-page documents) is
   translated per page, and translation honors `--model-id`/`--profile` and
-  `--config`/`--save-config` like the other commands.
+  `--config`/`--save-config` like the other commands. Text is segmented at the
+  block level — a sentence and its inline formatting (`<a>`, `<strong>`, ...)
+  are translated as one unit with inline elements as reorderable placeholders,
+  so word order can differ across tag boundaries (e.g. Japanese). Translatable
+  attributes also cover `<input type=submit|button|reset>` `value` and
+  translatable `<meta>` `content` (description/keywords/OpenGraph).
 
 ## [1.0.0] - 2026-07-20
 

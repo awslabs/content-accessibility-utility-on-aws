@@ -43,7 +43,9 @@ def translator():
 def test_visible_text_translated(translator):
     out = translator.translate_html(SAMPLE, "es")
     assert "[es]Welcome" in out
-    assert "[es]bold" in out
+    # "bold" is inside <strong>, folded into its paragraph's sentence unit, so
+    # the whole run is translated as one segment and the <strong> is preserved.
+    assert "[es]" in out and "<strong>bold</strong>" in out
 
 
 def test_doctype_preserved(translator):
@@ -91,7 +93,8 @@ def test_batching_covers_all_segments():
     tr = HTMLTranslator(translate_fn=_tag, source_lang="en", batch_size=1)
     out = tr.translate_html(SAMPLE, "de")
     assert "[de]Welcome" in out
-    assert "[de]bold" in out
+    # The paragraph (containing <strong>bold</strong>) is its own unit segment.
+    assert "[de]" in out and "<strong>bold</strong>" in out
 
 
 def test_wrong_length_batch_raises():
@@ -214,3 +217,143 @@ def test_model_id_and_profile_threaded_to_client(monkeypatch):
     tr = HTMLTranslator(source_lang="en", model_id="my-model", profile="my-prof")
     tr.translate_html(SAMPLE, "es")
     assert seen == {"model_id": "my-model", "profile": "my-prof"}
+
+
+# --- Inline-container translation (word order across tags) -------------------
+
+
+def _move_placeholder_to_front(segments, target, source):
+    """Fake translator that moves a paired/standalone placeholder to the front.
+
+    Simulates a target language whose grammar reorders an inline element across
+    the tag boundary, exercising placeholder reordering without corrupting the
+    marker itself.
+    """
+    import re
+
+    pattern = re.compile(r'<x-i18n n="\d+">.*?</x-i18n>|<x-i18n n="\d+"/>')
+    out = []
+    for seg in segments:
+        m = pattern.search(seg)
+        if not m:
+            out.append(seg)
+            continue
+        marker = m.group(0)
+        rest = (seg[: m.start()] + seg[m.end():]).strip()
+        out.append(f"{marker} {rest}")
+    return out
+
+
+def test_sentence_with_inline_link_is_one_unit():
+    # "Click <a>here</a> now" must be a single segment so the model can reorder.
+    html = '<html><body><p>Click <a href="/x">here</a> now</p></body></html>'
+    captured = {}
+
+    def fake(segments, target, source):
+        captured["segments"] = list(segments)
+        return [f"[{target}]{s}" for s in segments]
+
+    HTMLTranslator(translate_fn=fake, source_lang="en").translate_html(html, "ja")
+    # One unit for the whole paragraph, with the link as a paired placeholder.
+    assert len(captured["segments"]) == 1
+    assert "Click" in captured["segments"][0]
+    assert 'n="0"' in captured["segments"][0]
+    assert "here" in captured["segments"][0]  # inner text travels with the unit
+
+
+def test_inline_element_can_be_reordered():
+    # A translator that moves the placeholder must move the <a> and keep it valid.
+    html = '<html><body><p>alpha <a href="/x">beta</a> gamma</p></body></html>'
+    out = HTMLTranslator(
+        translate_fn=_move_placeholder_to_front, source_lang="en"
+    ).translate_html(html, "ja")
+    # The link survives as a real element with its href and inner text intact,
+    # now moved to the front of the sentence.
+    assert '<a href="/x">beta</a>' in out
+    assert out.index('<a href="/x">beta</a>') < out.index("alpha")
+
+
+def test_inner_link_text_is_translatable():
+    # The text inside <a> is part of the sentence unit, so it is translated
+    # (here: prefixed) rather than left untouched.
+    html = '<html><body><p>See <a href="/x">the docs</a>.</p></body></html>'
+    captured = {}
+
+    def fake(segments, target, source):
+        captured["segments"] = list(segments)
+        return list(segments)
+
+    HTMLTranslator(translate_fn=fake, source_lang="en").translate_html(html, "es")
+    assert "the docs" in captured["segments"][0]
+
+
+def test_dropped_placeholder_is_reattached():
+    # If the model drops a placeholder, its element must still appear in output
+    # (content is never silently lost).
+    def drop_tags(segments, target, source):
+        import re
+
+        return [re.sub(r"<x-i18n[^>]*>.*?</x-i18n>|<x-i18n[^>]*/>", "", s) for s in segments]
+
+    html = '<html><body><p>Read <a href="/x">this</a> now</p></body></html>'
+    out = HTMLTranslator(translate_fn=drop_tags, source_lang="en").translate_html(
+        html, "es"
+    )
+    assert '<a href="/x">this</a>' in out
+
+
+def test_model_injected_markup_is_neutralized():
+    # If the model returns unexpected tags (not our placeholders), they must be
+    # reduced to text so no foreign element is injected.
+    def inject(segments, target, source):
+        return ["<script>alert(1)</script>" + s for s in segments]
+
+    html = "<html><body><p>hello</p></body></html>"
+    out = HTMLTranslator(translate_fn=inject, source_lang="en").translate_html(
+        html, "es"
+    )
+    assert "<script>alert(1)</script>" not in out
+    assert "alert(1)" in out  # kept as text
+
+
+# --- Expanded attribute coverage --------------------------------------------
+
+
+def test_submit_input_value_translated():
+    html = '<html><body><input type="submit" value="Send"></body></html>'
+    out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
+    assert 'value="[es]Send"' in out
+
+
+def test_text_input_value_not_translated():
+    # Editable field data must NOT be translated.
+    html = '<html><body><input type="text" value="John Doe"></body></html>'
+    out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
+    assert 'value="John Doe"' in out
+
+
+def test_meta_description_translated():
+    html = (
+        '<html><head><meta name="description" content="A page about cats">'
+        "</head><body><p>hi</p></body></html>"
+    )
+    out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
+    assert 'content="[es]A page about cats"' in out
+
+
+def test_meta_generator_not_translated():
+    html = (
+        '<html><head><meta name="generator" content="SomeTool 1.0">'
+        "</head><body><p>hi</p></body></html>"
+    )
+    out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
+    assert 'content="SomeTool 1.0"' in out
+
+
+def test_og_description_translated():
+    html = (
+        '<html><head><meta property="og:description" content="Share text">'
+        "</head><body><p>hi</p></body></html>"
+    )
+    out = HTMLTranslator(translate_fn=_tag, source_lang="en").translate_html(html, "es")
+    assert 'content="[es]Share text"' in out

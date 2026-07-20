@@ -6,26 +6,34 @@ HTML-aware translation backed by Amazon Bedrock.
 
 ``HTMLTranslator`` translates the human-visible content of an HTML document
 into a target language while leaving the markup structure untouched. It works
-at the DOM-node level with BeautifulSoup rather than asking the model to
-regenerate whole HTML, which:
+with BeautifulSoup rather than asking the model to regenerate whole HTML, which:
 
 * preserves every tag, attribute, class, id and inline style exactly,
 * keeps images, scripts, styles and code samples out of the model input
   (text anywhere inside those subtrees is skipped, not just direct children),
-* lets translatable attributes (``alt``, ``title``, ``aria-label``,
-  ``aria-placeholder``, ``placeholder``) be translated too — important for
-  accessibility, since screen readers announce those values, and
+* translates a block's phrasing content as ONE unit — text plus inline
+  formatting (``<a>``, ``<strong>``, ...) flattened into a single segment with
+  inline elements represented as numbered placeholders — so the model sees the
+  whole sentence and can reorder words across a tag boundary (e.g. move a link
+  to sentence-final position in Japanese), which per-text-node translation
+  cannot do,
+* translates screen-reader-announced / user-visible attributes (``alt``,
+  ``title``, ``aria-label``, ``<input type=submit> value``, ``<meta
+  name=description> content``, ...), and
 * is deterministic and unit-testable offline (the Bedrock call is the only
   networked part and is injected).
 
-Text segments are sent to the model in batches as a JSON array so a single call
-translates many nodes, keeping token/latency cost down on large documents.
+Segments (one per phrasing run, plus one per translatable attribute) are sent
+to the model in batches as a JSON array so a single call translates many at
+once, keeping token/latency cost down on large documents.
 """
 
+import copy
 import json
-from typing import Callable, Dict, List, Optional
+from html import escape as _html_escape
+from typing import Callable, Dict, List, Optional, Tuple
 
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, NavigableString, Tag
 from bs4.element import (
     Comment,
     Doctype,
@@ -60,10 +68,43 @@ logger = setup_logger(__name__)
 # and machine-readable values).
 _SKIP_CONTENT_TAGS = {"script", "style", "code", "pre", "kbd", "samp", "var"}
 
-# Attributes that hold human-visible / screen-reader-announced text and should
-# be translated. ``aria-label`` and friends are announced by assistive tech, so
+# Phrasing (inline) elements that flow within a line of text. These are folded
+# into their surrounding block's translation unit so the model sees the whole
+# sentence at once and can reorder words across the tag boundary (e.g. moving a
+# link to sentence-final position in Japanese). Their own text IS translated.
+_INLINE_TAGS = {
+    "a", "abbr", "b", "bdi", "bdo", "cite", "data", "dfn", "em", "i", "label",
+    "mark", "q", "rp", "rt", "ruby", "s", "small", "span", "strong", "sub",
+    "sup", "time", "u", "font",
+}
+# Inline elements kept verbatim inside a unit as an opaque placeholder: their
+# subtree is preserved unchanged (code samples, and void elements that carry no
+# translatable text of their own). ``img``'s ``alt``/``title`` are still
+# translated via the attribute pass.
+_INLINE_OPAQUE_TAGS = {"code", "kbd", "samp", "var", "br", "img", "wbr"}
+
+# Attributes translated on ANY element (visible or screen-reader-announced
+# text). ``aria-label`` and friends are announced by assistive tech, so
 # translating them keeps the accessible experience localized too.
-_TRANSLATABLE_ATTRS = ("alt", "title", "aria-label", "aria-placeholder", "placeholder")
+_GLOBAL_TRANSLATABLE_ATTRS = (
+    "alt", "title", "aria-label", "aria-placeholder", "placeholder",
+    "aria-valuetext", "aria-roledescription",
+)
+# ``<input>`` types whose ``value`` is a user-visible button label (as opposed
+# to editable field data, which must NOT be translated).
+_BUTTON_INPUT_TYPES = {"submit", "button", "reset"}
+# ``<meta>`` name/property values whose ``content`` is user-visible or
+# SEO/social text worth localizing.
+_TRANSLATABLE_META_NAMES = {"description", "keywords"}
+_TRANSLATABLE_META_PROPERTIES = {
+    "og:title", "og:description", "og:site_name", "twitter:title",
+    "twitter:description",
+}
+
+# Placeholder element name used to mark inline formatting inside a translation
+# unit sent to the model. Hyphenated so it is a valid custom element that parses
+# cleanly and never collides with real HTML tags.
+_PLACEHOLDER_TAG = "x-i18n"
 
 # Default batch size (number of text segments per Bedrock call). Chosen to keep
 # each request comfortably within output-token limits while minimizing the
@@ -120,11 +161,18 @@ class HTMLTranslator:
         then each target language reuses that work: only the model call and the
         node reinsertion differ per language. This avoids re-parsing and
         re-walking the identical source document once per language.
+
+        Text is segmented at the block level: a block's phrasing content (its
+        text plus inline formatting like ``<a>``/``<strong>``) becomes ONE
+        segment with inline tags represented as numbered placeholders. The model
+        therefore sees the whole sentence and can reorder words across a tag
+        boundary (e.g. moving a link to sentence-final position in Japanese),
+        which per-text-node translation cannot do.
         """
         # Extract the segment list a single time from one canonical parse.
         template = BeautifulSoup(html, "html.parser")
-        template_text_nodes, template_attr_targets = self._collect_targets(template)
-        segments: List[str] = [str(node) for node in template_text_nodes]
+        template_units, template_attr_targets = self._collect_targets(template)
+        segments: List[str] = [u.text for u in template_units]
         segments.extend(value for _el, _attr, value in template_attr_targets)
 
         results: Dict[str, str] = {}
@@ -139,11 +187,11 @@ class HTMLTranslator:
             else:
                 translated = self._translate_segments(segments, target_lang)
                 # Re-parse per language so each output gets its own node tree;
-                # the offsets line up with the template because the same source
-                # produces the same node ordering.
+                # units line up with the template because the same source
+                # produces the same tree walk.
                 soup = BeautifulSoup(html, "html.parser")
-                text_nodes, attr_targets = self._collect_targets(soup)
-                self._reinsert(soup, text_nodes, attr_targets, translated)
+                units, attr_targets = self._collect_targets(soup)
+                self._reinsert(units, attr_targets, translated)
 
             self._set_root_language(soup, target_lang)
             results[target_lang] = str(soup)
@@ -156,16 +204,16 @@ class HTMLTranslator:
         a multilingual document set those on the per-language container instead.
         """
         target_lang = normalize_lang_code(target_lang)
-        text_nodes, attr_targets = self._collect_targets(soup)
+        units, attr_targets = self._collect_targets(soup)
 
-        segments: List[str] = [str(node) for node in text_nodes]
+        segments: List[str] = [u.text for u in units]
         segments.extend(value for _el, _attr, value in attr_targets)
         if not segments:
             logger.debug("No translatable content found for %s", target_lang)
             return
 
         translated = self._translate_segments(segments, target_lang)
-        self._reinsert(soup, text_nodes, attr_targets, translated)
+        self._reinsert(units, attr_targets, translated)
 
     @staticmethod
     def _set_root_language(soup, target_lang: str) -> None:
@@ -179,49 +227,46 @@ class HTMLTranslator:
         elif root.get("dir") == "rtl":
             del root["dir"]
 
-    @staticmethod
-    def _reinsert(soup, text_nodes, attr_targets, translated: List[str]) -> None:
-        """Write translated segments back into their text nodes and attributes."""
-        # Reinsert text nodes, preserving surrounding whitespace.
-        for node, new_text in zip(text_nodes, translated[: len(text_nodes)]):
-            leading = node[: len(node) - len(node.lstrip())]
-            trailing = node[len(node.rstrip()):]
-            node.replace_with(NavigableString(leading + new_text.strip() + trailing))
+    def _reinsert(self, units, attr_targets, translated: List[str]) -> None:
+        """Write translated segments back into their units and attributes.
 
-        # Reinsert translated attribute values.
-        attr_translations = translated[len(text_nodes):]
+        Attributes are applied FIRST so that when a unit rebuilds an inline
+        element it clones the already-translated attributes (e.g. a link's
+        ``title``) rather than the originals.
+        """
+        unit_count = len(units)
+        attr_translations = translated[unit_count:]
         for (element, attr, _orig), new_value in zip(attr_targets, attr_translations):
             element[attr] = new_value
 
-    def _collect_targets(self, soup):
-        """Gather translatable text nodes and (element, attr, value) tuples."""
-        text_nodes: List[NavigableString] = []
-        for node in soup.find_all(string=True):
-            if isinstance(node, _NON_CONTENT_STRINGS):
-                continue
-            if not node.strip():
-                continue
-            # Skip text anywhere inside a code/script/style subtree, not just
-            # when it is the immediate parent — a highlighted <pre><span>...
-            # must stay verbatim.
-            if _has_skip_content_ancestor(node):
-                continue
-            # Respect an explicit opt-out (translate="no" per the HTML spec).
-            if _has_translate_no_ancestor(node):
-                continue
-            text_nodes.append(node)
+        # Apply units in reverse document order so that when one parent block
+        # hosts several runs (separated by nested block children), rebuilding a
+        # later run cannot shift the child indices of an earlier one.
+        for unit, new_text in reversed(list(zip(units, translated[:unit_count]))):
+            unit.apply(new_text)
 
-        attr_targets = []
+    def _collect_targets(self, soup):
+        """Gather translatable text units and (element, attr, value) tuples.
+
+        A *unit* is a maximal run of phrasing content (text + inline elements)
+        directly under a block element, serialized into one placeholder-bearing
+        segment. Returns ``(units, attr_targets)``.
+        """
+        units: List[_TextUnit] = []
         for element in soup.find_all(True):
-            # Honor translate="no" on the element OR any ancestor, matching how
-            # text nodes are treated.
+            # Only block-level, translatable elements host units; inline elements
+            # are folded into their block ancestor's unit rather than forming
+            # their own (which would re-split the sentence we just joined).
+            if _is_inline(element) or element.name in _SKIP_CONTENT_TAGS:
+                continue
             if _has_translate_no_self_or_ancestor(element):
                 continue
-            for attr in _TRANSLATABLE_ATTRS:
-                value = element.get(attr)
-                if isinstance(value, str) and value.strip():
-                    attr_targets.append((element, attr, value))
-        return text_nodes, attr_targets
+            if _has_skip_content_ancestor_tag(element):
+                continue
+            units.extend(_build_units_for_block(element))
+
+        attr_targets = _collect_attr_targets(soup)
+        return units, attr_targets
 
     def _translate_segments(self, segments: List[str], target_lang: str) -> List[str]:
         """Translate all segments in order, batching the model calls."""
@@ -238,14 +283,283 @@ class HTMLTranslator:
         return results
 
 
-def _has_translate_no_ancestor(node) -> bool:
-    """True if any ancestor of a text node carries ``translate="no"``."""
-    element = node.parent
-    while element is not None and getattr(element, "get", None) is not None:
-        if _element_opts_out(element):
-            return True
-        element = element.parent
+class _Placeholder:
+    """An inline element folded into a unit's translated string.
+
+    ``kind`` is ``"opaque"`` for elements restored verbatim (``<img>``,
+    ``<br>``, ``<code>``, or inline elements with no translatable text) or
+    ``"wrap"`` for inline elements whose inner content is itself translated
+    (``<a>``, ``<strong>``, ...). For ``"wrap"`` the placeholder appears as a
+    paired tag ``<x-i18n n="K">inner</x-i18n>`` so the model translates the
+    inner text as part of the sentence and can reorder it.
+    """
+
+    __slots__ = ("kind", "element")
+
+    def __init__(self, kind: str, element: Tag):
+        self.kind = kind
+        self.element = element
+
+
+class _TextUnit:
+    """One translatable run of phrasing content anchored at a block element.
+
+    ``text`` is the run's inline content flattened into a single string with
+    inline elements represented as numbered placeholders. The model translates
+    ``text`` freely — moving placeholders wherever the target grammar wants —
+    and :meth:`apply` rebuilds the block's children from the translated string.
+    """
+
+    def __init__(
+        self,
+        parent: Tag,
+        child_slice: Tuple[int, int],
+        text: str,
+        placeholders: List[_Placeholder],
+    ):
+        self._parent = parent
+        self._start, self._end = child_slice
+        self.text = text
+        self._placeholders = placeholders
+
+    def apply(self, translated: str) -> None:
+        """Replace the unit's original children with the translated content."""
+        new_nodes = _rebuild_nodes(translated, self._placeholders)
+        children = list(self._parent.children)
+        originals = children[self._start : self._end]
+        anchor_index = self._start
+        for node in originals:
+            node.extract()
+        for offset, node in enumerate(new_nodes):
+            self._parent.insert(anchor_index + offset, node)
+
+
+def _is_inline(element: Tag) -> bool:
+    """True if the element is phrasing (inline) content folded into a unit."""
+    return element.name in _INLINE_TAGS or element.name in _INLINE_OPAQUE_TAGS
+
+
+def _build_units_for_block(block: Tag) -> List["_TextUnit"]:
+    """Build translation units from a block's direct phrasing runs.
+
+    Consecutive text + inline children are grouped into one unit; block-level
+    children (which host their own units) act as separators. A run with no
+    translatable text yields no unit.
+    """
+    units: List[_TextUnit] = []
+    children = list(block.children)
+    run_start: Optional[int] = None
+
+    def _flush(end: int) -> None:
+        if run_start is None:
+            return
+        unit = _make_unit(block, children, run_start, end)
+        if unit is not None:
+            units.append(unit)
+
+    for index, child in enumerate(children):
+        if isinstance(child, NavigableString):
+            if isinstance(child, _NON_CONTENT_STRINGS):
+                _flush(index)
+                run_start = None
+                continue
+            if run_start is None:
+                run_start = index
+        elif isinstance(child, Tag) and _is_inline(child):
+            if run_start is None:
+                run_start = index
+        else:
+            # Block-level (or skipped) child: it ends the current run and hosts
+            # its own units via the outer find_all walk.
+            _flush(index)
+            run_start = None
+    _flush(len(children))
+    return units
+
+
+def _make_unit(
+    block: Tag, children: list, start: int, end: int
+) -> Optional["_TextUnit"]:
+    """Serialize children[start:end] into a placeholder-bearing unit.
+
+    Returns None if the run carries no translatable text (e.g. whitespace or
+    only opaque inline elements like a lone ``<br>``).
+    """
+    placeholders: List[_Placeholder] = []
+    text, has_text = _serialize_run(children[start:end], placeholders)
+    if not has_text:
+        return None
+    return _TextUnit(block, (start, end), text, placeholders)
+
+
+def _serialize_run(nodes, placeholders: List[_Placeholder]) -> Tuple[str, bool]:
+    """Flatten phrasing ``nodes`` into a placeholder string; recurse into inline.
+
+    Appends to ``placeholders`` (a shared flat list for the whole unit) and
+    returns ``(serialized_text, has_translatable_text)``.
+    """
+    parts: List[str] = []
+    has_text = False
+    for node in nodes:
+        if isinstance(node, NavigableString):
+            if isinstance(node, _NON_CONTENT_STRINGS):
+                continue
+            raw = str(node)
+            if raw.strip():
+                has_text = True
+            parts.append(_html_escape(raw))
+        elif isinstance(node, Tag):
+            idx = len(placeholders)
+            if _is_wrappable_inline(node):
+                placeholders.append(_Placeholder("wrap", node))
+                inner, inner_has = _serialize_run(list(node.children), placeholders)
+                has_text = has_text or inner_has
+                parts.append(
+                    f'<{_PLACEHOLDER_TAG} n="{idx}">{inner}</{_PLACEHOLDER_TAG}>'
+                )
+            else:
+                # Opaque: kept verbatim (code sample, void element, or an inline
+                # element carrying no translatable text).
+                placeholders.append(_Placeholder("opaque", node))
+                parts.append(f'<{_PLACEHOLDER_TAG} n="{idx}"/>')
+    return "".join(parts), has_text
+
+
+def _is_wrappable_inline(element: Tag) -> bool:
+    """True if an inline element's inner text should be translated in place."""
+    if element.name in _INLINE_OPAQUE_TAGS or element.name in _SKIP_CONTENT_TAGS:
+        return False
+    if _element_opts_out(element):
+        return False
+    return _has_translatable_text(element)
+
+
+def _has_translatable_text(element: Tag) -> bool:
+    """True if the element has descendant text worth translating."""
+    for descendant in element.descendants:
+        if isinstance(descendant, NavigableString) and not isinstance(
+            descendant, _NON_CONTENT_STRINGS
+        ):
+            if descendant.strip() and not _has_skip_content_ancestor_tag(
+                descendant.parent
+            ):
+                return True
     return False
+
+
+def _rebuild_nodes(translated: str, placeholders: List[_Placeholder]) -> list:
+    """Rebuild BeautifulSoup nodes from a translated unit string.
+
+    Placeholders are matched by their ``n`` index, so reordering across the tag
+    boundary is honored. ``wrap`` placeholders are rebuilt as a shell clone of
+    the original element (carrying its already-translated attributes) whose
+    children come from recursively parsing the placeholder's inner content.
+    ``opaque`` placeholders restore the original element verbatim. Any
+    placeholder the model dropped is re-appended so content is never lost;
+    unexpected model-authored markup is reduced to its text so no foreign
+    element is injected into the output.
+    """
+    fragment = BeautifulSoup(
+        f"<{_PLACEHOLDER_TAG}-root>{translated}</{_PLACEHOLDER_TAG}-root>",
+        "html.parser",
+    )
+    root = fragment.find(f"{_PLACEHOLDER_TAG}-root") or fragment
+    used: set = set()
+    nodes = _emit_nodes(list(root.children), placeholders, used)
+
+    # Re-attach any placeholder the model omitted so content is never lost.
+    for idx, ph in enumerate(placeholders):
+        if idx not in used:
+            nodes.append(ph.element)
+            used.add(idx)
+    return nodes
+
+
+def _emit_nodes(source_nodes, placeholders: List[_Placeholder], used: set) -> list:
+    """Recursively convert parsed placeholder markup back into real nodes."""
+    result: list = []
+    for node in source_nodes:
+        if isinstance(node, NavigableString):
+            if not isinstance(node, _NON_CONTENT_STRINGS):
+                result.append(NavigableString(str(node)))
+        elif isinstance(node, Tag) and node.name == _PLACEHOLDER_TAG:
+            idx = _placeholder_index(node)
+            if idx is None or not (0 <= idx < len(placeholders)) or idx in used:
+                continue
+            used.add(idx)
+            ph = placeholders[idx]
+            if ph.kind == "opaque":
+                result.append(ph.element)
+            else:
+                shell = _clone_shell(ph.element)
+                for child in _emit_nodes(list(node.children), placeholders, used):
+                    shell.append(child)
+                result.append(shell)
+        elif isinstance(node, Tag):
+            # Unexpected markup the model invented: keep its text, drop the tag,
+            # so no model/attacker-authored element reaches the output.
+            text = node.get_text()
+            if text:
+                result.append(NavigableString(text))
+    return result
+
+
+def _placeholder_index(node: Tag) -> Optional[int]:
+    """Parse the integer ``n`` index off a placeholder tag, or None."""
+    try:
+        return int(node.get("n", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+def _clone_shell(element: Tag) -> Tag:
+    """Copy an inline element WITHOUT its children (attributes are preserved).
+
+    Called after attribute translation has mutated the original element in
+    place, so the clone carries the translated attributes; its children are
+    rebuilt from the translated inner content.
+    """
+    shell = copy.copy(element)
+    shell.clear()
+    return shell
+
+
+def _collect_attr_targets(soup) -> List[Tuple[Tag, str, str]]:
+    """Collect (element, attr, value) triples for every translatable attribute.
+
+    Covers global text attributes on any element, ``<input>`` button ``value``
+    (submit/button/reset only — never editable field data), and translatable
+    ``<meta>`` ``content``. ``translate="no"`` on the element or an ancestor
+    opts the element out entirely.
+    """
+    targets: List[Tuple[Tag, str, str]] = []
+    for element in soup.find_all(True):
+        if _has_translate_no_self_or_ancestor(element):
+            continue
+        for attr in _global_translatable_attrs_for(element):
+            value = element.get(attr)
+            if isinstance(value, str) and value.strip():
+                targets.append((element, attr, value))
+    return targets
+
+
+def _global_translatable_attrs_for(element: Tag) -> Tuple[str, ...]:
+    """Return the translatable attribute names applicable to ``element``."""
+    attrs = list(_GLOBAL_TRANSLATABLE_ATTRS)
+    name = element.name
+    if name == "input":
+        input_type = (element.get("type") or "text").strip().lower()
+        if input_type in _BUTTON_INPUT_TYPES:
+            attrs.append("value")
+    elif name == "meta" and element.get("content"):
+        meta_name = (element.get("name") or "").strip().lower()
+        meta_prop = (element.get("property") or "").strip().lower()
+        if (
+            meta_name in _TRANSLATABLE_META_NAMES
+            or meta_prop in _TRANSLATABLE_META_PROPERTIES
+        ):
+            attrs.append("content")
+    return tuple(attrs)
 
 
 def _has_translate_no_self_or_ancestor(element) -> bool:
@@ -263,18 +577,18 @@ def _has_translate_no_self_or_ancestor(element) -> bool:
     return False
 
 
-def _has_skip_content_ancestor(node) -> bool:
-    """True if the text node sits anywhere inside a skip-content tag.
+def _has_skip_content_ancestor_tag(element) -> bool:
+    """True if the element sits at/inside a skip-content tag (code/pre/...).
 
-    Walks the full ancestor chain (not just the immediate parent) so text
-    nested inside ``<pre>``/``<code>``/``<script>`` via inline wrappers (e.g. a
-    syntax-highlighted ``<pre><span>...``) is still left untranslated.
+    Walks the full ancestor chain so text nested inside ``<pre>``/``<code>``/
+    ``<script>`` via inline wrappers (e.g. a syntax-highlighted
+    ``<pre><span>...``) is left untranslated.
     """
-    element = node.parent
-    while element is not None and getattr(element, "name", None) is not None:
-        if element.name in _SKIP_CONTENT_TAGS:
+    current = element
+    while current is not None and getattr(current, "name", None) is not None:
+        if current.name in _SKIP_CONTENT_TAGS:
             return True
-        element = element.parent
+        current = current.parent
     return False
 
 
@@ -364,17 +678,22 @@ def _make_bedrock_translate_fn(
         system_prompt = (
             "You are a professional localization translator. You translate user "
             "interface and document text accurately and idiomatically while "
-            "preserving meaning, tone, and any inline HTML tags or placeholders "
-            "exactly as they appear. You never add explanations."
+            "preserving meaning, tone, and inline formatting markers exactly. "
+            "You never add explanations."
         )
         prompt = (
             f"Translate each string in the following JSON array {source_clause}"
             f"into {target_name} ({target_lang}). Rules:\n"
             "- Return ONLY a JSON array of strings, same length and order as the input.\n"
-            "- Preserve any inline HTML tags, entities, and {placeholders} unchanged.\n"
-            "- Do not translate proper nouns, code, URLs, or numbers.\n"
-            "- Keep leading/trailing punctuation and casing conventions natural "
-            "for the target language.\n\n"
+            f"- Some strings contain inline formatting markers <{_PLACEHOLDER_TAG} "
+            'n="K"> ... </'
+            f"{_PLACEHOLDER_TAG}> (paired) or <{_PLACEHOLDER_TAG} n=\"K\"/> "
+            "(standalone). Keep every marker, its `n` value, and its pairing "
+            "intact, but MOVE them to wherever the translated word order requires "
+            "— translate the text inside a paired marker as part of the sentence.\n"
+            "- Do not add, remove, or renumber markers. Do not translate proper "
+            "nouns, code, URLs, or numbers.\n"
+            "- Keep punctuation and casing natural for the target language.\n\n"
             f"Input:\n{json.dumps(segments, ensure_ascii=False)}"
         )
 
