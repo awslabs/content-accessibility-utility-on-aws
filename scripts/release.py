@@ -113,10 +113,24 @@ def update_version_file(new_version: str) -> None:
     print(f"  Updated {VERSION_FILE.name} to version {new_version}")
 
 
-def generate_changelog() -> None:
-    """Generate changelog using git-cliff."""
+def generate_changelog(version: str) -> None:
+    """Generate changelog using git-cliff.
+
+    Passes ``--tag v{version}`` so git-cliff labels the not-yet-tagged release
+    commit as this version (producing a ``## [{version}]`` heading) instead of
+    ``## [Unreleased]``. This is what breaks the ordering catch-22: the changelog
+    must be generated and committed *before* the git tag is created (the tag
+    should point at the commit that already contains the finished changelog), but
+    git-cliff would otherwise only emit a version heading once the tag exists.
+    ``--tag`` supplies the version up front, decoupling the heading from the tag.
+    """
     result = subprocess.run(
-        ["git-cliff", "--config", str(CLIFF_CONFIG), "-o", str(CHANGELOG_FILE)],
+        [
+            "git-cliff",
+            "--config", str(CLIFF_CONFIG),
+            "--tag", f"v{version}",
+            "-o", str(CHANGELOG_FILE),
+        ],
         capture_output=True,
         text=True,
         cwd=PROJECT_ROOT,
@@ -221,9 +235,10 @@ def do_prod_release(version: str, dry_run: bool) -> int:
     print("Step 1: Updating version...")
     update_version_file(version)
 
-    # Step 2: Generate changelog
+    # Step 2: Generate changelog (labels the release commit as this version via
+    # --tag, before the git tag is created — see generate_changelog).
     print("\nStep 2: Generating changelog...")
-    generate_changelog()
+    generate_changelog(version)
 
     # Step 3: Commit
     print("\nStep 3: Committing changes...")
