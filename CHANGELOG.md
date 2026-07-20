@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Features
+
+- Add optional `[i18n]` internationalization package: translate the worked-on
+  HTML content into one or more user-specified target languages via Amazon
+  Bedrock, preserving markup and screen-reader-announced attributes (`alt`,
+  `title`, `aria-label`) and setting per-language `lang`/`dir` (WCAG Language of
+  Parts). Adds a `translate` CLI command, a `--target-languages` option on
+  `process`, and a `translate_html_accessibility()` API. Optionally emits a
+  single multilingual document with an accessible language selector and
+  browser-language auto-detection. Directory input (multi-page documents) is
+  translated per page, and translation honors `--model-id`/`--profile` and
+  `--config`/`--save-config` like the other commands.
+
 ## [1.0.0] - 2026-07-20
 
 

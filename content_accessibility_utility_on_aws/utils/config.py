@@ -302,5 +302,16 @@ config_manager = ConfigManager(
             "bda_project_name": None,
             "bda_profile_name": None,
         },
+        # Internationalization (translation) defaults. Requires the optional
+        # [i18n] extra. ``target_languages`` must be supplied by the caller.
+        "i18n": {
+            "target_languages": None,  # list[str] of BCP-47 codes, required
+            "source_language": None,  # auto-detected when None
+            "multilingual": False,  # one combined document vs. one file per language
+            "add_language_selector": True,  # visible selector in multilingual output
+            "use_browser_language": True,  # auto-detect the visitor's browser language
+            "batch_size": 40,  # translatable segments per Bedrock call
+            "model_id": DEFAULT_MODEL_ID,
+        },
     }
 )

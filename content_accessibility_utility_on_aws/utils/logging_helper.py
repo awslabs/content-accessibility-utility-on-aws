@@ -49,6 +49,11 @@ class AIRemediationRequiredError(DocumentAccessibilityError):
 
 
 
+class TranslationError(DocumentAccessibilityError):
+    """Raised when there's an error translating (internationalizing) content."""
+
+
+
 # Configure module-level logger
 logger = logging.getLogger(__name__)
 

@@ -17,6 +17,7 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     DocumentAccessibilityError,
     AccessibilityAuditError,
     AccessibilityRemediationError,
+    TranslationError,
 )
 from content_accessibility_utility_on_aws.utils.config import config_manager
 from content_accessibility_utility_on_aws.utils.resources import ensure_directory
@@ -540,6 +541,80 @@ def remediate_html_accessibility(
             logger,
             custom_message="Error remediating HTML accessibility",
             custom_exception=AccessibilityRemediationError,
+        )
+
+
+def translate_html_accessibility(
+    html_path: str,
+    options: Optional[Dict[str, Any]] = None,
+    output_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Translate (internationalize) an accessible HTML document.
+
+    Translates the visible content and screen-reader-announced attributes
+    (``alt``, ``title``, ``aria-label``, ...) into one or more target languages
+    using Amazon Bedrock, preserving all markup and accessibility structure. Can
+    emit one file per language or a single multilingual document with an
+    accessible language selector and browser-language auto-detection.
+
+    Requires the optional ``[i18n]`` extra for language display names and
+    source-language detection::
+
+        pip install content-accessibility-utility-on-aws[i18n]
+
+    Args:
+        html_path: Path to the HTML file (or directory) to translate.
+        options: Translation options merged over the ``i18n`` config section:
+            - target_languages (list[str] | str): Required. BCP-47 codes.
+            - source_language (str): Source language; auto-detected if omitted.
+            - multilingual (bool): Emit one combined document with a selector.
+            - add_language_selector (bool): Show the visible selector. Default: True.
+            - use_browser_language (bool): Auto-detect the browser language. Default: True.
+            - batch_size (int): Segments per model call. Default: 40.
+        output_path: Output file (multilingual) or directory (per-language).
+
+    Returns:
+        Dict with ``source_language``, ``target_languages``, ``multilingual``,
+        and ``output_files``.
+
+    Raises:
+        FileNotFoundError: If the HTML path doesn't exist.
+        TranslationError: On missing/invalid languages or translation failure.
+    """
+    try:
+        if not os.path.exists(html_path):
+            raise FileNotFoundError(f"HTML path not found: {html_path}")
+
+        # Merge user options over the i18n config-section defaults.
+        i18n_config = config_manager.get_config(user_options=options, section="i18n")
+
+        if output_path:
+            # output_path may be a file or directory; ensure its parent exists.
+            parent = os.path.dirname(output_path)
+            if parent:
+                ensure_directory(parent)
+
+        from content_accessibility_utility_on_aws.i18n.api import (
+            translate_html_accessibility as translate_impl,
+        )
+
+        return translate_impl(
+            html_path=html_path,
+            options=i18n_config,
+            output_path=output_path,
+        )
+
+    except FileNotFoundError:
+        raise
+    except TranslationError:
+        raise
+    except Exception as e:
+        handle_exception(
+            e,
+            logger,
+            custom_message="Error translating HTML accessibility",
+            custom_exception=TranslationError,
         )
 
 

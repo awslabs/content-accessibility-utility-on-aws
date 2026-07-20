@@ -27,6 +27,7 @@ from content_accessibility_utility_on_aws.api import (
     convert_pdf_to_html,
     audit_html_accessibility,
     remediate_html_accessibility,
+    translate_html_accessibility,
 )
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 from content_accessibility_utility_on_aws.utils.config import config_manager, load_config_file, ConfigurationError
@@ -52,6 +53,11 @@ def get_default_output_path(
         return os.path.join(".", f"{input_base}_remediated.html")
     elif command == "process":
         return os.path.join(".", f"{input_base}_processed")
+    elif command == "translate":
+        # Per-language output is a directory; multilingual output is a single
+        # file. The i18n layer derives the concrete filename from the source, so
+        # a directory default works for both modes.
+        return os.path.join(".", f"{input_base}_translated")
 
     return os.path.join(".", f"{input_base}_output")
 
@@ -298,6 +304,141 @@ def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
     # Unified reports are now the default, no need for a flag
 
 
+def _add_i18n_flags(parser: argparse.ArgumentParser) -> None:
+    """Add the shared internationalization (translation) flags.
+
+    Shared by the ``translate`` command and the ``process`` command so the two
+    cannot drift. These opt into translating the worked-on content into one or
+    more target languages via Amazon Bedrock. Requires the optional [i18n]
+    extra: ``pip install content-accessibility-utility-on-aws[i18n]``.
+    """
+    parser.add_argument(
+        "--target-languages",
+        "--languages",
+        dest="target_languages",
+        help=(
+            "Comma-separated BCP-47 target language codes to translate into "
+            "(e.g. 'es,fr,ja'). Required to perform translation."
+        ),
+    )
+    parser.add_argument(
+        "--source-language",
+        help="Source language (BCP-47). Auto-detected from the document if omitted.",
+    )
+    parser.add_argument(
+        "--multilingual",
+        action="store_true",
+        help=(
+            "Emit a single multilingual HTML document with an accessible "
+            "language selector instead of one file per language."
+        ),
+    )
+    parser.add_argument(
+        "--no-language-selector",
+        dest="add_language_selector",
+        action="store_false",
+        default=True,
+        help="Omit the visible language selector from multilingual output.",
+    )
+    parser.add_argument(
+        "--no-browser-language",
+        dest="use_browser_language",
+        action="store_false",
+        default=True,
+        help=(
+            "Do not auto-select the visitor's browser language on first load "
+            "of a multilingual document."
+        ),
+    )
+
+
+def _add_translate_arguments(parser: argparse.ArgumentParser) -> None:
+    """Add arguments for the standalone translate command."""
+    _add_standardized_arguments(parser)
+    _add_i18n_flags(parser)
+    parser.add_argument(
+        "--model-id",
+        default=DEFAULT_MODEL_ID,
+        help="Bedrock model ID to use for translation",
+    )
+
+
+def _apply_i18n_config_to_args(
+    args_dict: Dict[str, Any], i18n_config: Dict[str, Any]
+) -> None:
+    """Backfill translation args from a config-file ``i18n`` section.
+
+    The CLI gates and option-builder read ``args``, not the config manager, so a
+    ``target_languages`` (or other i18n setting) supplied only via ``--config``
+    would otherwise be ignored. This fills each i18n arg from config when the
+    command-line left it at its default; explicit flags always win.
+    """
+    if not i18n_config:
+        return
+    # target_languages accepts a list or comma-separated string; the config
+    # loader may give either. Only fill when the flag was not passed.
+    if not args_dict.get("target_languages") and i18n_config.get("target_languages"):
+        value = i18n_config["target_languages"]
+        if isinstance(value, (list, tuple)):
+            value = ",".join(str(v) for v in value)
+        args_dict["target_languages"] = value
+    if not args_dict.get("source_language") and i18n_config.get("source_language"):
+        args_dict["source_language"] = i18n_config["source_language"]
+    # Booleans: adopt the config value when the CLI is at its default. multilingual
+    # defaults False; add_language_selector/use_browser_language default True.
+    if not args_dict.get("multilingual") and "multilingual" in i18n_config:
+        args_dict["multilingual"] = bool(i18n_config["multilingual"])
+    if args_dict.get("add_language_selector", True) and "add_language_selector" in i18n_config:
+        args_dict["add_language_selector"] = bool(i18n_config["add_language_selector"])
+    if args_dict.get("use_browser_language", True) and "use_browser_language" in i18n_config:
+        args_dict["use_browser_language"] = bool(i18n_config["use_browser_language"])
+
+
+def _print_translation_result(
+    result: Dict[str, Any], include_targets: bool = True
+) -> None:
+    """Print a translation result summary (shared by translate + process).
+
+    Handles both output_files shapes: flat ``{lang: path}`` for single-file
+    input and nested ``{source_stem: {lang: path}}`` for multi-file (directory)
+    input.
+    """
+    print("\nTranslation Results:")
+    print(f"  Source language: {result.get('source_language') or 'auto'}")
+    if include_targets:
+        print(
+            f"  Target languages: {', '.join(result.get('target_languages', []))}"
+        )
+
+    def _label(key: str) -> str:
+        return "Multilingual document" if key == "multilingual" else key
+
+    for key, value in result.get("output_files", {}).items():
+        if isinstance(value, dict):  # nested per-source-file (directory input)
+            print(f"  {key}:")
+            for lang, path in value.items():
+                print(f"    {_label(lang)}: {path}")
+        else:
+            print(f"  {_label(key)}: {value}")
+
+
+def _build_i18n_options(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Assemble the i18n options dict from parsed CLI args."""
+    options: Dict[str, Any] = {
+        "target_languages": args.get("target_languages"),
+        "multilingual": args.get("multilingual", False),
+        "add_language_selector": args.get("add_language_selector", True),
+        "use_browser_language": args.get("use_browser_language", True),
+    }
+    if args.get("source_language"):
+        options["source_language"] = args["source_language"]
+    if args.get("model_id"):
+        options["model_id"] = args["model_id"]
+    if args.get("profile"):
+        options["profile"] = args["profile"]
+    return options
+
+
 def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
     """Add arguments for the full processing pipeline command."""
     # Add standardized arguments
@@ -408,6 +549,10 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         help="Generate a unified report that combines audit and remediation data",
     )
 
+    # Optional translation step. Runs after remediation when --target-languages
+    # is provided; skipped otherwise. Requires the [i18n] extra.
+    _add_i18n_flags(parser)
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
@@ -442,6 +587,14 @@ def create_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     _add_remediate_arguments(remediate_parser)
+
+    # Translate command
+    translate_parser = subparsers.add_parser(
+        "translate",
+        help="Translate HTML content into one or more target languages",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    _add_translate_arguments(translate_parser)
 
     # Process command
     process_parser = subparsers.add_parser(
@@ -556,18 +709,24 @@ def parse_arguments() -> Dict[str, Any]:
             config_data = load_config_file(config_path)
             
             # Update configuration for each section
-            for section in ["pdf", "audit", "remediate", "aws"]:
+            known_sections = ["pdf", "audit", "remediate", "aws", "i18n"]
+            for section in known_sections:
                 if section in config_data:
                     config_manager.set_user_config(config_data[section], section)
                     logger.debug(f"Applied configuration for section: {section}")
-            
+
             # Handle top-level configuration (not in a section)
-            top_level = {k: v for k, v in config_data.items() 
-                         if k not in ["pdf", "audit", "remediate", "aws"]}
+            top_level = {k: v for k, v in config_data.items()
+                         if k not in known_sections}
             if top_level:
                 config_manager.set_user_config(top_level)
                 logger.debug("Applied top-level configuration")
-                
+
+            # Backfill i18n args from the config file so CLI gates (which read
+            # args, not the config manager) honor translation settings supplied
+            # only via --config. Command-line flags always take precedence.
+            _apply_i18n_config_to_args(args_dict, config_data.get("i18n", {}))
+
         except ConfigurationError as e:
             logger.error(f"Configuration error: {e}")
             print(f"Error: {e}")
@@ -612,7 +771,8 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
         "pdf": {},
         "audit": {},
         "remediate": {},
-        "aws": {}
+        "aws": {},
+        "i18n": {},
     }
     
     # PDF conversion parameters
@@ -670,7 +830,26 @@ def save_configuration_from_args(args_dict: Dict[str, Any]) -> None:
     for param in aws_params:
         if param in args_dict and args_dict[param] is not None:
             config["aws"][param] = args_dict[param]
-    
+
+    # Internationalization parameters. target_languages is stored as a list for
+    # a clean round-trip through the config file.
+    if args_dict.get("target_languages"):
+        value = args_dict["target_languages"]
+        if isinstance(value, str):
+            value = [t.strip() for t in value.split(",") if t.strip()]
+        config["i18n"]["target_languages"] = value
+    i18n_passthrough = [
+        "source_language", "multilingual",
+        "add_language_selector", "use_browser_language",
+    ]
+    for param in i18n_passthrough:
+        if param in args_dict and args_dict[param] is not None:
+            config["i18n"][param] = args_dict[param]
+    # model_id is shared with remediate; file it under i18n too when translating
+    # so a saved translate config restores the model override.
+    if args_dict.get("command") == "translate" and args_dict.get("model_id"):
+        config["i18n"]["model_id"] = args_dict["model_id"]
+
     # Apply the config manager's defaults to empty sections
     for section in config:
         if not config[section]:
@@ -1188,6 +1367,45 @@ def run_process_command(args: Dict[str, Any]) -> int:
             if not args.get("quiet"):
                 logger.info("Remediation step skipped as requested")
 
+        # Optional Step 4: Translate the final HTML into target languages.
+        if args.get("target_languages"):
+            # Prefer the remediated output; fall back to the converted HTML.
+            translate_source = remediate_result.get("remediated_html_path") or html_path
+            if translate_source and os.path.exists(translate_source):
+                if not args.get("quiet"):
+                    logger.info(
+                        "Step 4: Translating content into: %s",
+                        args["target_languages"],
+                    )
+                try:
+                    i18n_options = _build_i18n_options(args)
+                    # Per-language files land in a translations/ subdir; a
+                    # multilingual document lands in the output root.
+                    translate_output = (
+                        output_dir
+                        if args.get("multilingual")
+                        else os.path.join(output_dir, "translations")
+                    )
+                    translate_result = translate_html_accessibility(
+                        html_path=translate_source,
+                        options=i18n_options,
+                        output_path=translate_output,
+                    )
+                    if not args.get("quiet"):
+                        _print_translation_result(
+                            translate_result, include_targets=False
+                        )
+                except Exception as e:
+                    # Translation is an optional enhancement; a failure here
+                    # should not fail the whole pipeline.
+                    logger.error(f"Translation step failed: {e}")
+                    if not args.get("quiet"):
+                        print(f"  Translation step failed: {e}")
+            else:
+                logger.warning(
+                    "No HTML available to translate; skipping translation step"
+                )
+
         if not args.get("quiet"):
             print("\nProcess completed successfully!")
             print(f"All output files are in: {output_dir}")
@@ -1196,6 +1414,45 @@ def run_process_command(args: Dict[str, Any]) -> int:
 
     except Exception as e:
         logger.error(f"Error in processing pipeline: {e}")
+        if not args.get("quiet"):
+            print(f"Error: {e}")
+        return 1
+
+
+def run_translate_command(args: Dict[str, Any]) -> int:
+    """Run the standalone translation command."""
+    try:
+        if not args.get("target_languages"):
+            print(
+                "Error: --target-languages is required for the translate command "
+                "(e.g. --target-languages es,fr,ja)."
+            )
+            return 1
+
+        options = _build_i18n_options(args)
+
+        if not args.get("quiet"):
+            logger.info("Translating HTML: %s", args["input"])
+
+        # Per-language output treats the path as a directory; multilingual
+        # output treats an .html path as the file (else a directory). When no
+        # --output is given, parse_arguments supplies a "<base>_translated"
+        # default directory.
+        output_path = args.get("output")
+
+        result = translate_html_accessibility(
+            html_path=args["input"],
+            options=options,
+            output_path=output_path,
+        )
+
+        if not args.get("quiet"):
+            _print_translation_result(result, include_targets=True)
+
+        return 0
+
+    except Exception as e:
+        logger.error(f"Error in translation: {e}")
         if not args.get("quiet"):
             print(f"Error: {e}")
         return 1
@@ -1380,6 +1637,8 @@ def main() -> int:
             return run_audit_command(args)
         elif args["command"] == "remediate":
             return run_remediate_command(args)
+        elif args["command"] == "translate":
+            return run_translate_command(args)
         elif args["command"] == "process":
             return run_process_command(args)
         elif args["command"] == "init-pipeline":

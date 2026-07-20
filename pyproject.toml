@@ -57,6 +57,17 @@ agent = [
     "strands-agents-tools>=0.1.0",
     "bedrock-agentcore>=0.1.0",
 ]
+# Internationalization layer: translate the worked-on content into one or more
+# target languages via Amazon Bedrock (uses the core boto3 dependency) and emit
+# an optional multilingual document with a language selector and browser-language
+# auto-detection. babel supplies localized language display names and
+# Accept-Language negotiation; langdetect auto-detects the source language. Both
+# degrade to built-in fallbacks when absent, so this extra is a quality upgrade
+# rather than a hard requirement for the translation itself.
+i18n = [
+    "babel>=2.14.0",
+    "langdetect>=1.0.9",
+]
 test = [
     "pytest>=8.0.0",
     "pytest-cov>=5.0.0",
