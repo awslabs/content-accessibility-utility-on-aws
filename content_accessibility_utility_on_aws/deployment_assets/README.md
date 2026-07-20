@@ -36,11 +36,24 @@ html/<name>/manifest.json -> (auto, from convert)         -> accessible/<name>/
 
 ## Deploy
 
+The one command below runs the whole sequence for you — it prompts for region,
+bucket, and (for the PDF path) BDA config, runs `agentcore configure`/`launch`
+and `sam deploy` in order, and wires the runtime ARN between steps. Each
+cloud-mutating step is confirmed; add `--yes` for CI (also runs `sam deploy`
+non-interactively) or `--dry-run` to preview the commands:
+
+```bash
+content-accessibility-utility-on-aws deploy-pipeline
+```
+
+Or run the steps yourself:
+
 ```bash
 # 1. Deploy the runtime (builds an ARM64 image in the cloud, no local Docker).
+#    For the PDF path, pass BDA config as runtime env vars at launch time.
 agentcore configure --entrypoint agentcore_app.py --name a11y_pipeline \
   --requirements-file requirements.txt --region <region>
-agentcore launch
+agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
 #    Note the runtime ARN it prints.
 
 # 2. Deploy the S3 + Lambda + DynamoDB stack, passing the runtime ARN.
@@ -50,11 +63,7 @@ sam deploy --guided \
     InputBucketName=<globally-unique-bucket-name>
 ```
 
-Set the runtime's BDA config (for the PDF path) at launch time:
-
-```bash
-agentcore launch --env BDA_S3_BUCKET=<bucket> --env BDA_PROJECT_ARN=<bda-project-arn>
-```
+(Omit the `--env BDA_*` flags if you only process HTML/zip inputs.)
 
 ## Use
 
@@ -64,7 +73,16 @@ aws s3 cp page.html    s3://<bucket>/html/page.html     # HTML -> audit -> acces
 aws s3 cp site.zip     s3://<bucket>/html/site.zip      # zip  -> audit -> accessible/
 ```
 
-Results appear under `s3://<bucket>/accessible/<name>/`. Per-document status is
-tracked in the DynamoDB job table.
+Results appear under `s3://<bucket>/accessible/<name>/`:
+
+| Object | Contents |
+|--------|----------|
+| `<name>.remediated.html` (+ assets) | the fixed document |
+| `accessibility_audit_before.json` | findings before remediation |
+| `accessibility_audit.json` | findings after remediation (the residual) |
+| `remediation_gap.json` | before/after issue counts + residual by criterion |
+
+Per-document status (including `issues_before`/`issues_after`/`issues_resolved`)
+is tracked in the DynamoDB job table.
 
 See the full guide: https://github.com/awslabs/content-accessibility-utility-on-aws/blob/main/docs/rendered_agent_guide.md
