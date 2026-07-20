@@ -28,6 +28,19 @@ from ..utils.logging_helper import setup_logger
 logger = setup_logger(__name__)
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 
+# Constants
+# Resolve the region BEFORE creating any client. These clients are created at
+# import time, so if no region is configured in the environment (e.g. CI, local
+# test runs, or any non-AWS host), boto3.resource("dynamodb") would raise
+# NoRegionError during import and abort the whole module — and any test that
+# transitively imports this module. Passing an explicit region (falling back to
+# us-east-1) makes import succeed everywhere; real AWS calls still require valid
+# credentials, but merely importing the package must never need them.
+DEFAULT_REGION = (
+    os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+)
+JOB_STATUS_TABLE = os.environ.get("JOB_STATUS_TABLE", "DocumentAccessibilityJobs")
+
 # Initialize AWS clients.
 #
 # Newer botocore defaults request checksums on every S3 upload, which wraps the
@@ -38,17 +51,14 @@ logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 # that the caller explicitly asks for.
 s3_client = boto3.client(
     "s3",
+    region_name=DEFAULT_REGION,
     config=Config(
         request_checksum_calculation="when_required",
         response_checksum_validation="when_required",
     ),
 )
-dynamodb = boto3.resource("dynamodb")
-sqs = boto3.client("sqs")
-
-# Constants
-DEFAULT_REGION = os.environ.get("AWS_REGION", "us-east-1")
-JOB_STATUS_TABLE = os.environ.get("JOB_STATUS_TABLE", "DocumentAccessibilityJobs")
+dynamodb = boto3.resource("dynamodb", region_name=DEFAULT_REGION)
+sqs = boto3.client("sqs", region_name=DEFAULT_REGION)
 
 # Job status constants
 STATUS_PENDING = "PENDING"
