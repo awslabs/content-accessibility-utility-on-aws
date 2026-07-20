@@ -84,3 +84,15 @@ def test_negotiate_language_never_selects_q0():
     # German is explicitly rejected (q=0); even though it is available it must
     # not be chosen — fall back to the default instead.
     assert negotiate_language("de;q=0,en;q=0.5", ["de"], "en") == "en"
+
+
+def test_parse_accept_language_drops_malformed_q():
+    # A malformed q must be dropped, NOT promoted to 1.0 (which would let a
+    # garbled entry outrank a valid preference).
+    parsed = parse_accept_language("de;q=high,en;q=0.9")
+    assert parsed == [("en", 0.9)]
+
+
+def test_negotiate_language_ignores_malformed_q_entry():
+    # 'de' has a garbled q and must not outrank the valid 'en' preference.
+    assert negotiate_language("de;q=high,en;q=0.9", ["de", "en"]) == "en"

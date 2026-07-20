@@ -61,8 +61,25 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
     TranslationError,
 )
+from content_accessibility_utility_on_aws.utils.constants import (
+    DEFAULT_TRANSLATION_BATCH_SIZE,
+)
 
 logger = setup_logger(__name__)
+
+
+class _BatchParseError(Exception):
+    """Raised by the default translator when a batch reply can't be parsed.
+
+    Signals the batching loop to split-and-retry (or, at size 1, fall back to
+    source for just that segment) rather than silently substituting source text
+    for the whole batch. Internal to this module.
+    """
+
+    def __init__(self, batch_size: int):
+        super().__init__(f"unparseable/truncated reply for a {batch_size}-segment batch")
+        self.batch_size = batch_size
+
 
 # Tags whose text content must never be translated (code, scripts, styles,
 # and machine-readable values).
@@ -106,12 +123,11 @@ _TRANSLATABLE_META_PROPERTIES = {
 # cleanly and never collides with real HTML tags.
 _PLACEHOLDER_TAG = "x-i18n"
 
-# Default batch size (number of text segments per Bedrock call). Kept modest so
-# each call's JSON array stays well within the model's output-token budget even
-# for verbose target languages and reasoning-capable models that also spend
-# output tokens on a hidden reasoning block; the per-call max_tokens is sized
-# from the batch's input length (see _make_bedrock_translate_fn).
-DEFAULT_BATCH_SIZE = 20
+# Default batch size (number of text segments per Bedrock call). Sourced from a
+# single shared constant so the config defaults, the API layer, and this module
+# cannot drift. A truncated batch is split-and-retried (see _translate_batch),
+# so this is a starting point, not a hard limit.
+DEFAULT_BATCH_SIZE = DEFAULT_TRANSLATION_BATCH_SIZE
 
 
 class HTMLTranslator:
@@ -271,18 +287,51 @@ class HTMLTranslator:
         return units, attr_targets
 
     def _translate_segments(self, segments: List[str], target_lang: str) -> List[str]:
-        """Translate all segments in order, batching the model calls."""
+        """Translate all segments in order, batching the model calls.
+
+        Each fixed-size batch is translated in one call; if the model reply is
+        unparseable or truncated (signalled by ``_BatchParseError`` from the
+        default translator), the batch is split in half and retried, down to
+        single segments. Only a single segment that still fails falls back to
+        its untranslated source — so a truncation affects at most one segment,
+        never a whole batch, and the fallback surface is minimal.
+        """
         results: List[str] = []
         for start in range(0, len(segments), self.batch_size):
             batch = segments[start : start + self.batch_size]
-            translated = self._translate_fn(batch, target_lang, self.source_lang)
-            if len(translated) != len(batch):
-                raise TranslationError(
-                    "Translator returned %d segments for a batch of %d"
-                    % (len(translated), len(batch))
-                )
-            results.extend(translated)
+            results.extend(self._translate_batch(batch, target_lang))
         return results
+
+    def _translate_batch(self, batch: List[str], target_lang: str) -> List[str]:
+        """Translate one batch, splitting-and-retrying on a parse/truncation failure."""
+        try:
+            translated = self._translate_fn(batch, target_lang, self.source_lang)
+        except _BatchParseError:
+            if len(batch) <= 1:
+                logger.warning(
+                    "Translation failed for a single segment after retry; "
+                    "leaving it untranslated: %.60s",
+                    batch[0] if batch else "",
+                )
+                return list(batch)
+            mid = len(batch) // 2
+            logger.info(
+                "Retrying a %d-segment batch as %d + %d after a parse/truncation "
+                "failure.",
+                len(batch),
+                mid,
+                len(batch) - mid,
+            )
+            return self._translate_batch(
+                batch[:mid], target_lang
+            ) + self._translate_batch(batch[mid:], target_lang)
+
+        if len(translated) != len(batch):
+            raise TranslationError(
+                "Translator returned %d segments for a batch of %d"
+                % (len(translated), len(batch))
+            )
+        return translated
 
 
 class _Placeholder:
@@ -318,15 +367,28 @@ class _TextUnit:
         child_slice: Tuple[int, int],
         text: str,
         placeholders: List[_Placeholder],
+        leading_ws: str = "",
+        trailing_ws: str = "",
     ):
         self._parent = parent
         self._start, self._end = child_slice
         self.text = text
         self._placeholders = placeholders
+        # The run's boundary whitespace, captured from the source and re-applied
+        # deterministically so it survives regardless of whether the model
+        # preserves leading/trailing whitespace in its JSON string values.
+        self._leading_ws = leading_ws
+        self._trailing_ws = trailing_ws
 
     def apply(self, translated: str) -> None:
         """Replace the unit's original children with the translated content."""
         new_nodes = _rebuild_nodes(translated, self._placeholders)
+        # Re-apply the source run's leading/trailing whitespace: strip whatever
+        # the model returned at the boundaries and restore the original spacing,
+        # so adjacent inline runs never collapse together (e.g. "x" + "y" -> "xy").
+        new_nodes = _reapply_boundary_whitespace(
+            new_nodes, self._leading_ws, self._trailing_ws
+        )
         children = list(self._parent.children)
         originals = children[self._start : self._end]
         anchor_index = self._start
@@ -391,7 +453,15 @@ def _make_unit(
     text, has_text = _serialize_run(children[start:end], placeholders)
     if not has_text:
         return None
-    return _TextUnit(block, (start, end), text, placeholders)
+    # Capture the run's boundary whitespace and send only the stripped core to
+    # the model; the whitespace is re-applied deterministically on rebuild
+    # (apply) so it cannot be lost to model trimming.
+    leading_ws = text[: len(text) - len(text.lstrip())]
+    trailing_ws = text[len(text.rstrip()):]
+    core = text.strip()
+    return _TextUnit(
+        block, (start, end), core, placeholders, leading_ws, trailing_ws
+    )
 
 
 def _serialize_run(nodes, placeholders: List[_Placeholder]) -> Tuple[str, bool]:
@@ -428,7 +498,16 @@ def _serialize_run(nodes, placeholders: List[_Placeholder]) -> Tuple[str, bool]:
 
 
 def _is_wrappable_inline(element: Tag) -> bool:
-    """True if an inline element's inner text should be translated in place."""
+    """True if an inline element's inner text should be folded into the run.
+
+    Must be a genuine inline (phrasing) element: a block element nested inside
+    an inline one (e.g. HTML5 ``<a><div>...</div></a>``) must NOT be folded, or
+    its text would be translated twice — once folded into the ancestor's unit
+    and once via its own block unit from the ``find_all`` walk. Such blocks are
+    kept as opaque placeholders instead and translated only by their own unit.
+    """
+    if not _is_inline(element):
+        return False
     if element.name in _INLINE_OPAQUE_TAGS or element.name in _SKIP_CONTENT_TAGS:
         return False
     if _element_opts_out(element):
@@ -469,11 +548,28 @@ def _rebuild_nodes(translated: str, placeholders: List[_Placeholder]) -> list:
     used: set = set()
     nodes = _emit_nodes(list(root.children), placeholders, used)
 
-    # Re-attach any placeholder the model omitted so content is never lost.
+    # Re-attach only *opaque* placeholders the model omitted. An opaque
+    # placeholder (image, <br>, code sample) carries content that has NO textual
+    # representation in the translated stream, so if the model drops its marker
+    # the element would vanish — re-attach it to preserve that content.
+    #
+    # A *wrap* placeholder's translatable text was flattened INTO the sentence,
+    # so when the model drops the marker its text is already present in the
+    # emitted output; re-attaching the original element would duplicate that
+    # text (and re-insert it untranslated). So wrap placeholders are NOT
+    # re-attached — at most the inline formatting is lost, never the words.
     for idx, ph in enumerate(placeholders):
-        if idx not in used:
+        if idx in used:
+            continue
+        if ph.kind == "opaque":
             nodes.append(ph.element)
-            used.add(idx)
+        else:
+            logger.debug(
+                "Model dropped inline marker %d; formatting lost but text "
+                "preserved in the translated run.",
+                idx,
+            )
+        used.add(idx)
     return nodes
 
 
@@ -487,6 +583,11 @@ def _emit_nodes(source_nodes, placeholders: List[_Placeholder], used: set) -> li
         elif isinstance(node, Tag) and node.name == _PLACEHOLDER_TAG:
             idx = _placeholder_index(node)
             if idx is None or not (0 <= idx < len(placeholders)) or idx in used:
+                # Unknown, out-of-range, or repeated index: we cannot restore the
+                # element, but its inner text is real translated content — emit
+                # the children as bare nodes so no words are lost (only the
+                # inline formatting of the duplicate/invalid marker is dropped).
+                result.extend(_emit_nodes(list(node.children), placeholders, used))
                 continue
             used.add(idx)
             ph = placeholders[idx]
@@ -504,6 +605,37 @@ def _emit_nodes(source_nodes, placeholders: List[_Placeholder], used: set) -> li
             if text:
                 result.append(NavigableString(text))
     return result
+
+
+def _reapply_boundary_whitespace(
+    nodes: list, leading_ws: str, trailing_ws: str
+) -> list:
+    """Restore the run's original leading/trailing whitespace around ``nodes``.
+
+    The model receives the whitespace-stripped core of a run, so its reply has
+    no reliable boundary whitespace. This strips whatever the model returned at
+    the very start/end and re-glues the source's original whitespace, ensuring
+    adjacent inline runs stay separated (e.g. ``<a>x</a> <a>y</a>`` never
+    collapses to ``xy``). Leading/trailing NavigableStrings are adjusted in
+    place; if the boundary node is an element, a whitespace text node is added.
+    """
+    if not nodes:
+        return [NavigableString(leading_ws + trailing_ws)] if (leading_ws or trailing_ws) else nodes
+
+    if leading_ws:
+        first = nodes[0]
+        if isinstance(first, NavigableString):
+            nodes[0] = NavigableString(leading_ws + str(first).lstrip())
+        else:
+            nodes.insert(0, NavigableString(leading_ws))
+
+    if trailing_ws:
+        last = nodes[-1]
+        if isinstance(last, NavigableString):
+            nodes[-1] = NavigableString(str(last).rstrip() + trailing_ws)
+        else:
+            nodes.append(NavigableString(trailing_ws))
+    return nodes
 
 
 def _placeholder_index(node: Tag) -> Optional[int]:
@@ -699,59 +831,64 @@ def _make_bedrock_translate_fn(
             f"Input:\n{json.dumps(segments, ensure_ascii=False)}"
         )
 
-        # Translation output is roughly as long as the (already-escaped) input
-        # plus expansion for verbose target languages, and reasoning-capable
-        # models (Sonnet 5) spend additional output tokens on a hidden reasoning
-        # block. The 2000-token remediation default truncates multi-segment
-        # batches (stopReason=max_tokens -> invalid/partial JSON), so size the
-        # budget from the input with generous headroom and a floor.
+        # Size the output budget from the input. Translations can be longer than
+        # the source (verbose target languages) AND the JSON reply repeats the
+        # placeholder markup, and reasoning-capable models (Sonnet 5) spend extra
+        # output tokens on a hidden reasoning block. Budget ~3x the input chars
+        # (roughly 1 token/char for CJK) plus a large fixed headroom for the
+        # reasoning block, capped at the model's ceiling. Undersizing here only
+        # costs a retry (adaptive split in _translate_segments), never silent
+        # source passthrough.
         input_chars = sum(len(s) for s in segments)
-        max_tokens = max(4000, int(input_chars / 2) + 4000)
+        max_tokens = min(64000, max(8000, input_chars * 3 + 8000))
         raw = client.generate_text(
             prompt=prompt,
             purpose="content_translation",
             system_prompt=system_prompt,
             max_tokens=max_tokens,
         )
-        return _parse_translation_array(raw, len(segments), segments)
+        parsed = _parse_translation_array(raw, len(segments))
+        if parsed is None:
+            # Signal failure so the caller can retry with a smaller batch. A
+            # single-segment batch that still fails raises, and the caller
+            # decides whether to fall back to source for just that segment.
+            raise _BatchParseError(len(segments))
+        return parsed
 
     return _translate
 
 
-def _parse_translation_array(
-    raw: str, expected: int, fallback: List[str]
-) -> List[str]:
+def _parse_translation_array(raw: str, expected: int) -> Optional[List[str]]:
     """Parse the model's JSON array reply, tolerating code fences and prose.
 
-    Falls back to the original segments for any that can't be recovered so a
-    malformed reply degrades to untranslated text rather than raising and losing
-    the whole batch.
+    Returns the parsed list of strings, or ``None`` if a well-formed array of
+    the expected length could not be recovered (so the caller can retry with a
+    smaller batch rather than silently substituting untranslated source text).
+
+    Parsing starts at the first ``[`` and uses ``raw_decode`` to consume exactly
+    one JSON value, so trailing prose the model may append (e.g. ``[...]
+    (markers kept)``) is ignored instead of corrupting a last-``]`` slice.
     """
-    # Isolate the outermost JSON array. Slicing between the first "[" and last
-    # "]" already skips any ```json fence, surrounding prose, or trailing fence,
-    # so no separate fence-stripping pass is needed.
     text = raw.strip()
     start = text.find("[")
-    end = text.rfind("]")
-    if start != -1 and end != -1 and end > start:
-        candidate = text[start : end + 1]
-        try:
-            parsed = json.loads(candidate)
-            if isinstance(parsed, list):
-                result = [str(item) for item in parsed]
-                if len(result) == expected:
-                    return result
-                logger.warning(
-                    "Translation returned %d items, expected %d; padding with "
-                    "originals",
-                    len(result),
-                    expected,
-                )
-                # Pad/truncate defensively to keep node alignment.
-                result = result[:expected]
-                result.extend(fallback[len(result):])
-                return result
-        except json.JSONDecodeError as e:
-            logger.warning("Could not parse translation JSON: %s", e)
-    logger.warning("Falling back to untranslated text for this batch")
-    return list(fallback)
+    if start == -1:
+        logger.warning("No JSON array found in translation reply")
+        return None
+    try:
+        parsed, _end = json.JSONDecoder().raw_decode(text[start:])
+    except json.JSONDecodeError as e:
+        # Most often a truncated (max_tokens) reply: the array never closes.
+        logger.warning("Could not parse translation JSON: %s", e)
+        return None
+    if not isinstance(parsed, list):
+        logger.warning("Translation reply was not a JSON array")
+        return None
+    result = [str(item) for item in parsed]
+    if len(result) != expected:
+        # A length mismatch means node alignment is unreliable for the whole
+        # batch; signal failure so the caller can re-split rather than guess.
+        logger.warning(
+            "Translation returned %d items, expected %d", len(result), expected
+        )
+        return None
+    return result

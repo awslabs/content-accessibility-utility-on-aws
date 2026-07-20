@@ -26,6 +26,9 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     TranslationError,
 )
 from content_accessibility_utility_on_aws.utils.resources import ensure_directory
+from content_accessibility_utility_on_aws.utils.constants import (
+    DEFAULT_TRANSLATION_BATCH_SIZE,
+)
 
 logger = setup_logger(__name__)
 
@@ -76,7 +79,7 @@ def translate_html_accessibility(
               multilingual output. Default: True.
             - use_browser_language (bool): Auto-select the visitor's browser
               language on first load. Default: True.
-            - batch_size (int): Segments per model call. Default: 40.
+            - batch_size (int): Segments per model call. Default: 20.
             - model_id (str): Bedrock model id override (uses the default when
               omitted).
             - profile (str): AWS profile for Bedrock credentials.
@@ -119,7 +122,7 @@ def translate_html_accessibility(
     translator = HTMLTranslator(
         translate_fn=options.get("translate_fn"),
         source_lang=source_language,
-        batch_size=int(options.get("batch_size", 40)),
+        batch_size=int(options.get("batch_size", DEFAULT_TRANSLATION_BATCH_SIZE)),
         model_id=options.get("model_id"),
         profile=options.get("profile"),
     )

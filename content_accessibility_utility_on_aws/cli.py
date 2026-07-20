@@ -432,7 +432,12 @@ def _build_i18n_options(args: Dict[str, Any]) -> Dict[str, Any]:
     }
     if args.get("source_language"):
         options["source_language"] = args["source_language"]
-    if args.get("model_id"):
+    # Only forward model_id when it is an EXPLICIT override (differs from the
+    # shared default). The --model-id arg defaults to DEFAULT_MODEL_ID, so
+    # forwarding it unconditionally would clobber an i18n.model_id set in a
+    # --config file (options are applied with highest precedence). When left at
+    # the default, the config value (or the i18n section default) is used.
+    if args.get("model_id") and args["model_id"] != DEFAULT_MODEL_ID:
         options["model_id"] = args["model_id"]
     if args.get("profile"):
         options["profile"] = args["profile"]

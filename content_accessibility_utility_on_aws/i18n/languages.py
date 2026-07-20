@@ -155,16 +155,19 @@ def parse_accept_language(header: str) -> List[Tuple[str, float]]:
         if not code or code == "*":
             continue
         quality = 1.0
+        malformed_q = False
         for token in tokens[1:]:
             token = token.strip()
             if token.startswith("q="):
                 try:
                     quality = float(token[2:])
                 except ValueError:
-                    quality = 1.0
-        # q=0 means the client explicitly rejects this language; drop it so
-        # negotiation can never select an unacceptable language.
-        if quality <= 0:
+                    # A malformed q must NOT be promoted to 1.0 (that would let a
+                    # garbled entry outrank valid preferences); drop the entry.
+                    malformed_q = True
+        # Drop entries with a malformed q, or q<=0 (explicit "not acceptable"),
+        # so negotiation never selects an unacceptable/garbled language.
+        if malformed_q or quality <= 0:
             continue
         parsed.append((code, quality))
     parsed.sort(key=lambda pair: pair[1], reverse=True)

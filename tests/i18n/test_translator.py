@@ -107,22 +107,34 @@ def test_wrong_length_batch_raises():
 
 
 def test_parse_translation_array_plain():
-    assert _parse_translation_array('["a", "b"]', 2, ["x", "y"]) == ["a", "b"]
+    assert _parse_translation_array('["a", "b"]', 2) == ["a", "b"]
 
 
 def test_parse_translation_array_code_fence():
     raw = '```json\n["hola", "mundo"]\n```'
-    assert _parse_translation_array(raw, 2, ["x", "y"]) == ["hola", "mundo"]
+    assert _parse_translation_array(raw, 2) == ["hola", "mundo"]
 
 
-def test_parse_translation_array_malformed_falls_back():
-    # Unparseable -> return originals so the batch degrades to untranslated text.
-    assert _parse_translation_array("not json at all", 2, ["x", "y"]) == ["x", "y"]
+def test_parse_translation_array_trailing_prose_ignored():
+    # A valid array followed by prose containing a bracket must still parse
+    # (raw_decode consumes exactly the array), not fail on a last-']' slice.
+    raw = '["Hola", "Mundo"] (kept placeholder [0] intact)'
+    assert _parse_translation_array(raw, 2) == ["Hola", "Mundo"]
 
 
-def test_parse_translation_array_length_mismatch_padded():
-    # Model returned fewer items than expected -> pad with originals.
-    assert _parse_translation_array('["a"]', 2, ["x", "y"]) == ["a", "y"]
+def test_parse_translation_array_malformed_returns_none():
+    # Unparseable -> None so the caller can split-and-retry (not silent source).
+    assert _parse_translation_array("not json at all", 2) is None
+
+
+def test_parse_translation_array_truncated_returns_none():
+    # A truncated (unclosed) array -> None, signalling truncation to the caller.
+    assert _parse_translation_array('["Hola", "Mun', 2) is None
+
+
+def test_parse_translation_array_length_mismatch_returns_none():
+    # Wrong count -> None (node alignment unreliable), triggers re-split.
+    assert _parse_translation_array('["a"]', 2) is None
 
 
 def test_nested_code_in_pre_not_translated():
@@ -287,19 +299,41 @@ def test_inner_link_text_is_translatable():
     assert "the docs" in captured["segments"][0]
 
 
-def test_dropped_placeholder_is_reattached():
-    # If the model drops a placeholder, its element must still appear in output
-    # (content is never silently lost).
-    def drop_tags(segments, target, source):
+def test_dropped_wrap_marker_keeps_text_without_duplication():
+    # Realistic model behavior: it drops the paired marker TAGS but keeps the
+    # inner text. The text must survive exactly once (not be duplicated by
+    # re-attaching the original element), even though the <a> formatting is lost.
+    def drop_wrap_tags(segments, target, source):
         import re
 
-        return [re.sub(r"<x-i18n[^>]*>.*?</x-i18n>|<x-i18n[^>]*/>", "", s) for s in segments]
+        # Remove only the marker tags, keeping inner text (what real models do).
+        return [
+            re.sub(r'<x-i18n n="\d+">|</x-i18n>', "", s) for s in segments
+        ]
 
     html = '<html><body><p>Read <a href="/x">this</a> now</p></body></html>'
-    out = HTMLTranslator(translate_fn=drop_tags, source_lang="en").translate_html(
+    out = HTMLTranslator(translate_fn=drop_wrap_tags, source_lang="en").translate_html(
         html, "es"
     )
-    assert '<a href="/x">this</a>' in out
+    # "this" appears exactly once (no duplication), and there is no stray
+    # untranslated <a> re-appended after the sentence.
+    assert out.count("this") == 1
+    assert "Read this now" in out
+
+
+def test_dropped_opaque_marker_reattaches_element():
+    # An opaque placeholder (e.g. <img>) has no textual representation, so if the
+    # model drops its marker the element MUST be re-attached (content preserved).
+    def drop_all_markers(segments, target, source):
+        import re
+
+        return [re.sub(r'<x-i18n n="\d+"/>', "", s) for s in segments]
+
+    html = '<html><body><p>See <img src="c.png" alt="chart"> here</p></body></html>'
+    out = HTMLTranslator(translate_fn=drop_all_markers, source_lang="en").translate_html(
+        html, "es"
+    )
+    assert '<img' in out and 'src="c.png"' in out
 
 
 def test_model_injected_markup_is_neutralized():
@@ -386,3 +420,80 @@ def test_default_translator_sizes_max_tokens_to_input(monkeypatch):
     html = f"<html><body><p>{big}</p></body></html>"
     HTMLTranslator(source_lang="en").translate_html(html, "es")
     assert seen["max_tokens"] >= 4000
+
+
+# --- Regression: fixes from the second code review --------------------------
+
+
+def test_whitespace_between_inline_elements_preserved():
+    # Model trims leading/trailing whitespace of the segment core; the run's
+    # boundary/inter-element whitespace must be restored deterministically so
+    # adjacent inline runs never collapse together.
+    def strip_echo(segments, target, source):
+        return [s.strip() for s in segments]
+
+    html = '<html><body><p><a href="/a">x</a> <a href="/b">y</a></p></body></html>'
+    out = HTMLTranslator(translate_fn=strip_echo, source_lang="en").translate_html(
+        html, "es"
+    )
+    # There must still be a space between the two links (not "xy").
+    assert "</a> <a" in out
+
+
+def test_block_nested_in_inline_not_double_translated():
+    # HTML5 block-level link: <a><div><p>Big</p></div></a>. The <p> text must be
+    # sent to the model exactly once, not folded into the <a> run AND collected
+    # as its own block unit.
+    captured = {}
+
+    def fake(segments, target, source):
+        captured.setdefault("all", []).extend(segments)
+        return [f"[{target}]{s}" for s in segments]
+
+    html = '<html><body><a href="/x"><div><p>Big</p></div></a></body></html>'
+    HTMLTranslator(translate_fn=fake, source_lang="en").translate_html(html, "es")
+    # "Big" should appear in exactly one outbound segment, not two.
+    segments_with_big = [s for s in captured["all"] if "Big" in s]
+    assert len(segments_with_big) == 1, captured["all"]
+
+
+def test_truncated_batch_splits_and_retries():
+    # A translator that fails (raises the internal parse error) on batches larger
+    # than 1 must be split down to single segments, each translated, with no
+    # whole-batch revert to source.
+    from content_accessibility_utility_on_aws.i18n import translator as tr_mod
+
+    calls = {"n": 0}
+
+    def flaky(segments, target, source):
+        calls["n"] += 1
+        if len(segments) > 1:
+            raise tr_mod._BatchParseError(len(segments))
+        return [f"[{target}]{s}" for s in segments]
+
+    html = (
+        "<html><body>"
+        + "".join(f"<p>Para {i}</p>" for i in range(4))
+        + "</body></html>"
+    )
+    out = HTMLTranslator(translate_fn=flaky, source_lang="en", batch_size=4).translate_html(
+        html, "es"
+    )
+    # Every paragraph got translated despite the initial batch failing.
+    for i in range(4):
+        assert f"[es]Para {i}" in out
+
+
+def test_single_segment_failure_falls_back_to_source():
+    # If even a size-1 batch fails, that ONE segment is left untranslated (not an
+    # exception, not a whole-document failure).
+    from content_accessibility_utility_on_aws.i18n import translator as tr_mod
+
+    def always_fail(segments, target, source):
+        raise tr_mod._BatchParseError(len(segments))
+
+    html = "<html><body><p>Only</p></body></html>"
+    out = HTMLTranslator(translate_fn=always_fail, source_lang="en").translate_html(
+        html, "es"
+    )
+    assert "Only" in out  # left as source, no crash
