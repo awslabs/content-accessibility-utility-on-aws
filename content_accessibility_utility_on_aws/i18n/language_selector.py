@@ -232,7 +232,8 @@ def _build_script(
     values (e.g. ``pt-BR``) are lowercased and compared against a lowercased
     index of the available codes, so a region-tagged request matches its
     normalized variant exactly instead of falling through to primary-subtag
-    matching. This mirrors the server-side ``negotiate_language`` behavior.
+    matching. This is the sole language-negotiation implementation (it runs in
+    the browser); there is no separate server-side copy to keep in sync.
     """
     script = out.new_tag("script")
     langs_json = _json_for_script(ordered_langs)

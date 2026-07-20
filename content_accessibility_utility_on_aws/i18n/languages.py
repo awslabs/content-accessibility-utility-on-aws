@@ -4,9 +4,8 @@
 """
 Language code helpers for the i18n package.
 
-Normalizes user-supplied language codes to BCP-47, resolves human-readable
-display names, and negotiates a preferred language from an HTTP
-``Accept-Language`` header (the value a browser sends).
+Normalizes user-supplied language codes to BCP-47 and resolves human-readable
+display names and text direction.
 
 ``babel`` (from the ``[i18n]`` extra) provides accurate, localized display
 names and endonyms when installed. When it is absent everything still works
@@ -14,7 +13,7 @@ using a small built-in table covering the most common languages, so the core
 translation path never hard-depends on ``babel``.
 """
 
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
 
@@ -132,70 +131,3 @@ def display_name(code: str, in_locale: Optional[str] = None) -> str:
         english, native = _FALLBACK_NAMES[prim]
         return english if in_locale == "en" else native
     return normalized
-
-
-def parse_accept_language(header: str) -> List[Tuple[str, float]]:
-    """Parse an HTTP ``Accept-Language`` header into (code, quality) pairs.
-
-    Returns the languages sorted by descending quality (``q``) value. Malformed
-    entries are skipped, and entries with ``q=0`` (RFC 7231 "not acceptable")
-    are excluded entirely. Example::
-
-        "en-US,en;q=0.9,es;q=0.8" -> [("en-US", 1.0), ("en", 0.9), ("es", 0.8)]
-    """
-    if not header:
-        return []
-    parsed: List[Tuple[str, float]] = []
-    for part in header.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        tokens = part.split(";")
-        code = normalize_lang_code(tokens[0])
-        if not code or code == "*":
-            continue
-        quality = 1.0
-        malformed_q = False
-        for token in tokens[1:]:
-            token = token.strip()
-            if token.startswith("q="):
-                try:
-                    quality = float(token[2:])
-                except ValueError:
-                    # A malformed q must NOT be promoted to 1.0 (that would let a
-                    # garbled entry outrank valid preferences); drop the entry.
-                    malformed_q = True
-        # Drop entries with a malformed q, or q<=0 (explicit "not acceptable"),
-        # so negotiation never selects an unacceptable/garbled language.
-        if malformed_q or quality <= 0:
-            continue
-        parsed.append((code, quality))
-    parsed.sort(key=lambda pair: pair[1], reverse=True)
-    return parsed
-
-
-def negotiate_language(
-    header: str, available: List[str], default: Optional[str] = None
-) -> Optional[str]:
-    """Pick the best language from ``available`` for an ``Accept-Language`` header.
-
-    Matches by exact code first, then by primary subtag (so a browser asking for
-    ``en-GB`` matches an available ``en``). Returns ``default`` (or the first
-    available language when no default is given) if nothing matches.
-    """
-    available_norm = [normalize_lang_code(c) for c in available]
-    fallback = default if default is not None else (available_norm[0] if available_norm else None)
-    if not available_norm:
-        return fallback
-
-    prim_index: Dict[str, str] = {}
-    for code in available_norm:
-        prim_index.setdefault(primary_subtag(code), code)
-
-    for code, _q in parse_accept_language(header):
-        if code in available_norm:
-            return code
-        prim = primary_subtag(code)
-        if prim in prim_index:
-            return prim_index[prim]
-    return fallback

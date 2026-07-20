@@ -12,9 +12,7 @@ or not the optional ``babel`` dependency is installed).
 from content_accessibility_utility_on_aws.i18n.languages import (
     display_name,
     is_rtl,
-    negotiate_language,
     normalize_lang_code,
-    parse_accept_language,
     primary_subtag,
 )
 
@@ -47,52 +45,3 @@ def test_display_name_fallback_endonym():
     assert display_name("es") == "Español"
     # English name when explicitly requested.
     assert display_name("fr", in_locale="en") == "French"
-
-
-def test_parse_accept_language_orders_by_quality():
-    parsed = parse_accept_language("en-US,en;q=0.9,es;q=0.8")
-    assert parsed == [("en-US", 1.0), ("en", 0.9), ("es", 0.8)]
-
-
-def test_parse_accept_language_skips_wildcard_and_blank():
-    assert parse_accept_language("") == []
-    assert parse_accept_language("*") == []
-
-
-def test_negotiate_language_exact_match():
-    assert negotiate_language("es-ES,es;q=0.9", ["en", "es", "fr"]) == "es"
-
-
-def test_negotiate_language_primary_subtag_match():
-    # Browser asks for fr-CA; only fr is available -> match by primary subtag.
-    assert negotiate_language("fr-CA,fr;q=0.9", ["en", "es", "fr"], "en") == "fr"
-
-
-def test_negotiate_language_default_when_no_match():
-    assert negotiate_language("de", ["en", "es"], "en") == "en"
-    # No default provided -> first available.
-    assert negotiate_language("de", ["es", "en"]) == "es"
-
-
-def test_parse_accept_language_excludes_q0():
-    # q=0 means "not acceptable" (RFC 7231) and must be dropped.
-    parsed = parse_accept_language("de;q=0,en;q=0.5")
-    assert parsed == [("en", 0.5)]
-
-
-def test_negotiate_language_never_selects_q0():
-    # German is explicitly rejected (q=0); even though it is available it must
-    # not be chosen — fall back to the default instead.
-    assert negotiate_language("de;q=0,en;q=0.5", ["de"], "en") == "en"
-
-
-def test_parse_accept_language_drops_malformed_q():
-    # A malformed q must be dropped, NOT promoted to 1.0 (which would let a
-    # garbled entry outrank a valid preference).
-    parsed = parse_accept_language("de;q=high,en;q=0.9")
-    assert parsed == [("en", 0.9)]
-
-
-def test_negotiate_language_ignores_malformed_q_entry():
-    # 'de' has a garbled q and must not outrank the valid 'en' preference.
-    assert negotiate_language("de;q=high,en;q=0.9", ["de", "en"]) == "en"
