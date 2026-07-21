@@ -46,12 +46,59 @@ To send us a pull request, please:
    The default `pytest` run is offline, fast, and free — it excludes the
    AWS-backed AI quality tests. See [TESTING_PLAN.md](TESTING_PLAN.md) for the
    full test strategy, including the opt-in `pytest -m aws` tier.
-4. Commit to your fork using clear commit messages.
-5. Send us a pull request, answering any default questions in the pull request interface.
-6. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
+4. **Update the documentation.** Any change to user-visible behavior must include
+   the matching documentation updates in the *same* pull request — see
+   [Documentation](#documentation) below.
+5. Commit to your fork using clear commit messages.
+6. Send us a pull request, answering any default questions in the pull request interface.
+7. Pay attention to any automated CI failures reported in the pull request, and stay involved in the conversation.
 
 GitHub provides additional document on [forking a repository](https://help.github.com/articles/fork-a-repo/) and
 [creating a pull request](https://help.github.com/articles/creating-a-pull-request/).
+
+
+## Documentation
+
+Documentation is a first-class part of this project, and **keeping it current is
+a requirement of every contribution — not an optional follow-up.** A pull request
+that changes user-visible behavior is not complete until the documentation is
+updated in the same PR.
+
+The user-facing documentation lives in [`docs/`](docs/) and is published as a
+**GitHub Pages** site (Jekyll + the [just-the-docs](https://just-the-docs.com)
+theme) by [`.github/workflows/pages.yml`](.github/workflows/pages.yml). The
+short overview in [`README.md`](README.md) links out to that site.
+
+When your change touches any of the following, update the matching page(s) in
+the same pull request:
+
+| If you change… | Update… |
+|---|---|
+| A CLI command, flag, or default | [`docs/cli_guide.md`](docs/cli_guide.md) **and** [`docs/parameter_reference.md`](docs/parameter_reference.md) |
+| A public API function or its options | [`docs/api_integration_guide.md`](docs/api_integration_guide.md) (and `parameter_reference.md` for shared params) |
+| The managed pipeline / deployment | [`docs/pipeline_guide.md`](docs/pipeline_guide.md) |
+| Remediation behavior | [`docs/accessibility_remediation.md`](docs/accessibility_remediation.md) |
+| The rendered audit / agent layer | [`docs/rendered_agent_guide.md`](docs/rendered_agent_guide.md) |
+| Module structure | [`docs/architecture.md`](docs/architecture.md) |
+| Anything user-visible in the overview | [`README.md`](README.md) |
+
+Guidelines:
+
+- **README links to docs pages must be absolute** (`https://awslabs.github.io/...`)
+  because the README is also rendered on PyPI, which does not resolve relative
+  repository links. Cross-page links *inside* `docs/` are relative and
+  extensionless (e.g. `[CLI Guide](cli_guide)`).
+- **Diagrams are drawio-authored SVGs**, not Mermaid (GitHub Pages renders
+  neither Mermaid nor relative links without extra plugins). The editable
+  sources and tooling live in [`docs/assets/diagrams/`](docs/assets/diagrams/)
+  and the exported SVGs in `docs/assets/img/`. To change a diagram, edit its
+  spec in `gen_diagrams.py` (or the `.drawio` file directly), regenerate with
+  `./docs/assets/diagrams/export.sh`, and commit both the source and the updated
+  SVG. Keep image **alt text descriptive** — this is an accessibility project.
+- You can preview the site locally with `cd docs && bundle install && bundle exec jekyll serve`.
+
+AI coding agents working in this repo should also read [CLAUDE.md](CLAUDE.md)
+(and [AGENTS.md](AGENTS.md), which points to it).
 
 
 ## Finding contributions to work on
