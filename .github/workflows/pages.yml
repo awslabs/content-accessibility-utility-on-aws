@@ -4,10 +4,16 @@
 name: Deploy docs to GitHub Pages 📚
 
 on:
-  # Rebuild the site whenever the docs (or this workflow) change on main.
+  # Rebuild and deploy the site whenever the docs (or this workflow) change on main.
   push:
     branches:
       - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  # Dry-run build (no deploy) on PRs that touch the docs, so a broken site is
+  # caught before merge.
+  pull_request:
     paths:
       - "docs/**"
       - ".github/workflows/pages.yml"
@@ -19,10 +25,11 @@ on:
 permissions:
   contents: read
 
-# Allow one concurrent deployment; don't cancel an in-progress production deploy.
+# Serialize production deploys (don't cancel an in-progress one); PR dry-run
+# builds get their own per-ref group and supersede stale runs on the same PR.
 concurrency:
-  group: "pages"
-  cancel-in-progress: false
+  group: "pages-${{ github.event_name == 'pull_request' && github.ref || 'main' }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -64,6 +71,8 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: build
+    # Deploy only on push to main / manual runs — never on a PR dry-run build.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write       # to deploy to Pages
