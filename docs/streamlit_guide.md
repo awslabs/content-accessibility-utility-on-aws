@@ -1,3 +1,11 @@
+---
+title: Streamlit Web Interface Guide
+layout: default
+parent: Reference
+nav_order: 4
+description: "Set up and use the sample Streamlit web interface for upload, processing, and results."
+---
+
 <!--
  Copyright 2025 Amazon.com, Inc. or its affiliates.
  SPDX-License-Identifier: Apache-2.0
@@ -7,7 +15,9 @@
 
 This guide provides instructions for setting up and using the Document Accessibility web interface powered by Streamlit.
 
-## Table of Contents
+<details markdown="block">
+<summary><strong>On this page</strong></summary>
+
 - [Overview](#overview)
 - [Installation & Setup](#installation--setup)
 - [Configuration](#configuration)
@@ -16,6 +26,8 @@ This guide provides instructions for setting up and using the Document Accessibi
 - [Viewing Results](#viewing-results)
 - [Usage Tracking & Cost Analysis](#usage-tracking--cost-analysis)
 - [Troubleshooting](#troubleshooting)
+
+</details>
 
 ## Overview
 

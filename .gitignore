@@ -43,3 +43,11 @@ Dockerfile
 # Content-security-review disposition artifacts (local only)
 agent-data/
 .holmes/
+
+# GitHub Pages / Jekyll build artifacts (regenerable; never commit).
+docs/_site/
+docs/.jekyll-cache/
+docs/.jekyll-metadata
+docs/vendor/
+docs/.bundle/
+docs/Gemfile.lock

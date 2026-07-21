@@ -87,7 +87,7 @@ markers = [
 
 [project.urls]
 "Bug Tracker" = "https://github.com/awslabs/content-accessibility-utility-on-aws/issues"
-"Documentation" = "https://github.com/awslabs/content-accessibility-utility-on-aws"
+"Documentation" = "https://awslabs.github.io/content-accessibility-utility-on-aws/"
 "Source Code" = "https://github.com/awslabs/content-accessibility-utility-on-aws"
 
 [project.scripts]

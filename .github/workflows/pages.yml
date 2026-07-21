@@ -1,0 +1,77 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Deploy docs to GitHub Pages 📚
+
+on:
+  # Rebuild the site whenever the docs (or this workflow) change on main.
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+# Least privilege: the build job only reads; the deploy job gets the Pages
+# deployment scopes.
+permissions:
+  contents: read
+
+# Allow one concurrent deployment; don't cancel an in-progress production deploy.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Jekyll site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+          # The Gemfile / Gemfile.lock live in docs/.
+          working-directory: docs
+
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build with Jekyll
+        working-directory: docs
+        # baseurl / url come from the Pages action so project-site paths resolve.
+        run: |
+          bundle exec jekyll build \
+            --baseurl "${{ steps.pages.outputs.base_path }}" \
+            --destination ./_site
+        env:
+          JEKYLL_ENV: production
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/_site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write       # to deploy to Pages
+      id-token: write     # to verify the deployment originates from this workflow
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

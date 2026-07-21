@@ -1,0 +1,13 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+source "https://rubygems.org"
+
+# GitHub Pages site built with Jekyll + the just-the-docs theme (pulled at build
+# time via remote_theme, so the theme gem itself is not required here).
+gem "jekyll", "~> 4.3"
+gem "jekyll-remote-theme"
+gem "jekyll-seo-tag"
+
+# Windows / JRuby time-zone data; harmless elsewhere.
+gem "tzinfo-data", platforms: [:mingw, :mswin, :x64_mingw, :jruby]
