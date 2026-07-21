@@ -21,6 +21,20 @@
   white-space: normal; // allow wrapping instead of clipping
 }
 
+// PyPI badge injected into the navbar via _includes/header_custom.html.
+// Center it vertically in the header row and give it breathing room from the
+// aux nav links to its right.
+.header-badges {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  padding: 0 0.75rem;
+
+  img {
+    display: block;
+  }
+}
+
 // Wide reference tables (e.g. the Parameter Reference) have more columns than
 // the content column can show. Let them scroll horizontally instead of clipping
 // the right-most column.
