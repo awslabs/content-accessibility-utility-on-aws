@@ -8,6 +8,9 @@ source "https://rubygems.org"
 gem "jekyll", "~> 4.3"
 gem "jekyll-remote-theme"
 gem "jekyll-seo-tag"
+# just-the-docs requires jekyll-include-cache at runtime. remote_theme fetches
+# only the theme's files, not its gem dependencies, so it must be declared here.
+gem "jekyll-include-cache"
 
 # Windows / JRuby time-zone data; harmless elsewhere.
 gem "tzinfo-data", platforms: [:mingw, :mswin, :x64_mingw, :jruby]
