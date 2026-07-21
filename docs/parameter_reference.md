@@ -1,3 +1,11 @@
+---
+title: Parameter Reference
+layout: default
+parent: Reference
+nav_order: 1
+description: "Every parameter with its CLI flag and API equivalent side by side."
+---
+
 <!--
  Copyright 2025 Amazon.com, Inc. or its affiliates.
  SPDX-License-Identifier: Apache-2.0

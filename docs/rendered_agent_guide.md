@@ -1,3 +1,11 @@
+---
+title: Rendered Audit & Agent Guide
+layout: default
+parent: Reference
+nav_order: 3
+description: "The optional browser-backed audit and the render → fix → verify agent loop, plus AgentCore deployment."
+---
+
 <!--
  Copyright 2025 Amazon.com, Inc. or its affiliates.
  SPDX-License-Identifier: Apache-2.0
@@ -11,7 +19,8 @@ loop by applying a fix, re-rendering, and verifying it. It also covers how to ru
 that layer in AWS without shipping a browser binary, using the Amazon Bedrock
 AgentCore Browser Tool.
 
-## Table of Contents
+<details markdown="block">
+<summary><strong>On this page</strong></summary>
 
 - [Why a browser layer](#why-a-browser-layer)
 - [Installation](#installation)
@@ -22,6 +31,8 @@ AgentCore Browser Tool.
 - [Configuration reference](#configuration-reference)
 - [Testing](#testing)
 - [Limitations and status](#limitations-and-status)
+
+</details>
 
 ## Why a browser layer
 
@@ -65,11 +76,10 @@ and falls back to the static audit rather than failing.
 
 ## How it works
 
-```
-render_and_probe ─► (choose a fix) ─► apply_fix ─► verify ─► resolved
-      ▲                                              │
-      └───────────── not fixed: try again ◄──────────┘
-```
+![Agent verify loop: render_and_probe leads to choosing a fix, then apply_fix,
+then verify (which re-renders); a passing verify marks the issue resolved, while
+a failing verify loops back to choose another fix and try
+again.]({{ '/assets/img/agent-verify-loop.svg' | relative_url }})
 
 The layer is built around one seam, the **`BrowserProbe`** interface, with three
 deterministic operations:

@@ -1,3 +1,11 @@
+---
+title: Accessibility Remediation
+layout: default
+parent: Reference
+nav_order: 2
+description: "How the AI-powered remediation works, per-issue strategies, and table handling."
+---
+
 <!--
  Copyright 2025 Amazon.com, Inc. or its affiliates.
  SPDX-License-Identifier: Apache-2.0

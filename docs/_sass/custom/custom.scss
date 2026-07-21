@@ -1,0 +1,43 @@
+// Copyright 2025 Amazon.com, Inc. or its affiliates.
+// SPDX-License-Identifier: Apache-2.0
+
+// The site title is long ("Content Accessibility Utility on AWS") and wraps to
+// multiple lines. just-the-docs gives the sidebar header a fixed height, which
+// clips the top line. Let the header grow to fit and size the title down so it
+// reads cleanly on two lines.
+.site-header {
+  height: auto !important;
+  max-height: none !important; // theme pins this to 3.75rem, which clips wrapping
+  min-height: 3.75rem;
+  align-items: stretch; // let the title fill its own wrapped height
+}
+
+.site-title {
+  height: auto !important; // theme sets height:100% inside a flex row -> clips
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  font-size: 1.05rem !important;
+  line-height: 1.3;
+  white-space: normal; // allow wrapping instead of clipping
+}
+
+// Wide reference tables (e.g. the Parameter Reference) have more columns than
+// the content column can show. Let them scroll horizontally instead of clipping
+// the right-most column.
+.main-content {
+  table {
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  // Keep cell text readable while scrolling: don't let long code spans force the
+  // whole table absurdly wide, but do allow wrapping in prose cells.
+  td,
+  th {
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: anywhere;
+  }
+}

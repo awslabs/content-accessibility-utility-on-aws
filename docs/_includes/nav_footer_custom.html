@@ -1,0 +1,58 @@
+<!--
+ Copyright 2025 Amazon.com, Inc. or its affiliates.
+ SPDX-License-Identifier: Apache-2.0
+-->
+<footer class="site-footer">
+  <button
+    type="button"
+    id="color-scheme-toggle"
+    class="btn btn-outline"
+    aria-pressed="false"
+    title="Toggle light / dark theme"
+    style="margin-bottom: 0.5rem;"
+  >
+    <span id="color-scheme-toggle-label">🌙 Dark theme</span>
+  </button>
+  <div>
+    Content Accessibility Utility on AWS ·
+    <a href="https://github.com/awslabs/content-accessibility-utility-on-aws">GitHub</a> ·
+    <a href="https://pypi.org/project/content-accessibility-utility-on-aws/">PyPI</a>
+    <br />
+    Licensed under
+    <a href="https://github.com/awslabs/content-accessibility-utility-on-aws/blob/main/LICENSE">Apache-2.0</a>.
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var STORAGE_KEY = "cau-color-scheme";
+    var toggle = document.getElementById("color-scheme-toggle");
+    var label = document.getElementById("color-scheme-toggle-label");
+
+    function apply(scheme) {
+      // jtd.setTheme is provided by the just-the-docs theme.
+      if (window.jtd && typeof window.jtd.setTheme === "function") {
+        jtd.setTheme(scheme);
+      }
+      var isDark = scheme === "dark";
+      label.textContent = isDark ? "☀️ Light theme" : "🌙 Dark theme";
+      toggle.setAttribute("aria-pressed", isDark ? "true" : "false");
+    }
+
+    // Restore the visitor's saved preference, honoring OS setting on first visit.
+    var saved = null;
+    try { saved = localStorage.getItem(STORAGE_KEY); } catch (e) {}
+    if (!saved && window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      saved = "dark";
+    }
+    if (saved) { apply(saved); }
+
+    toggle.addEventListener("click", function () {
+      var next =
+        toggle.getAttribute("aria-pressed") === "true" ? "light" : "dark";
+      apply(next);
+      try { localStorage.setItem(STORAGE_KEY, next); } catch (e) {}
+    });
+  })();
+</script>

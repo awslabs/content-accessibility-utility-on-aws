@@ -1,3 +1,11 @@
+---
+title: API Integration Guide
+layout: default
+parent: Get Started
+nav_order: 2
+description: "Integrate the Content Accessibility library into your own Python applications."
+---
+
 <!--
  Copyright 2025 Amazon.com, Inc. or its affiliates.
  SPDX-License-Identifier: Apache-2.0
@@ -8,7 +16,9 @@
 This guide provides instructions for integrating the Content Accessibility
 library into your Python applications.
 
-## Table of Contents
+<details markdown="block">
+<summary><strong>On this page</strong></summary>
+
 - [Overview](#overview)
 - [Installation](#installation)
 - [Core Concepts](#core-concepts)
@@ -19,6 +29,8 @@ library into your Python applications.
 - [AWS Integration](#aws-integration)
 - [Batch Processing](#batch-processing)
 - [API Reference](#api-reference)
+
+</details>
 
 ## Overview
 
@@ -80,21 +92,10 @@ The library follows a three-step pipeline architecture:
 2. **Audit**: HTML → Accessibility Report
 3. **Remediation**: HTML + Report → Accessible HTML
 
-```
-PDF Document
-    │
-    ▼
-convert_pdf_to_html()
-    │
-    ▼
-HTML Content ──► audit_html_accessibility() ──► Accessibility Report
-    │                                                    │
-    ▼                                                    ▼
-remediate_html_accessibility() ◄─────────────────────────┘
-    │
-    ├──► Remediated HTML
-    └──► Remediation Report
-```
+![API processing pipeline: a PDF document goes through convert_pdf_to_html() to
+HTML content, which audit_html_accessibility() turns into an accessibility
+report; remediate_html_accessibility() takes the HTML plus that report and
+produces both remediated HTML and a remediation report.]({{ '/assets/img/api-pipeline-flow.svg' | relative_url }})
 
 Each step can be used independently or as part of the full pipeline via
 `process_pdf_accessibility()`.
@@ -611,14 +612,9 @@ content-accessibility-utility-on-aws deploy-pipeline
 
 ### Exception Hierarchy
 
-```
-DocumentAccessibilityError
-├── PDFConversionError
-├── AccessibilityAuditError
-├── AccessibilityRemediationError
-├── ConfigurationError
-└── ResourceError
-```
+![Exception hierarchy: DocumentAccessibilityError is the base class of
+PDFConversionError, AccessibilityAuditError, AccessibilityRemediationError,
+ConfigurationError, and ResourceError.]({{ '/assets/img/exception-hierarchy.svg' | relative_url }})
 
 ### Key Options
 
