@@ -5,6 +5,8 @@
 
 # Content Accessibility Utility on AWS
 
+[![PyPI version](https://img.shields.io/pypi/v/content-accessibility-utility-on-aws)](https://pypi.org/project/content-accessibility-utility-on-aws/)
+
 Digital content stakeholders across industries aim to streamline how they meet
 accessibility compliance standards efficiently. The **Content Accessibility
 Utility on AWS** offers a comprehensive solution for modernizing web content
