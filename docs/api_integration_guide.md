@@ -65,7 +65,15 @@ playwright install chromium
 # Agent layer (rendered + Strands + AgentCore SDK)
 pip install "content-accessibility-utility-on-aws[agent]"
 playwright install chromium
+
+# Internationalization: translate output into other languages (i18n)
+pip install "content-accessibility-utility-on-aws[i18n]"
 ```
+
+The `[i18n]` extra adds localized language display names (Babel) and
+source-language auto-detection (langdetect); both degrade to built-in fallbacks
+when absent, so it is a quality upgrade rather than a hard requirement for
+translation itself.
 
 ### Development Installation
 
@@ -223,6 +231,63 @@ result = remediate_html_accessibility(
 )
 ```
 
+### Translating Output (i18n)
+
+Translate the remediated HTML into one or more target languages with
+`translate_html_accessibility()`. It translates the visible content and the
+screen-reader-announced attributes (`alt`, `title`, `aria-label`, ...) on Amazon
+Bedrock while preserving all markup and accessibility structure. Requires the
+[`[i18n]` extra](#optional-extras). Translation is a separate step —
+`process_pdf_accessibility()` runs convert → audit → remediate only.
+
+```python
+from content_accessibility_utility_on_aws.api import translate_html_accessibility
+
+# One accessible file per language, written into a directory.
+result = translate_html_accessibility(
+    html_path="remediated.html",
+    options={"target_languages": ["es", "fr", "ja"]},
+    output_path="out/",
+)
+
+# Or a single multilingual document with an accessible language selector that
+# auto-selects the visitor's browser language on first load.
+result = translate_html_accessibility(
+    html_path="remediated.html",
+    options={
+        "target_languages": ["es", "fr", "ar"],
+        "multilingual": True,
+    },
+    output_path="multilingual.html",
+)
+
+result["source_language"]   # detected (or supplied) source language
+result["target_languages"]  # languages produced
+result["multilingual"]      # whether a combined document was emitted
+result["output_files"]      # paths written
+```
+
+The `options` dict is merged over the `i18n` configuration section:
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `target_languages` | `list[str]` \| `str` | — | **Required.** BCP-47 codes, e.g. `["es", "fr", "ja"]` |
+| `source_language` | `str` | auto-detected | Source language; detected from the document when omitted |
+| `multilingual` | `bool` | `False` | Emit one combined document with a language selector instead of one file per language |
+| `add_language_selector` | `bool` | `True` | Show the visible selector in multilingual output |
+| `use_browser_language` | `bool` | `True` | Auto-select the visitor's browser language on first load |
+| `batch_size` | `int` | `20` | Segments per Bedrock call |
+| `model_id` | `str` | default model | Bedrock model ID to use for translation |
+
+The translator sets `lang`/`dir` per language block (WCAG 3.1.2 Language of
+Parts), and skips `<script>`, `<style>`, `<code>`, and any element marked
+`translate="no"`. The selector and browser detection are progressive
+enhancements — with JavaScript disabled the default language stays visible.
+
+`translate_html_accessibility()` raises `TranslationError` on missing or invalid
+languages or a translation failure, and `FileNotFoundError` if `html_path` does
+not exist.
+
 ## Advanced Integration
 
 ### Multi-Page Document Processing
@@ -343,6 +408,7 @@ The library defines a hierarchy of exceptions:
 | `PDFConversionError` | PDF-to-HTML conversion failures |
 | `AccessibilityAuditError` | Audit processing failures |
 | `AccessibilityRemediationError` | Remediation failures |
+| `TranslationError` | Translation (i18n) failures, e.g. missing or invalid target languages |
 | `ConfigurationError` | Invalid configuration or missing settings |
 
 ### Example with Error Handling
@@ -582,6 +648,7 @@ for the `deploy-pipeline` command.
 | `convert_pdf_to_html()` | Convert PDF to HTML via BDA | Dict with `html_path`, `html_files`, `image_files` |
 | `audit_html_accessibility()` | Audit HTML for WCAG issues | Dict with `issues`, `summary`, `report` |
 | `remediate_html_accessibility()` | Fix accessibility issues in HTML | Dict with `issues_processed`, `issues_remediated`, `issues_failed`, `remediated_html_path` |
+| `translate_html_accessibility()` | Translate remediated HTML into other languages (requires `[i18n]`) | Dict with `source_language`, `target_languages`, `multilingual`, `output_files` |
 | `generate_remediation_report()` | Generate an HTML/JSON/text report | Dict with report data |
 | `save_usage_data()` | Save session usage metrics to file or S3 | Path string or None |
 
@@ -599,6 +666,9 @@ content-accessibility-utility-on-aws audit -i page.html -o report.json --rendere
 
 # Remediate HTML
 content-accessibility-utility-on-aws remediate -i page.html -o remediated.html
+
+# Translate remediated HTML into other languages (requires [i18n])
+content-accessibility-utility-on-aws translate -i remediated.html -o out/ --target-languages es,fr,ja
 
 # Full pipeline
 content-accessibility-utility-on-aws process -i doc.pdf -o output/

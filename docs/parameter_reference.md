@@ -92,6 +92,18 @@ content-accessibility-utility audit --input document.html --output audit_report.
 content-accessibility-utility remediate --input document.html --output remediated.html --auto-fix --model-id us.anthropic.claude-sonnet-5
 ```
 
+### Translate Output (i18n)
+
+Requires the `[i18n]` extra. See the [CLI Guide](cli_guide#translate--multilingual-output-i18n) for the full option list.
+
+```bash
+# One accessible file per language
+content-accessibility-utility translate --input remediated.html --output out/ --target-languages es,fr,ja
+
+# A single multilingual document with a language selector
+content-accessibility-utility translate --input remediated.html --output multilingual.html --target-languages es,fr,ar --multilingual
+```
+
 ## Process Command (Full Pipeline)
 
 The `process` command combines conversion, auditing, and remediation into a single workflow. It accepts parameters from all three operations, using the following pattern:
@@ -167,6 +179,23 @@ Set via CLI flags or the audit `options` dict / configuration file:
 See the [Rendered & Agent Guide](rendered_agent_guide.md) for details and cloud
 deployment.
 
+### Translation options (i18n)
+
+Set via `translate` CLI flags or the translate `options` dict / `i18n`
+configuration section. Requires the `[i18n]` extra.
+- `target_languages` (`--target-languages` / `--languages`): **required**
+  comma-separated (CLI) or list (API) of BCP-47 codes, e.g. `es,fr,ja`.
+- `source_language` (`--source-language`): source language; auto-detected from
+  the document when omitted.
+- `multilingual` (`--multilingual`): emit one combined document with an
+  accessible language selector instead of one file per language.
+- `add_language_selector` (`--no-language-selector` to disable): show the
+  visible selector in multilingual output. Default: `True`.
+- `use_browser_language` (`--no-browser-language` to disable): auto-select the
+  visitor's browser language on first load. Default: `True`.
+- `batch_size`: segments per Bedrock call. Default: `20`.
+- `model_id` (`--model-id`): Bedrock model ID used for translation.
+
 ## Python API Examples
 
 ### Full Processing Pipeline
@@ -233,6 +262,25 @@ remediation_result = remediate_html_accessibility(
     }
 )
 ```
+
+### Translate Output (i18n)
+
+```python
+from content_accessibility_utility_on_aws.api import translate_html_accessibility
+
+# Requires the [i18n] extra. Emits one accessible file per language.
+translation_result = translate_html_accessibility(
+    html_path="remediated.html",
+    options={
+        "target_languages": ["es", "fr", "ja"],
+        "multilingual": False
+    },
+    output_path="out/"
+)
+```
+
+See the [API Integration Guide](api_integration_guide#translating-output-i18n)
+for the full options table and return shape.
 
 ## Environment Variables
 
