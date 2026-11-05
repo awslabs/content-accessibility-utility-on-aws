@@ -16,6 +16,22 @@ from content_accessibility_utility_on_aws.utils.logging_helper import setup_logg
 logger = setup_logger(__name__)
 
 
+def _has_skip_link(soup: BeautifulSoup) -> bool:
+    """Whether the document already has an in-page "skip" link.
+
+    The old check read ``link["class"][0]``, but tags built with
+    ``new_tag`` store ``class`` as a plain string, so ``[0]`` was the letter
+    "s" and the skip link this module had just added was never recognized. The
+    landmark strategies each call ``remediate_missing_skip_link``, which then
+    added a second copy. Any ``#fragment`` link whose text mentions "skip"
+    counts, whatever its class.
+    """
+    for link in soup.find_all("a", href=True):
+        if link["href"].startswith("#") and "skip" in link.get_text().lower():
+            return True
+    return False
+
+
 def remediate_missing_skip_link(
     soup: BeautifulSoup, issue: Dict[str, Any], *args
 ) -> Optional[str]:
@@ -30,13 +46,9 @@ def remediate_missing_skip_link(
         A message describing the remediation or None if no remediation was performed
     """
     # Check if skip link already exists
-    skip_links = soup.find_all("a", string=lambda s: s and "skip" in s.lower())
-    for link in skip_links:
-        if link.get("href", "").startswith("#") and (
-            "skip" in link.get("class", [""])[0].lower() if link.get("class") else False
-        ):
-            logger.debug("Skip link already exists")
-            return "Skip link already exists - no remediation needed"
+    if _has_skip_link(soup):
+        logger.debug("Skip link already exists")
+        return "Skip link already exists - no remediation needed"
 
     # Find main content area
     main = soup.find("main") or soup.find(attrs={"role": "main"})

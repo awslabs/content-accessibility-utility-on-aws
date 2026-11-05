@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+
+### Bug Fixes
+
+- **remediate:** Fail closed when model calls fail; add `--no-ai`. **Behaviour change:** remediation no longer writes placeholder alt text ("Image description unavailable") or generic link text. Failed model-backed fixes are left unchanged and reported as `needs_review`, and the CLI exits `2` when any occurred (previously `0`). A one-time Bedrock preflight now stops the run with exit `1`, before writing output, when credentials, region or model access are missing. `--no-ai` (API `disable_ai=True`) applies deterministic fixes only. Also fixes duplicate skip links and keeps relative image paths such as `images/x.png`.
+
 ## [1.1.1] - 2026-07-21
 
 
