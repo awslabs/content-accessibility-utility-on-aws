@@ -220,3 +220,20 @@ def test_inaccessible_fixture_alt_recall():
     # alt="" is the decorative marker: not flagged.
     assert by_src.get("region_chart.png") == {"compliant-decorative-image"}
     assert report["summary"]["check_errors"] == 0
+
+
+def test_text_report_shows_check_error_count(monkeypatch, tmp_path):
+    from content_accessibility_utility_on_aws.utils.report_generator import (
+        generate_text_report,
+    )
+
+    def boom(self):
+        raise RuntimeError("kaboom")
+
+    monkeypatch.setattr(auditor_module.TargetSizeCheck, "check", boom)
+    report = audit_html("<html><body><p>Hi</p></body></html>")
+    out = tmp_path / "audit.txt"
+    generate_text_report(report, str(out), "accessibility")
+    text = out.read_text(encoding="utf-8")
+    assert "Check errors (criteria not evaluated): 1" in text
+    assert "check-error" in text

@@ -369,6 +369,13 @@ def generate_text_report(
     if "issues_failed" in report_data:
         text.append(f"Issues failed: {report_data.get('issues_failed', 0)}")
 
+    # Checks that crashed: their criteria were not evaluated.
+    check_errors = report_data.get(
+        "check_errors", (report_data.get("summary") or {}).get("check_errors", 0)
+    )
+    if check_errors:
+        text.append(f"Check errors (criteria not evaluated): {check_errors}")
+
     text.append("")
 
     # Add issues section
