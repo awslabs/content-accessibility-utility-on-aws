@@ -48,6 +48,34 @@ class AIRemediationRequiredError(DocumentAccessibilityError):
     """Raised when AI remediation is required but not available."""
 
 
+class NeedsReviewError(DocumentAccessibilityError):
+    """Raised by a remediation strategy that declines to change the document.
+
+    Strategies raise this instead of writing placeholder or generic fallback
+    content (e.g. "Image description unavailable"). The remediation manager
+    leaves the issue unfixed, marks it ``needs_review`` and records ``reason``.
+
+    Attributes:
+        reason: Human-readable reason recorded in the remediation report.
+        model_failed: True when a model call was attempted and failed (this is
+            what makes the CLI exit with code 2); False when no model was used,
+            for example because AI was disabled with ``--no-ai``.
+    """
+
+    def __init__(self, reason: str, model_failed: bool = False):
+        super().__init__(reason)
+        self.reason = reason
+        self.model_failed = model_failed
+
+
+class BedrockUnavailableError(AccessibilityRemediationError):
+    """Raised by the Bedrock preflight when model-backed fixes cannot run.
+
+    The message is actionable (missing credentials, wrong region, no model
+    access) and suggests ``--no-ai`` / ``disable_ai`` as the alternative.
+    """
+
+
 
 class TranslationError(DocumentAccessibilityError):
     """Raised when there's an error translating (internationalizing) content."""

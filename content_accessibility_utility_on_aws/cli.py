@@ -251,6 +251,42 @@ def _apply_rendered_options(args: Dict[str, Any], options: Dict[str, Any]) -> No
         options["agent"] = True
 
 
+# Exit code when remediation finished but one or more model-backed fixes failed
+# and were left unchanged for review (0 = success, 1 = error).
+EXIT_MODEL_FAILURES = 2
+
+
+def _add_no_ai_flag(parser: argparse.ArgumentParser) -> None:
+    """Add --no-ai (deterministic fixes only, no Bedrock calls)."""
+    parser.add_argument(
+        "--no-ai",
+        dest="no_ai",
+        action="store_true",
+        help=(
+            "Apply only deterministic fixes and make no Bedrock calls. Issues "
+            "that need a model (alt text, descriptive link text) are reported "
+            "as needs_review instead of being changed"
+        ),
+    )
+
+
+def _print_needs_review_summary(result: Dict[str, Any]) -> None:
+    """Print how many issues were left for review and why."""
+    needs_review = result.get("issues_needs_review", 0)
+    if not needs_review:
+        return
+    model_failures = result.get("model_failures", 0)
+    print(f"  Needs review (left unchanged): {needs_review}")
+    if model_failures:
+        print(f"  Model-backed fixes failed: {model_failures}")
+    reasons: Dict[str, int] = {}
+    for detail in result.get("needs_review_details", []):
+        reason = detail.get("error") or "unknown"
+        reasons[reason] = reasons.get(reason, 0) + 1
+    for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1])[:3]:
+        print(f"    {count} x {reason}")
+
+
 def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
     """Add accessibility remediation arguments to the remediate command parser."""
     # Add standardized arguments
@@ -289,6 +325,7 @@ def _add_remediate_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--audit-report", help="Path to audit report JSON file to use for remediation"
     )
+    _add_no_ai_flag(parser)
     parser.add_argument(
         "--generate-report",
         action="store_true",
@@ -553,6 +590,7 @@ def _add_process_arguments(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Generate a unified report that combines audit and remediation data",
     )
+    _add_no_ai_flag(parser)
 
     # Optional translation step. Runs after remediation when --target-languages
     # is provided; skipped otherwise. Requires the [i18n] extra.
@@ -989,6 +1027,7 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
             "single_page": args.get("single_page", False),
             "multi_page": args.get("multi_page", False),
             "profile": args.get("profile"),  # Pass the profile parameter
+            "disable_ai": bool(args.get("no_ai", False)),
         }
 
         if not args.get("quiet"):
@@ -1098,10 +1137,13 @@ def run_remediate_command(args: Dict[str, Any]) -> int:
             print(f"  Issues processed: {result.get('issues_processed', 0)}")
             print(f"  Issues remediated: {result.get('issues_remediated', 0)}")
             print(f"  Issues failed: {result.get('issues_failed', 0)}")
+            _print_needs_review_summary(result)
             print(f"  Remediated HTML: {result['remediated_html_path']}")
             if result.get("report_path"):
                 print(f"  Remediation report: {result['report_path']}")
 
+        if result.get("model_failures", 0):
+            return EXIT_MODEL_FAILURES
         return 0
 
     except Exception as e:
@@ -1210,6 +1252,7 @@ def run_process_command(args: Dict[str, Any]) -> int:
                 "single_page": args.get("single_page", False),
                 "multi_page": args.get("multi_page", False),
                 "profile": profile,  # Add profile to remediation options
+                "disable_ai": bool(args.get("no_ai", False)),
             }
 
             if args.get("multi_page", False):
@@ -1411,10 +1454,17 @@ def run_process_command(args: Dict[str, Any]) -> int:
                     "No HTML available to translate; skipping translation step"
                 )
 
+        model_failures = (remediate_result or {}).get("model_failures", 0)
         if not args.get("quiet"):
-            print("\nProcess completed successfully!")
+            if model_failures:
+                print("\nProcess completed, but some model-backed fixes failed.")
+                _print_needs_review_summary(remediate_result)
+            else:
+                print("\nProcess completed successfully!")
             print(f"All output files are in: {output_dir}")
 
+        if model_failures:
+            return EXIT_MODEL_FAILURES
         return 0
 
     except Exception as e:
