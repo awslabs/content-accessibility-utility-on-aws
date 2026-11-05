@@ -199,7 +199,7 @@ def generate_alt_text(
 
             # Check in standard_output/assets directory
             if not os.path.exists(img_path):
-                for root, dirs, files in os.walk(parent_dir):
+                for root, dirs, _files in os.walk(parent_dir):
                     if "standard_output" in root and "assets" in dirs:
                         assets_dir = os.path.join(root, "assets")
                         assets_path = os.path.join(assets_dir, base_filename)

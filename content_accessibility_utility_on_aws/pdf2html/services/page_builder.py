@@ -70,7 +70,7 @@ def handle_image_element(element_tag, element, output_dir):
 
         # Find the crop image file in the output directory
         crop_image_file = None
-        for root, dirs, files in os.walk(output_dir):
+        for root, _dirs, files in os.walk(output_dir):
             for file in files:
                 if file == expected_filename:
                     crop_image_file = os.path.join(root, file)
@@ -366,7 +366,7 @@ def copy_all_images_to_html_dir(output_dir, html_output_dir):
 
     # Find all image files in the output directory
     image_files = []
-    for root, dirs, files in os.walk(output_dir):
+    for root, _dirs, files in os.walk(output_dir):
         for file in files:
             if file.endswith(".png") or file.endswith(".jpg"):
                 image_files.append(os.path.join(root, file))

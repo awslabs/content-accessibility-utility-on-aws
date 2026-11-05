@@ -18,7 +18,7 @@ unresolved and reported, mirroring how the tool already handles model-off cases.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from content_accessibility_utility_on_aws.agent.browser_probe import BrowserProbe
 from content_accessibility_utility_on_aws.agent.session import AgentSession

@@ -120,3 +120,144 @@ with-version = true
 output = "THIRD-PARTY-LICENSES"
 order = "license"
 
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+# Conservative baseline: pycodestyle error subsets that ruff enables by default
+# (E4 imports, E7 statements, E9 syntax/IO), pyflakes (F) and flake8-bugbear (B).
+# Import sorting (I) is deferred: enabling it today would rewrite 94 files.
+select = ["E4", "E7", "E9", "F", "B"]
+ignore = [
+    # `raise ... from err` changes exception chaining in 12 error paths;
+    # adopt it deliberately in a follow-up rather than in a CI-only change.
+    "B904",
+    # Adding `strict=` to zip() changes runtime behaviour on length mismatch.
+    "B905",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Imports intentionally follow the module-level constant they depend on.
+"content_accessibility_utility_on_aws/i18n/translator.py" = ["E402"]
+
+[tool.ruff.format]
+# Ratchet: these files predate the formatter. New and untouched-by-this-list
+# files must be formatted; remove an entry when that file is reformatted.
+# Reformatting all of them at once would touch ~3.4k lines across 113 files.
+exclude = [
+    "content_accessibility_utility_on_aws/agent/axe_adapter.py",
+    "content_accessibility_utility_on_aws/agent/browser_probe.py",
+    "content_accessibility_utility_on_aws/agent/deterministic_loop.py",
+    "content_accessibility_utility_on_aws/agent/pipeline.py",
+    "content_accessibility_utility_on_aws/agent/rendered_auditor.py",
+    "content_accessibility_utility_on_aws/api.py",
+    "content_accessibility_utility_on_aws/audit/analyzers/__init__.py",
+    "content_accessibility_utility_on_aws/audit/api.py",
+    "content_accessibility_utility_on_aws/audit/auditor.py",
+    "content_accessibility_utility_on_aws/audit/base_check.py",
+    "content_accessibility_utility_on_aws/audit/checks/__init__.py",
+    "content_accessibility_utility_on_aws/audit/checks/link_checks.py",
+    "content_accessibility_utility_on_aws/audit/checks/target_size_checks.py",
+    "content_accessibility_utility_on_aws/audit/context_collector.py",
+    "content_accessibility_utility_on_aws/audit/enhanced_checks.py",
+    "content_accessibility_utility_on_aws/audit/standards/__init__.py",
+    "content_accessibility_utility_on_aws/batch/audit.py",
+    "content_accessibility_utility_on_aws/batch/common.py",
+    "content_accessibility_utility_on_aws/batch/pdf2html.py",
+    "content_accessibility_utility_on_aws/cli.py",
+    "content_accessibility_utility_on_aws/deploy.py",
+    "content_accessibility_utility_on_aws/deployment_assets/trigger_lambda/handler.py",
+    "content_accessibility_utility_on_aws/i18n/language_selector.py",
+    "content_accessibility_utility_on_aws/i18n/languages.py",
+    "content_accessibility_utility_on_aws/i18n/translator.py",
+    "content_accessibility_utility_on_aws/pdf2html/__init__.py",
+    "content_accessibility_utility_on_aws/pdf2html/api.py",
+    "content_accessibility_utility_on_aws/pdf2html/services/__init__.py",
+    "content_accessibility_utility_on_aws/pdf2html/services/bedrock_client.py",
+    "content_accessibility_utility_on_aws/pdf2html/services/image_fix.py",
+    "content_accessibility_utility_on_aws/pdf2html/services/page_builder.py",
+    "content_accessibility_utility_on_aws/pdf2html/utils.py",
+    "content_accessibility_utility_on_aws/pdf2html/utils/pdf_utils.py",
+    "content_accessibility_utility_on_aws/remediate/__init__.py",
+    "content_accessibility_utility_on_aws/remediate/api.py",
+    "content_accessibility_utility_on_aws/remediate/bda_integration/element_index.py",
+    "content_accessibility_utility_on_aws/remediate/bda_integration/element_parser.py",
+    "content_accessibility_utility_on_aws/remediate/bda_integration/remediation_manager.py",
+    "content_accessibility_utility_on_aws/remediate/helpers/__init__.py",
+    "content_accessibility_utility_on_aws/remediate/helpers/selector_helper.py",
+    "content_accessibility_utility_on_aws/remediate/helpers/text_generation.py",
+    "content_accessibility_utility_on_aws/remediate/prompt_generators/__init__.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_manager.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/__init__.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/form_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/heading_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/image_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/interactive_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/link_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/table_detection.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/table_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediation_strategies/target_size_remediation.py",
+    "content_accessibility_utility_on_aws/remediate/remediator.py",
+    "content_accessibility_utility_on_aws/remediate/services/__init__.py",
+    "content_accessibility_utility_on_aws/remediate/services/bedrock_client.py",
+    "content_accessibility_utility_on_aws/utils/config.py",
+    "content_accessibility_utility_on_aws/utils/constants.py",
+    "content_accessibility_utility_on_aws/utils/html_utils.py",
+    "content_accessibility_utility_on_aws/utils/image_utils.py",
+    "content_accessibility_utility_on_aws/utils/logging_helper.py",
+    "content_accessibility_utility_on_aws/utils/report_generator.py",
+    "content_accessibility_utility_on_aws/utils/resources.py",
+    "content_accessibility_utility_on_aws/utils/usage_tracker.py",
+    "deployment/trigger_lambda/handler.py",
+    "docs/accessibility_remediation.md",
+    "docs/api_integration_guide.md",
+    "docs/assets/diagrams/gen_diagrams.py",
+    "docs/index.md",
+    "docs/parameter_reference.md",
+    "docs/rendered_agent_guide.md",
+    "scripts/release.py",
+    "tests/ai_quality/judge.py",
+    "tests/ai_quality/test_alt_text_quality.py",
+    "tests/ai_quality/test_table_remediation_quality.py",
+    "tests/audit/test_audit_checks.py",
+    "tests/audit/test_color_contrast_math.py",
+    "tests/audit/test_target_size_check.py",
+    "tests/e2e/test_end_to_end_offline.py",
+    "tests/i18n/test_language_selector.py",
+    "tests/i18n/test_translator.py",
+    "tests/remediate/test_bedrock_reasoning_block.py",
+    "tests/remediate/test_computed_contrast.py",
+    "tests/remediate/test_duplicate_ids.py",
+    "tests/remediate/test_duplicate_link_remediation.py",
+    "tests/remediate/test_element_resolution.py",
+    "tests/remediate/test_element_resolution_after_mutation.py",
+    "tests/remediate/test_focus_order.py",
+    "tests/remediate/test_model_backed_remediation.py",
+    "tests/remediate/test_rule_based_remediation.py",
+    "tests/remediate/test_table_structure.py",
+    "tests/rendered/test_agentcore_probe.py",
+    "tests/rendered/test_browser_probe.py",
+    "tests/rendered/test_deploy_pipeline.py",
+    "tests/rendered/test_name_role_value_remediation.py",
+    "tests/rendered/test_page_state.py",
+    "tests/rendered/test_pipeline_multipage.py",
+    "tests/utils/test_css_dimensions.py",
+    "tests/utils/test_text_generation.py",
+    "webapp/app.py",
+    "webapp/components/sidebar.py",
+    "webapp/config/app_config_local.py",
+    "webapp/processors/html_processor.py",
+    "webapp/processors/pdf_processor.py",
+    "webapp/processors/zip_processor.py",
+    "webapp/ui_helpers/charts.py",
+    "webapp/ui_helpers/download_helpers.py",
+    "webapp/ui_helpers/html_preview.py",
+    "webapp/utils/aws_utils.py",
+    "webapp/utils/session_utils.py",
+    "webapp/views/audit_view.py",
+    "webapp/views/remediation_view.py",
+    "webapp/views/report_view.py",
+    "webapp/views/usage_view.py",
+]

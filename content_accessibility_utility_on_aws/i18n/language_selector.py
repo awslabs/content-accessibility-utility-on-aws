@@ -20,7 +20,7 @@ visible, so content is never hidden from a no-JS or crawler client.
 """
 
 import json
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from bs4 import BeautifulSoup
 

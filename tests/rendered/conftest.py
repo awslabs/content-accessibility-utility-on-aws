@@ -14,7 +14,7 @@ Two kinds of tests live here:
 - **Agent** tests (``@pytest.mark.aws``) additionally call Bedrock.
 """
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import pytest
 

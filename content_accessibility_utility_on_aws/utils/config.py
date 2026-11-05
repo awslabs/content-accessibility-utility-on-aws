@@ -145,14 +145,14 @@ class ConfigManager:
                     existing_value = config[option_name]
                     existing_type = type(existing_value)
 
-                    if existing_type == bool:
+                    if existing_type is bool:
                         # Special handling for booleans
                         value = value.lower() in ("true", "1", "yes", "y")
-                    elif existing_type == int:
+                    elif existing_type is int:
                         value = int(value)
-                    elif existing_type == float:
+                    elif existing_type is float:
                         value = float(value)
-                    elif existing_type == list:
+                    elif existing_type is list:
                         # Split by commas for list values
                         value = [item.strip() for item in value.split(",")]
                     # else use the string value

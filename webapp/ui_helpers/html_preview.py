@@ -118,11 +118,17 @@ def display_html_with_pagination(html_dir: str) -> None:
     else:
         # Display file selection
         st.markdown("### Select HTML Page to Preview")
-        # Show the dropdown for selection
+        # Show the dropdown for selection. The page-number lookup lives in a
+        # helper because a backslash inside an f-string expression is a
+        # SyntaxError on Python 3.11.
+        def _page_label(name: str) -> str:
+            match = re.search(r"(\d+)", name)
+            return f"Page {match.group(1) if match else 'Unknown'}: {name}"
+
         selected_file = st.selectbox(
             "Available HTML pages:",
             sorted_display_files,
-            format_func=lambda x: f"Page {re.search(r'(\d+)', x).group(1) if re.search(r'(\d+)', x) else 'Unknown'}: {x}",
+            format_func=_page_label,
         )
         st.divider()
 

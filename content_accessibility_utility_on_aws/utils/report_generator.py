@@ -190,7 +190,7 @@ def prepare_for_json_serialization(data, depth=20, visited=None):
             else:
                 visited.remove(object_id)
                 return str(data)
-        except:
+        except Exception:
             # If all else fails, use string representation
             return str(data)
 

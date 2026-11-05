@@ -104,7 +104,7 @@ class HTMLUpdater:
         """
         logger.debug("===== Applying fix =====")
         logger.debug(f"Selector: {selector}")
-        logger.debug(f"Content updates provided: True")
+        logger.debug("Content updates provided: True")
 
         try:
             element = self.soup.select_one(selector)
@@ -144,7 +144,7 @@ class HTMLUpdater:
         """
         logger.debug("===== Applying fix =====")
         logger.debug(f"Selector: {selector}")
-        logger.debug(f"Replace element: True")
+        logger.debug("Replace element: True")
 
         try:
             element = self.soup.select_one(selector)
@@ -185,7 +185,7 @@ class HTMLUpdater:
             return False
 
         output_path = output_path or self.html_path
-        logger.debug(f"Saving HTML to original path")
+        logger.debug("Saving HTML to original path")
 
         try:
             # Create directory if it doesn't exist

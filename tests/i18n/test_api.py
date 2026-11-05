@@ -9,6 +9,7 @@ full file-I/O orchestration is exercised without AWS access.
 """
 
 import os
+import sys
 
 import pytest
 
@@ -124,9 +125,12 @@ def test_directory_input_translates_every_page(tmp_path):
         assert os.path.exists(of[stem]["es"])
 
 
-def test_multilingual_includes_source_when_detection_fails(tmp_path):
+def test_multilingual_includes_source_when_detection_fails(tmp_path, monkeypatch):
     # No <html lang>, no source_language, langdetect absent -> detection is None.
     # The original content must still be included as a selectable option.
+    # Force langdetect to be unimportable so the test is hermetic whether or not
+    # the [i18n] extra is installed (langdetect labels "T Original" as "tl").
+    monkeypatch.setitem(sys.modules, "langdetect", None)
     src = tmp_path / "doc.html"
     src.write_text(
         "<!DOCTYPE html><html><head><title>T</title></head>"

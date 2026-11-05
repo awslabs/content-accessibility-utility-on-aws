@@ -1,0 +1,43 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+# Weekly, grouped version updates for Python dependencies and GitHub Actions.
+# Major version bumps are ignored for *version* updates (they need a deliberate,
+# tested migration); Dependabot security updates are unaffected and still open
+# PRs for vulnerable dependencies regardless of semver level.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      python-minor-and-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      github-actions:
+        applies-to: version-updates
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci(deps)"

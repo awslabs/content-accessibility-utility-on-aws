@@ -282,7 +282,7 @@ class FormFieldsetCheck(AccessibilityCheck):
                 radio_groups[name].append(radio)
 
         # Check each group
-        for name, radios in radio_groups.items():
+        for _name, radios in radio_groups.items():
             # If there are multiple radios with the same name
             if len(radios) > 1:
                 # Check if they're in a fieldset

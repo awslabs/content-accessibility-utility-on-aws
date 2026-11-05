@@ -27,7 +27,7 @@ def find_all_images(output_dir):
         dict: Dictionary mapping image filenames to their full paths
     """
     image_files = {}
-    for root, dirs, files in os.walk(output_dir):
+    for root, _dirs, files in os.walk(output_dir):
         for file in files:
             if file.endswith(".png") or file.endswith(".jpg"):
                 image_files[file] = os.path.join(root, file)
@@ -92,7 +92,7 @@ def copy_missing_images(html_file, output_dir, html_output_dir):
                 logger.warning(f"Failed to copy image {src_file}: {e}")
         else:
             # Try to find a similar image
-            for img_name, img_path in all_images.items():
+            for _img_name, img_path in all_images.items():
                 try:
                     shutil.copy2(img_path, dest_file)
                     logger.debug(f"Copied alternative image: {img_path} -> {dest_file}")

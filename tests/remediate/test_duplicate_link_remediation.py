@@ -88,6 +88,6 @@ def test_model_backed_authors_descriptive_text():
             '<a href="/docs/cli">click here</a>.</p></body></html>')
     soup = BeautifulSoup(html, "html.parser")
     first = soup.find_all("a")[0]
-    msg = remediate_duplicate_link_text(soup, _issue(first), _FakeClient())
+    remediate_duplicate_link_text(soup, _issue(first), _FakeClient())
     assert first.get_text(strip=True) == "View the API reference"
     assert "click here" not in first.get_text(strip=True).lower()
