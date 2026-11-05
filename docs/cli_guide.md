@@ -220,6 +220,7 @@ content-accessibility-utility-on-aws remediate \
 | `--model-id` | Bedrock model ID to use for remediation |
 | `--severity-threshold [minor\|major\|critical]` | Minimum severity to remediate |
 | `--audit-report` | Path to an existing audit-report JSON to remediate against |
+| `--no-ai` | Apply only deterministic fixes and make no Bedrock calls. Issues that need a model are reported as `needs_review` |
 | `--single-page` | Combine all pages into one HTML document |
 | `--multi-page` | Keep pages as separate HTML files |
 | `--generate-report` | Generate a remediation report (default: on) |
@@ -229,6 +230,37 @@ content-accessibility-utility-on-aws remediate \
 Passing `--audit-report` lets you remediate against a report from a prior run
 without re-auditing. See [Accessibility Remediation](accessibility_remediation)
 for how each issue type is fixed.
+
+### Model failures and exit codes
+
+Model-backed fixes (alt text, descriptive link text, headings, labels) fail
+closed. If a model call fails, that issue is left unchanged and reported as
+`needs_review` with the error. The tool never writes placeholder text such as
+"Image description unavailable".
+
+Before the first model call, `remediate` checks once that Bedrock is reachable
+(credentials, region and access to `--model-id`). If it isn't, the command stops
+before writing any output and says what to fix. `--no-ai` skips this check.
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Remediation finished. With `--no-ai`, issues that need a model are listed as needing review but do not affect the exit code |
+| `1` | Error, including a failed Bedrock preflight. No output was written |
+| `2` | Remediation finished, but one or more model-backed fixes failed and were left for review. The summary shows how many and why |
+
+```text
+$ content-accessibility-utility-on-aws remediate -i report.html -o out/remediated.html \
+    --audit-report audit.json --auto-fix --no-ai
+Remediation Results:
+  Issues processed: 26
+  Issues remediated: 19
+  Issues failed: 7
+  Needs review (left unchanged): 7
+    3 x Alt text needs a model or a human author; AI is disabled
+    ...
+$ echo $?
+0
+```
 
 ## `translate` — multilingual output (i18n)
 
@@ -281,6 +313,7 @@ content-accessibility-utility-on-aws process \
 | `--audit-format [json\|html\|text]` | Format for the audit report |
 | `--severity [minor\|major\|critical]` | Minimum severity for audit and remediation |
 | `--auto-fix` | Automatically fix issues where possible |
+| `--no-ai` | Remediate with deterministic fixes only (no Bedrock calls). Exit codes match `remediate` |
 | `--rendered` | Include the browser-backed rendered audit |
 | `--agent` | Use the browser-backed agent for the rendered pass (implies `--rendered`) |
 | `--target-languages es,fr,...` | Also translate the result (needs `[i18n]`); add `--multilingual` for one selectable document. Per-language files land in a `translations/` subdirectory |
@@ -402,6 +435,8 @@ content-accessibility-utility-on-aws translate -i fixed.html -o site.html \
 | `ConfigurationError: BDA_S3_BUCKET / BDA_PROJECT_ARN` | The PDF path needs an S3 bucket and BDA project. Export the env vars or pass `--s3-bucket` / `--bda-project-arn`. |
 | `--rendered`/`--agent` "falling back to static audit" warning | The `[rendered]`/`[agent]` extra isn't installed, or you didn't run `playwright install chromium`. |
 | AccessDenied on Bedrock model | Request model access in the Bedrock console for the `--model-id` you're using. |
+| `Bedrock preflight failed: ...` (exit 1) | Bedrock isn't reachable: missing or expired credentials, no region, or no access to the model in that region. Fix what the message names, or rerun with `--no-ai`. |
+| Exit code 2 / "Model-backed fixes failed" | Some model calls failed mid-run. Those issues were left unchanged and are marked `needs_review` in the remediation report. |
 | Slow or partial remediation | Large documents have many issues; use `--max-issues` and/or a higher `--severity-threshold`. |
 
 Add `--debug` to any command for verbose logs, or `--quiet` to emit only the

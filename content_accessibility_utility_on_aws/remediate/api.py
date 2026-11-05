@@ -153,22 +153,10 @@ def remediate_html_accessibility(
                     # Update result with remediation counts
                     result.update(remediation_result)
 
-                    # Write the updated HTML back to the file
-                    with open(output_path, "w", encoding="utf-8") as f:
-                        f.write(str(soup))
-
-                    # Copy images if specified
-                    if image_dir and os.path.exists(image_dir):
-                        images_dest_dir = os.path.join(os.path.dirname(output_path))
-                        logger.debug(
-                            f"Copying images from {image_dir} to {images_dest_dir}"
-                        )
-                        copy_images_to_output(image_dir, images_dest_dir, soup)
-
-                        # Write the updated HTML with image references back to the file
-                        with open(output_path, "w", encoding="utf-8") as f:
-                            f.write(str(soup))
-                    else:
+                    # Images were already copied (preserving their relative
+                    # paths) before remediation; a second copy pass is not
+                    # needed.
+                    if not (image_dir and os.path.exists(image_dir)):
                         logger.warning(
                             f"Image directory not specified or does not exist: {image_dir}"
                         )
@@ -195,6 +183,9 @@ def remediate_html_accessibility(
                 total_processed = 0
                 total_remediated = 0
                 total_failed = 0
+                total_needs_review = 0
+                total_model_failures = 0
+                needs_review_details = []
                 file_results = []  # Store individual file results
 
                 # If we have an audit report, process each file with its issues
@@ -321,6 +312,15 @@ def remediate_html_accessibility(
                             total_processed += file_result.get("issues_processed", 0)
                             total_remediated += file_result.get("issues_remediated", 0)
                             total_failed += file_result.get("issues_failed", 0)
+                            total_needs_review += file_result.get(
+                                "issues_needs_review", 0
+                            )
+                            total_model_failures += file_result.get(
+                                "model_failures", 0
+                            )
+                            needs_review_details.extend(
+                                file_result.get("needs_review_details", [])
+                            )
 
                             # Track failed issue types
                             if "failed_issue_types" in file_result:
@@ -330,18 +330,11 @@ def remediate_html_accessibility(
                                     file_result.get("failed_issue_types", [])
                                 )
 
-                            # Copy images if specified
-                            if image_dir and os.path.exists(image_dir):
-                                images_dest_dir = os.path.join(output_path, "images")
-                                logger.debug(
-                                    f"Copying images from {image_dir} to {images_dest_dir}"
-                                )
-                                copy_images_to_output(image_dir, images_dest_dir, soup)
-
-                                # Write the updated HTML with image references back to the file
-                                with open(output_file, "w", encoding="utf-8") as f:
-                                    f.write(str(soup))
-                            else:
+                            # Images were already copied next to output_file
+                            # (preserving relative paths) before remediation;
+                            # the old second pass only made unused duplicates
+                            # under "<output>/images".
+                            if not (image_dir and os.path.exists(image_dir)):
                                 logger.warning(
                                     f"Image directory not specified or does not exist: {image_dir}"
                                 )
@@ -354,6 +347,9 @@ def remediate_html_accessibility(
                     result["issues_processed"] = total_processed
                     result["issues_remediated"] = total_remediated
                     result["issues_failed"] = total_failed
+                    result["issues_needs_review"] = total_needs_review
+                    result["model_failures"] = total_model_failures
+                    result["needs_review_details"] = needs_review_details
                     result["file_results"] = (
                         file_results  # Store individual file results
                     )
@@ -552,6 +548,7 @@ def remediate_html_accessibility(
             "max_issues": options["max_issues"],
             "issue_types": options["issue_types"],
             "severity_threshold": options["severity_threshold"],
+            "disable_ai": bool(options.get("disable_ai", False)),
             "image_dir": image_dir,
         }
 
@@ -633,6 +630,11 @@ def _remediate_html_file(
             )
             result["failed_issues_details"] = remediation_result.get(
                 "failed_issues_details", []
+            )
+            for key in ("issues_needs_review", "model_failures"):
+                result[key] = remediation_result.get(key, 0)
+            result["needs_review_details"] = remediation_result.get(
+                "needs_review_details", []
             )
 
             # Log detailed results

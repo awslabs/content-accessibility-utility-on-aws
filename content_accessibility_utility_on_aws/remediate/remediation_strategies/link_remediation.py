@@ -17,6 +17,7 @@ from content_accessibility_utility_on_aws.remediate.helpers.text_generation impo
 from content_accessibility_utility_on_aws.remediate.helpers.selector_helper import (
     find_element_from_issue,
 )
+from content_accessibility_utility_on_aws.utils.logging_helper import NeedsReviewError
 
 
 def _resolve_link(soup: BeautifulSoup, issue: Dict[str, Any]):
@@ -111,9 +112,12 @@ def remediate_empty_link_text(
         empty_link.string = f"Link to {domain}"
         return f"Added text to empty link: Link to {domain}"
 
-    # Default text
-    empty_link.string = f"Link to {href}"
-    return f"Added text to empty link: Link to {href}"
+    # No external domain to name (e.g. "#settings" or a relative path): text
+    # like "Link to #settings" is not meaningful, so leave it for review.
+    raise NeedsReviewError(
+        f"Empty link to '{href}' has no destination name to derive text from",
+        model_failed=False,
+    )
 
 
 def remediate_generic_link_text(
@@ -169,39 +173,19 @@ def remediate_generic_link_text(
         generic_link.string = generated
         return f"Replaced generic link text '{current_text}' with: {generated}"
 
-    # Generate better text based on the URL and context
+    # No model text (AI disabled): name the external destination if there is
+    # one. Without a domain, the old fallbacks ("View details", "More about
+    # <first 30 chars>") were still generic or garbled, so leave it for review.
     domain = _domain_of(href)
     if domain:
         generic_link.string = f"Visit {domain} website"
         return f"Replaced generic link text with: Visit {domain} website"
 
-    # Try to get context from surrounding text
-    parent = generic_link.parent
-    if parent and parent.name != "body":
-        parent_text = parent.get_text(strip=True)
-        # Remove the link text from parent text
-        context_text = parent_text.replace(current_text, "").strip()
-        if context_text:
-            # Use first 30 chars of context
-            context_preview = context_text[:30].strip()
-            if len(context_text) > 30:
-                context_preview += "..."
-            generic_link.string = f"More about {context_preview}"
-            return (
-                f"Replaced generic link text with context: More about {context_preview}"
-            )
-
-    # Default improvement (current_text captured above)
-    if current_text.lower() == "click here":
-        generic_link.string = "View details"
-    elif current_text.lower() == "read more":
-        generic_link.string = "Read more about this topic"
-    elif current_text.lower() == "learn more":
-        generic_link.string = "Learn more about this topic"
-    else:
-        generic_link.string = "View related information"
-
-    return f"Replaced generic link text '{current_text}' with more descriptive text"
+    raise NeedsReviewError(
+        f"Generic link text '{current_text}' needs descriptive text from a model "
+        "or a human author",
+        model_failed=False,
+    )
 
 
 def remediate_url_as_link_text(

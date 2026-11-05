@@ -54,6 +54,7 @@ The following table shows the standardized parameter names used across the tool:
 | Model ID | `--model-id` | `model_id` | No | Default model | Bedrock model ID to use for remediation |
 | Severity Threshold | `--severity-threshold` | `severity_threshold` | No | `minor` | Minimum severity level to remediate |
 | Audit Report | `--audit-report` | `audit_report` | No | None | Path to audit report JSON file |
+| No AI | `--no-ai` | `disable_ai` | No | Disabled | Deterministic fixes only, no Bedrock calls or preflight; model-backed issues are reported as `needs_review` (also `process`) |
 | Generate Report | `--generate-report` | `generate_report` | No | Enabled | Generate a remediation report |
 | Report Format | `--report-format` | `report_format` | No | `html` | Format for the remediation report |
 | **Process Command** |
@@ -260,6 +261,16 @@ remediation_result = remediate_html_accessibility(
         "model_id": "us.anthropic.claude-sonnet-5",
         "auto_fix": True
     }
+)
+# remediation_result["model_failures"] > 0 means some model-backed fixes failed
+# and were left unchanged (remediation_status == "needs_review").
+
+# Deterministic fixes only, no Bedrock calls
+remediation_result = remediate_html_accessibility(
+    html_path="output/document.html",
+    audit_report=audit_result,
+    output_path="output/remediated.html",
+    disable_ai=True,
 )
 ```
 

@@ -13,8 +13,18 @@ from datetime import datetime
 from typing import Optional
 
 from botocore.config import Config
+from botocore.exceptions import (
+    ClientError,
+    EndpointConnectionError,
+    NoCredentialsError,
+    NoRegionError,
+    ProfileNotFound,
+)
 
-from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.utils.logging_helper import (
+    setup_logger,
+    BedrockUnavailableError,
+)
 from content_accessibility_utility_on_aws.utils.usage_tracker import SessionUsageTracker
 from content_accessibility_utility_on_aws.utils.image_utils import resize_image
 from content_accessibility_utility_on_aws.utils.constants import (
@@ -42,6 +52,43 @@ class AltTextGenerationError(Exception):
     """Exception raised when alt text generation fails."""
 
 
+# Appended to every preflight failure so users know the offline alternative.
+_NO_AI_HINT = (
+    ". To apply only deterministic fixes without Bedrock, rerun with --no-ai "
+    "(API: disable_ai=True)."
+)
+
+# Error codes meaning the credentials themselves are bad, not the model access.
+_CREDENTIAL_ERROR_CODES = {
+    "UnrecognizedClientException",
+    "InvalidSignatureException",
+    "ExpiredTokenException",
+    "ExpiredToken",
+    "InvalidClientTokenId",
+}
+
+
+def check_bedrock_access(
+    model_id: str = DEFAULT_MODEL_ID, profile: Optional[str] = None
+) -> None:
+    """Build a Bedrock client and run its preflight (see ``check_access``).
+
+    Raises:
+        BedrockUnavailableError: When credentials, region or model access are
+            missing, with a message that says what to fix.
+    """
+    try:
+        client = BedrockClient(model_id=model_id, profile=profile)
+    except NoRegionError:
+        raise BedrockUnavailableError(
+            "Bedrock preflight failed: no AWS region is configured. Set "
+            "AWS_REGION or a region in your AWS profile" + _NO_AI_HINT
+        )
+    except ProfileNotFound as e:
+        raise BedrockUnavailableError(f"Bedrock preflight failed: {e}" + _NO_AI_HINT)
+    client.check_access()
+
+
 class BedrockClient:
     """Client for interacting with AWS Bedrock for multimodal AI capabilities.
 
@@ -59,6 +106,7 @@ class BedrockClient:
         self,
         model_id: str = DEFAULT_MODEL_ID,
         profile: Optional[str] = None,
+        session: Optional[boto3.Session] = None,
     ):
         """
         Initialize the Bedrock client.
@@ -66,6 +114,8 @@ class BedrockClient:
         Args:
             model_id: The ID of the Bedrock model to use
             profile: AWS profile name to use for authentication
+            session: Optional pre-built boto3 session (takes precedence over
+                ``profile``); mainly for tests that stub the client.
         """
         self.model_id = model_id
         self.profile = profile
@@ -83,7 +133,9 @@ class BedrockClient:
         boto_config = BEDROCK_BOTO_CONFIG
         try:
             # Create a boto3 session with the provided profile
-            if profile:
+            if session is not None:
+                pass
+            elif profile:
                 try:
                     # Try to create a session with the provided profile
                     session = boto3.Session(profile_name=profile)
@@ -98,6 +150,7 @@ class BedrockClient:
                 # No profile specified, use default credentials
                 session = boto3.Session()
 
+            self.session = session
             self.client = session.client("bedrock-runtime", config=boto_config)
             logger.debug(
                 f"Initialized Bedrock client with model: {model_id}, profile: {profile}"
@@ -105,6 +158,76 @@ class BedrockClient:
         except Exception as e:
             logger.warning(f"Failed to initialize Bedrock client: {e}")
             raise
+
+    def check_access(self) -> None:
+        """Verify once that this client can invoke its model, or fail fast.
+
+        Checks for credentials and a region locally, then sends one minimal
+        Converse request (``maxTokens`` of 16, no tool use) to confirm the
+        credentials are valid and the account has access to ``model_id`` in
+        this region. Works with ``botocore.stub.Stubber`` on ``self.client``.
+
+        Raises:
+            BedrockUnavailableError: With an actionable message.
+        """
+        region = self.client.meta.region_name
+        session = getattr(self, "session", None)
+        if session is not None and session.get_credentials() is None:
+            raise BedrockUnavailableError(
+                "Bedrock preflight failed: no AWS credentials were found. "
+                "Configure credentials (for example `aws configure`, "
+                "`aws sso login`, or --profile <name>)" + _NO_AI_HINT
+            )
+        if not region:
+            raise BedrockUnavailableError(
+                "Bedrock preflight failed: no AWS region is configured. Set "
+                "AWS_REGION or a region in your AWS profile" + _NO_AI_HINT
+            )
+        try:
+            self.client.converse(
+                modelId=self.model_id,
+                messages=[{"role": "user", "content": [{"text": "ping"}]}],
+                inferenceConfig={"maxTokens": 16},
+            )
+        except NoCredentialsError:
+            raise BedrockUnavailableError(
+                "Bedrock preflight failed: no AWS credentials were found. "
+                "Configure credentials (for example `aws configure`, "
+                "`aws sso login`, or --profile <name>)" + _NO_AI_HINT
+            )
+        except EndpointConnectionError as e:
+            raise BedrockUnavailableError(
+                f"Bedrock preflight failed: could not reach the Bedrock endpoint "
+                f"for region '{region}' ({e}). Check the region and your network"
+                + _NO_AI_HINT
+            )
+        except ClientError as e:
+            code = e.response.get("Error", {}).get("Code", "")
+            detail = e.response.get("Error", {}).get("Message", str(e))
+            if code in _CREDENTIAL_ERROR_CODES:
+                hint = (
+                    "your AWS credentials are invalid or expired. Refresh them "
+                    "and try again"
+                )
+            elif code == "AccessDeniedException":
+                hint = (
+                    f"access to model '{self.model_id}' was denied in region "
+                    f"'{region}'. Check that your IAM identity allows "
+                    "bedrock:InvokeModel and that model access is enabled for "
+                    "this account"
+                )
+            elif code in ("ValidationException", "ResourceNotFoundException"):
+                hint = (
+                    f"model '{self.model_id}' is not available in region "
+                    f"'{region}'. Check --model-id and that its inference-profile "
+                    "prefix (us., eu., apac., global.) matches your region"
+                )
+            else:
+                hint = f"the test request to model '{self.model_id}' failed"
+            raise BedrockUnavailableError(
+                f"Bedrock preflight failed: {hint} ({code}: {detail})" + _NO_AI_HINT
+            )
+        logger.debug(f"Bedrock preflight passed for {self.model_id} in {region}")
 
     # Default system prompt steering the model toward accurate, standards-aware
     # accessibility output. Callers can override via the ``system_prompt`` arg.

@@ -270,6 +270,28 @@ def update_image_references(soup: BeautifulSoup, path_mapping: dict) -> None:
                 )
 
 
+def _is_remote_or_inline(src: str) -> bool:
+    """Whether an image src is a URL or inline data rather than a local file."""
+    lowered = src.strip().lower()
+    return lowered.startswith(("http://", "https://", "//", "data:", "blob:"))
+
+
+def _safe_relative_src(src: str) -> Optional[str]:
+    """Return ``src`` as a normalized relative path, or None if unsafe.
+
+    "images/x.png" and "./images/x.png" become "images/x.png". Absolute paths
+    and anything that climbs out with ".." return None, so the caller falls
+    back to copying the file flat into the destination directory.
+    """
+    path = src.split("?", 1)[0].split("#", 1)[0].replace("\\", "/")
+    if not path or path.startswith("/") or os.path.isabs(path):
+        return None
+    norm = os.path.normpath(path).replace("\\", "/")
+    if norm == "." or norm.startswith("..") or "/../" in f"/{norm}/":
+        return None
+    return norm
+
+
 def copy_images_to_output(
     src_dir: str, dest_dir: str, html_soup: BeautifulSoup
 ) -> dict:
@@ -300,15 +322,25 @@ def copy_images_to_output(
         if img.get("src"):
             # Get the filename from the src
             src_attr = img["src"]
+
+            # Remote and inline images are not files to copy; leave them as-is
+            # (previously "https://host/a.png" was rewritten to "./a.png").
+            if _is_remote_or_inline(src_attr):
+                continue
+
             filename = os.path.basename(src_attr)
-            dest_path = os.path.join(dest_dir, filename)
+            # Keep a safe relative path such as "images/x.png" so the output
+            # mirrors the source layout; only flatten paths that would escape
+            # dest_dir (absolute or containing "..").
+            rel_src = _safe_relative_src(src_attr)
+            dest_path = os.path.join(dest_dir, rel_src or filename)
 
             logger.debug(f"Processing image: {src_attr} (filename: {filename})")
 
             # Check if destination already exists
             if os.path.exists(dest_path):
                 logger.debug(f"Image already exists at destination: {dest_path}")
-                rel_path = f"./{filename}"
+                rel_path = rel_src or f"./{filename}"
                 img["src"] = rel_path
                 path_mapping[filename] = rel_path
                 continue
@@ -318,23 +350,26 @@ def copy_images_to_output(
 
             if src_path:
                 try:
+                    # A similar file (same stem, other extension) may have been
+                    # found; keep the src directory and use the found name.
+                    found_filename = os.path.basename(src_path)
+                    if rel_src:
+                        rel_dir = os.path.dirname(rel_src)
+                        rel_path = (
+                            f"{rel_dir}/{found_filename}" if rel_dir else found_filename
+                        )
+                    else:
+                        rel_path = f"./{found_filename}"
+                    dest_path = os.path.join(dest_dir, rel_path)
+                    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+
                     logger.debug(f"Copying image from {src_path} to {dest_path}")
                     shutil.copy2(src_path, dest_path)
                     logger.debug(f"Successfully copied image: {filename}")
                     copied_count += 1
 
-                    # Check if we're using a different filename due to similarity
-                    found_filename = os.path.basename(src_path)
-                    if found_filename != filename:
-                        # Update the src attribute to use the found filename
-                        rel_path = f"./{found_filename}"
-                        img["src"] = rel_path
-                        path_mapping[filename] = rel_path
-                    else:
-                        # Standard relative path
-                        rel_path = f"./{filename}"
-                        img["src"] = rel_path
-                        path_mapping[filename] = rel_path
+                    img["src"] = rel_path
+                    path_mapping[filename] = rel_path
 
                 except Exception as e:
                     logger.error(f"Error copying image {filename}: {e}")
@@ -342,11 +377,9 @@ def copy_images_to_output(
             else:
                 logger.warning(f"Image file not found anywhere: {filename}")
                 not_found_count += 1
-
-                # Still update to use relative path
-                rel_path = f"./{filename}"
-                img["src"] = rel_path
-                path_mapping[filename] = rel_path
+                # Leave src unchanged: rewriting it to "./<name>" cannot make a
+                # missing file appear and only breaks a path that may resolve
+                # once the output is placed next to its assets.
 
     logger.debug(
         f"Image copying complete: {copied_count} copied, {not_found_count} not found"

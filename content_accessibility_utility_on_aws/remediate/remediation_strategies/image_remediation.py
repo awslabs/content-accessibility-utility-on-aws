@@ -12,7 +12,10 @@ from bs4 import BeautifulSoup, Tag
 import os
 import re
 
-from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.utils.logging_helper import (
+    setup_logger,
+    NeedsReviewError,
+)
 from content_accessibility_utility_on_aws.remediate.prompt_generators.alt_text_generator import (
     generate_alt_text,
 )
@@ -86,20 +89,38 @@ def remediate_missing_alt_text(
         return None
 
     if not img.has_attr("alt"):
-        try:
-            # Generate alt text using GenAI
-            alt_text = generate_alt_text(img, soup, bedrock_client)
-
-            # Add alt attribute
-            img["alt"] = alt_text
-            return f"Added AI-generated alt text to image: {alt_text}"
-        except (AltTextGenerationError, FileNotFoundError) as e:
-            logger.error(f"Failed to generate alt text: {e}")
-            # Add a placeholder alt text to avoid accessibility errors
-            img["alt"] = "Image description unavailable"
-            return f"Added placeholder alt text due to error: {str(e)}"
+        alt_text = _model_alt_text(img, soup, bedrock_client)
+        img["alt"] = alt_text
+        return f"Added AI-generated alt text to image: {alt_text}"
 
     return None
+
+
+def _model_alt_text(
+    img: Tag, soup: BeautifulSoup, bedrock_client: Optional[BedrockClient]
+) -> str:
+    """Return model-authored alt text, or raise ``NeedsReviewError``.
+
+    Alt text needs a model (or a person). This never invents placeholder text
+    such as "Image description unavailable": when no client is available (AI
+    disabled) or the model call fails, the image is left untouched and the
+    issue is flagged for human review instead.
+    """
+    if bedrock_client is None:
+        raise NeedsReviewError(
+            "Alt text needs a model or a human author; AI is disabled",
+            model_failed=False,
+        )
+    try:
+        alt_text = generate_alt_text(img, soup, bedrock_client)
+    except (AltTextGenerationError, FileNotFoundError) as e:
+        logger.error(f"Failed to generate alt text: {e}")
+        raise NeedsReviewError(
+            f"Alt text generation failed: {e}", model_failed=True
+        ) from e
+    if not alt_text or not alt_text.strip():
+        raise NeedsReviewError("Model returned empty alt text", model_failed=True)
+    return alt_text
 
 
 def remediate_empty_alt_text(
@@ -133,20 +154,9 @@ def remediate_empty_alt_text(
             img["role"] = "presentation"
             return "Confirmed image is decorative with role='presentation'"
         else:
-            try:
-                # Generate alt text using GenAI
-                alt_text = generate_alt_text(img, soup, bedrock_client)
-
-                # Add alt attribute
-                img["alt"] = alt_text
-                return (
-                    f"Added AI-generated alt text to image with empty alt: {alt_text}"
-                )
-            except (AltTextGenerationError, FileNotFoundError) as e:
-                logger.error(f"Failed to generate alt text: {e}")
-                # Add a placeholder alt text to avoid accessibility errors
-                img["alt"] = "Image description unavailable"
-                return f"Added placeholder alt text due to error: {str(e)}"
+            alt_text = _model_alt_text(img, soup, bedrock_client)
+            img["alt"] = alt_text
+            return f"Added AI-generated alt text to image with empty alt: {alt_text}"
 
     return None
 
@@ -371,41 +381,12 @@ def remediate_generic_alt_text(soup, issue, bedrock_client=None):
         logger.info(f"Image alt text '{current_alt}' is not recognized as generic")
         return None
 
-    try:
-        # Try to generate alt text using Bedrock AI
-        if bedrock_client:
-            alt_text = generate_alt_text(img, soup, bedrock_client)
-            if alt_text:
-                img["alt"] = alt_text
-                return f"Added AI-generated alt text '{alt_text}' to replace generic '{current_alt}'"
-    except Exception as e:
-        logger.error(f"Error generating AI alt text: {e}")
-
-    # Extract context for the image
-    context = ""
-    
-    # Try to get context from nearby text
-    parent_text = img.parent.get_text(strip=True) if img.parent else ""
-    if parent_text and len(parent_text) < 200:
-        context = parent_text
-    
-    # Try nearby headings if no context yet
-    if not context:
-        heading = img.find_previous(["h1", "h2", "h3", "h4", "h5", "h6"])
-        if heading:
-            context = heading.get_text(strip=True)
-    
-    # Create context-based alt text based on generic type
-    generic_type = current_alt.lower()
-    if "diagram" in generic_type or "chart" in generic_type or "graph" in generic_type:
-        new_alt = f"Diagram showing {context}" if context else "Diagram related to this content"
-    elif "photo" in generic_type or "picture" in generic_type:
-        new_alt = f"Photo of {context}" if context else "Photo related to this content"
-    else:
-        new_alt = f"Image of {context}" if context else "Image related to this content"
-    
-    img["alt"] = new_alt
-    return f"Added context-based alt text '{new_alt}' to replace generic '{current_alt}'"
+    # Model-authored replacement only. The old context-guess fallback
+    # ("Image of <nearby text>", "Diagram related to this content") swapped one
+    # generic alt for another; leave the image for review instead.
+    alt_text = _model_alt_text(img, soup, bedrock_client)
+    img["alt"] = alt_text
+    return f"Added AI-generated alt text '{alt_text}' to replace generic '{current_alt}'"
 
 
 def remediate_long_alt_text(
@@ -447,7 +428,7 @@ def remediate_long_alt_text(
     for img in images:
         if img.has_attr("alt") and img["alt"] == long_alt and len(img["alt"]) > 125:
             # Generate concise alt text using GenAI
-            alt_text = generate_alt_text(img, soup, bedrock_client)
+            alt_text = _model_alt_text(img, soup, bedrock_client)
 
             # Add alt attribute
             img["alt"] = alt_text
