@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
     AIRemediationRequiredError,
+    NeedsReviewError,
 )
 from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
     BedrockClient,
@@ -87,6 +88,37 @@ from content_accessibility_utility_on_aws.remediate.remediation_strategies.inter
 # Set up module-level logger
 logger = setup_logger(__name__)
 
+# Issue types whose strategies call Bedrock when AI is enabled. Used to decide
+# whether the one-time Bedrock preflight is needed before remediation starts.
+MODEL_BACKED_ISSUE_TYPES = frozenset(
+    {
+        "missing-alt-text",
+        "empty-alt-text",
+        "generic-alt-text",
+        "long-alt-text",
+        "generic-link-text",
+        "duplicate-link-text-different-url",
+        "empty-heading",
+        "generic-heading",
+        "generic-heading-content",
+        "missing-title",
+        "missing-page-title",
+        "form-control-missing-label",
+        "missing-input-label",
+        "missing-accessible-name",
+        "missing-button-role",
+    }
+)
+
+
+def issues_need_model(issues: List[Dict[str, Any]]) -> bool:
+    """Whether any issue would be routed to a model-backed strategy."""
+    for issue in issues or []:
+        issue_type = (issue.get("type") or "").replace("_", "-")
+        if issue_type in MODEL_BACKED_ISSUE_TYPES or issue_type.startswith("table-"):
+            return True
+    return False
+
 
 class RemediationManager:
     """Manager for HTML accessibility remediation."""
@@ -108,6 +140,10 @@ class RemediationManager:
         self.bedrock_client = None
         self.bda_client = None
 
+        # Why the client is missing when AI was requested, recorded on any issue
+        # that then needs review.
+        self.bedrock_init_error: Optional[str] = None
+
         if not self.options.get("disable_ai", False):
             try:
                 self.bedrock_client = self._make_bedrock_client()
@@ -117,6 +153,7 @@ class RemediationManager:
                 # Ensure attributes are properly initialized even after failure
                 self.bedrock_client = None
                 self.bda_client = None
+                self.bedrock_init_error = str(e)
 
     def _make_bedrock_client(self) -> BedrockClient:
         """
@@ -422,19 +459,60 @@ class RemediationManager:
 
                 # If we couldn't recover or use fallback, re-raise the error
                 raise
-            except AltTextGenerationError as e:
-                logger.error(f"AI alt text generation error: {e}")
-                # Return a message about the error rather than None to indicate we tried
-                return f"Failed to generate alt text: {str(e)}"
-            except FileNotFoundError as e:
-                logger.error(f"Image file not found: {e}")
-                return f"Image file not found: {str(e)}"
+            except NeedsReviewError:
+                # The strategy declined to write placeholder/generic content;
+                # remediate_issues records the issue as needs_review.
+                raise
+            except (AltTextGenerationError, FileNotFoundError) as e:
+                # Previously returned a message string, which counted the issue
+                # as remediated even though nothing was changed.
+                logger.error(f"Model-backed fix failed for {issue_type}: {e}")
+                raise NeedsReviewError(
+                    f"Model-backed fix failed: {e}", model_failed=True
+                ) from e
             except Exception as e:
                 logger.error(f"Error remediating issue {issue_type}: {e}")
                 return None
         else:
             logger.debug(f"No remediation strategy for issue type: {issue_type}")
             return None
+
+    @staticmethod
+    def _needs_review_detail(
+        issue: Dict[str, Any],
+        issue_id: str,
+        issue_type: str,
+        reason: str,
+        model_failed: bool,
+    ) -> Dict[str, Any]:
+        """Build the result entry for an issue left unfixed for human review."""
+        location = issue.get("location", {}) or {}
+        detail = {
+            "id": issue_id,
+            "type": issue_type,
+            "severity": issue.get("severity", "minor"),
+            "message": f"Needs review: {reason}",
+            "context": issue.get("context", ""),
+            "selector": issue.get("selector", ""),
+            "remediated": False,
+            "remediation_status": "needs_review",
+            "needs_review_reason": "model_failed" if model_failed else "no_model",
+            "error": reason,
+            "before_content": issue.get("before_content", ""),
+            "after_content": issue.get("after_content", ""),
+            "fix_description": "",
+            "failure_reason": reason,
+            "changes_applied": 0,
+            "file_path": issue.get("file_path") or location.get("file_path", ""),
+            "file_name": issue.get("file_name") or location.get("file_name", ""),
+            "page_number": issue.get("page_number") or location.get("page_number"),
+        }
+        detail["location"] = {
+            "file_path": detail["file_path"],
+            "file_name": detail["file_name"],
+            "page_number": detail["page_number"],
+        }
+        return detail
 
     def remediate_issues(self, issues: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -455,6 +533,12 @@ class RemediationManager:
             "details": [],  # Will contain detailed results for each issue
             "remediated_issues_details": [],  # Will contain successfully remediated issues
             "failed_issues_details": [],  # Will contain issues that failed remediation
+            # Subset of the failed issues left unchanged for human review
+            # (status "needs_review"), and how many of those were caused by a
+            # failed model call rather than AI being disabled.
+            "issues_needs_review": 0,
+            "model_failures": 0,
+            "needs_review_details": [],
         }
 
         # Log how many issues we're going to attempt to remediate
@@ -650,6 +734,30 @@ class RemediationManager:
 
                 # Add to failed issue types
                 failed_issue_types.add(issue_type)
+
+            except NeedsReviewError as e:
+                # Fail closed: the document was not changed for this issue.
+                model_failed = e.model_failed
+                reason = e.reason
+                if (
+                    not model_failed
+                    and not self.options.get("disable_ai", False)
+                    and self.bedrock_client is None
+                    and self.bedrock_init_error
+                ):
+                    # AI was requested but no client could be built, so this
+                    # is a model failure, not an intentional --no-ai skip.
+                    model_failed = True
+                    reason = f"{reason} (Bedrock client unavailable: {self.bedrock_init_error})"
+                detail = self._needs_review_detail(
+                    issue, issue_id, issue_type, reason, model_failed
+                )
+                results["issues_needs_review"] += 1
+                results["needs_review_details"].append(detail)
+                if model_failed:
+                    results["model_failures"] += 1
+                logger.warning(f"{issue_type} needs review: {reason}")
+                result = None
 
             # Update counts based on result
             if result:

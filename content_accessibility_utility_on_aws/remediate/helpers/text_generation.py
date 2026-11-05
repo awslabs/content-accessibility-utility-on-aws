@@ -10,17 +10,21 @@ module centralizes the Bedrock call and the cleanup of the result so each
 strategy can request text the same way and degrade gracefully when no model
 client is available.
 
-The contract is intentionally fallback-first: ``generate_short_text`` returns
-``None`` whenever a model result cannot be produced (no client, empty context,
-or an API error), and callers keep their existing rule-based behavior for that
-case. This means enabling the model improves output quality without changing
-the behavior of runs that have no Bedrock access.
+The contract: ``generate_short_text`` returns ``None`` when no model is in use
+(no client, e.g. ``--no-ai``) or there is no context to ground on, and callers
+keep their rule-based behavior for that case. When a client *is* present and
+the model call fails, it raises ``NeedsReviewError`` so the issue is left
+unfixed and flagged for review, rather than silently replaced by generic
+fallback text.
 """
 
 import re
 from typing import Optional
 
-from content_accessibility_utility_on_aws.utils.logging_helper import setup_logger
+from content_accessibility_utility_on_aws.utils.logging_helper import (
+    setup_logger,
+    NeedsReviewError,
+)
 
 logger = setup_logger(__name__)
 
@@ -100,7 +104,11 @@ def generate_short_text(
         max_tokens: Token ceiling for the model response.
 
     Returns:
-        Cleaned text, or None if generation was skipped or failed.
+        Cleaned text, or None if generation was skipped (no client or context).
+
+    Raises:
+        NeedsReviewError: If a client was given but the model call failed or
+            returned nothing usable (``model_failed=True``).
     """
     if bedrock_client is None:
         return None
@@ -118,9 +126,15 @@ def generate_short_text(
         raw = bedrock_client.generate_text(
             prompt, purpose=purpose, max_tokens=max_tokens
         )
-    except Exception as e:  # pragma: no cover - defensive; model errors are non-fatal
+    except Exception as e:  # noqa: BLE001 - any model error means "needs review"
         logger.warning(f"Model text generation failed for {purpose}: {e}")
-        return None
+        raise NeedsReviewError(
+            f"Model call failed ({purpose}): {e}", model_failed=True
+        ) from e
 
     cleaned = clean_generated_text(raw, max_words=max_words)
-    return cleaned or None
+    if not cleaned:
+        raise NeedsReviewError(
+            f"Model returned no usable text ({purpose})", model_failed=True
+        )
+    return cleaned

@@ -52,6 +52,7 @@ Accessibility remediation options:
   --model-id MODEL_ID  Bedrock model ID to use for remediation
   --severity-threshold {critical,major,minor}
                       Minimum severity level to remediate. Default: minor
+  --no-ai              Apply only deterministic fixes; make no Bedrock calls
 ```
 
 To restrict remediation to specific issue types, use the Python API with
@@ -133,6 +134,41 @@ Issues are processed sequentially, one by one, as required by some Bedrock model
 1. The system tries to locate the image file if available
 2. If found, the image data is included in the prompt to the model
 3. The model analyzes the image content to generate appropriate alternative text
+
+Image `src` paths are kept as written (for example `images/chart.png`), and the
+image files are copied to the same relative location next to the output.
+Remote (`https://`) and `data:` images are left untouched.
+
+## When a model-backed fix fails (needs review)
+
+Remediation fails closed. If a model-backed fix can't be produced (the model
+call errors, the image file is missing, or AI is disabled with `--no-ai`), the
+document is **not** changed for that issue. Instead:
+
+- The issue gets `remediation_status: "needs_review"` in the remediation report,
+  with the error in `error` / `failure_reason` and a `needs_review_reason` of
+  `model_failed` or `no_model`.
+- No placeholder or generic text is written. The tool no longer adds
+  "Image description unavailable", "Image related to this content", "View
+  details", "More about …" or "Link to #fragment".
+- The result counts these issues in `issues_needs_review`, and counts the subset
+  caused by a failed model call in `model_failures`. The CLI exits with code `2`
+  when `model_failures` is non-zero.
+
+Before the first model call, Bedrock access is checked once with a minimal
+Converse request (credentials, region, and access to the model). If the check
+fails, nothing is written: the CLI exits `1` and the API raises
+`BedrockUnavailableError`, with a message saying what to fix.
+
+With `--no-ai` (API: `disable_ai=True`), deterministic fixes still run:
+language, page title (from existing headings or metadata), landmarks, a single skip link, table
+structure, form grouping, duplicate IDs, focus styles, target size, and link
+text derived from an external URL's domain. Everything that needs authored
+text is listed for review.
+
+> **Behaviour change (unreleased):** earlier versions exited `0` and wrote
+> placeholder alt text when Bedrock was unreachable. Scripts that relied on
+> exit code `0` should treat `2` as "finished, review needed".
 
 ## Example Workflow
 

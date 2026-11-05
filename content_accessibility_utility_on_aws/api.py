@@ -17,6 +17,7 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     DocumentAccessibilityError,
     AccessibilityAuditError,
     AccessibilityRemediationError,
+    BedrockUnavailableError,
     TranslationError,
 )
 from content_accessibility_utility_on_aws.utils.config import config_manager
@@ -25,6 +26,36 @@ from content_accessibility_utility_on_aws.utils.usage_tracker import SessionUsag
 
 # Set up module-level logger
 logger = setup_logger(__name__, level="INFO")
+
+
+def _preflight_bedrock(
+    options: Dict[str, Any], audit_report: Optional[Dict[str, Any]]
+) -> None:
+    """Check Bedrock access once if remediation will call a model.
+
+    Skipped when AI is disabled or no issue in ``audit_report`` is routed to a
+    model-backed strategy.
+
+    Raises:
+        BedrockUnavailableError: When credentials, region or model access are
+            missing.
+    """
+    if options.get("disable_ai", False) or not audit_report:
+        return
+
+    from content_accessibility_utility_on_aws.remediate.remediation_manager import (
+        issues_need_model,
+    )
+    from content_accessibility_utility_on_aws.remediate.services.bedrock_client import (
+        check_bedrock_access,
+    )
+    from content_accessibility_utility_on_aws.utils.constants import DEFAULT_MODEL_ID
+
+    if issues_need_model(audit_report.get("issues", [])):
+        check_bedrock_access(
+            model_id=options.get("model_id") or DEFAULT_MODEL_ID,
+            profile=options.get("profile"),
+        )
 
 
 def process_pdf_accessibility(
@@ -251,6 +282,13 @@ def process_pdf_accessibility(
                         f"Filtered audit report to {len(filtered_audit_report['issues'])} issues that need remediation"
                     )
 
+                _preflight_bedrock(
+                    {
+                        **remediation_options,
+                        "profile": remediation_options.get("profile") or profile,
+                    },
+                    filtered_audit_report,
+                )
                 remediation_result = remediate_impl(
                     html_path=html_path,
                     audit_report=filtered_audit_report,
@@ -308,7 +346,7 @@ def process_pdf_accessibility(
 
         return result
 
-    except FileNotFoundError:
+    except (FileNotFoundError, BedrockUnavailableError):
         raise
     except Exception as e:
         handle_exception(
@@ -467,13 +505,25 @@ def remediate_html_accessibility(
     options: Optional[Dict[str, Any]] = None,
     output_path: Optional[str] = None,
     image_dir: Optional[str] = None,
+    disable_ai: Optional[bool] = None,
 ) -> Dict[str, Any]:
     """
     Remediate accessibility issues in an HTML document.
 
+    Model-backed fixes fail closed: when a model call fails, the document is
+    left unchanged for that issue, which is reported with
+    ``remediation_status == "needs_review"`` and its error. The result's
+    ``model_failures`` count says how many issues were affected. Before the
+    first model call, Bedrock access is checked once, and
+    ``BedrockUnavailableError`` is raised (nothing is written) if credentials,
+    region or model access are missing.
+
     Args:
         html_path: Path to the HTML file or directory of HTML files.
         audit_report: Optional audit report from audit_html_accessibility().
+        disable_ai: Apply only deterministic fixes and make no Bedrock calls
+            (same as ``options={"disable_ai": True}``; CLI ``--no-ai``).
+            Issues that need a model are reported as ``needs_review``.
         options: Remediation options including:
             - auto_fix (bool): Whether to automatically fix issues. Default: True.
             - fix_images (bool): Whether to fix image issues. Default: True.
@@ -513,6 +563,12 @@ def remediate_html_accessibility(
         remediation_config = config_manager.get_config(
             user_options=options, section="remediation"
         )
+        if disable_ai is not None:
+            remediation_config["disable_ai"] = bool(disable_ai)
+
+        # Fail fast, before anything is written, if model-backed fixes are
+        # needed but Bedrock cannot be reached.
+        _preflight_bedrock(remediation_config, audit_report)
 
         # Create output directory if needed
         if output_path:
@@ -533,7 +589,7 @@ def remediate_html_accessibility(
 
         return result
 
-    except FileNotFoundError:
+    except (FileNotFoundError, BedrockUnavailableError):
         raise
     except Exception as e:
         handle_exception(

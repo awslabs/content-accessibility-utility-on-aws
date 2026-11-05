@@ -229,6 +229,25 @@ result = remediate_html_accessibility(
     options={"auto_fix": True},
     output_path="remediated_page.html",
 )
+
+# Model-backed fixes fail closed: failed ones are left unchanged and listed
+# with remediation_status == "needs_review" and the error.
+if result.get("model_failures"):
+    for item in result["needs_review_details"]:
+        print(item["type"], item["error"])
+```
+
+To run without Bedrock (deterministic fixes only, no preflight), pass
+`disable_ai=True` (equivalent to `options={"disable_ai": True}` and the CLI's
+`--no-ai`):
+
+```python
+result = remediate_html_accessibility(
+    html_path="page.html",
+    audit_report=filtered_report,
+    output_path="remediated_page.html",
+    disable_ai=True,
+)
 ```
 
 ### Translating Output (i18n)
@@ -408,6 +427,7 @@ The library defines a hierarchy of exceptions:
 | `PDFConversionError` | PDF-to-HTML conversion failures |
 | `AccessibilityAuditError` | Audit processing failures |
 | `AccessibilityRemediationError` | Remediation failures |
+| `BedrockUnavailableError` | Subclass of `AccessibilityRemediationError`. Raised by `remediate_html_accessibility()` / `process_pdf_accessibility()` before anything is written when model-backed fixes are needed but Bedrock can't be reached (credentials, region or model access). Pass `disable_ai=True` to skip |
 | `TranslationError` | Translation (i18n) failures, e.g. missing or invalid target languages |
 | `ConfigurationError` | Invalid configuration or missing settings |
 
