@@ -29,9 +29,11 @@ def test_image_missing_alt_is_flagged():
     assert criterion_for(report, "missing-alt-text") == "1.1.1"
 
 
-def test_image_empty_alt_non_decorative_is_flagged():
+def test_image_empty_alt_is_decorative_compliant():
+    # alt="" is the standard decorative marker (WCAG H67); no role is needed.
     report = audit_html("<html><body><img src='x.png' alt=''></body></html>")
-    assert has_issue_type(report, "empty-alt-text")
+    assert has_issue_type(report, "compliant-decorative-image")
+    assert not has_issue_type(report, "empty-alt-text")
 
 
 def test_image_decorative_empty_alt_is_compliant():

@@ -206,7 +206,13 @@ def _augment_with_rendered_issues(
         )
         return audit_results
 
+    from content_accessibility_utility_on_aws.audit.standards import (
+        DEFAULT_WCAG_VERSION,
+        relabel_issue_for_version,
+    )
+
     static_issues = audit_results.get("issues", [])
+    wcag_version = options.get("wcag_version") or DEFAULT_WCAG_VERSION
 
     rendered_issues: list = []
     try:
@@ -224,6 +230,7 @@ def _augment_with_rendered_issues(
                 # with a file path in reports.
                 for issue in page_issues:
                     _stamp_issue_location(issue, page_num, file_path, file_name)
+                    relabel_issue_for_version(issue, wcag_version)
                 rendered_issues.extend(page_issues)
     except Exception as e:  # BrowserUnavailableError or anything unexpected
         logger.warning("Rendered audit failed (%s); using static results only.", e)
@@ -248,7 +255,9 @@ def _augment_with_rendered_issues(
     )
 
     # Rebuild the aggregate views so summary/by_status/by_page stay consistent.
-    return _rebuild_audit_results(combined)
+    rebuilt = _rebuild_audit_results(combined)
+    rebuilt["summary"]["wcag_version"] = wcag_version
+    return rebuilt
 
 
 def _stamp_issue_location(issue, page_num, file_path, file_name):
@@ -319,6 +328,7 @@ def _rebuild_audit_results(issues: list) -> Dict[str, Any]:
             "auto_remediated": len(issues_by_status["auto_remediated"]),
             "compliant": len(issues_by_status["compliant"]),
             "severity_counts": severity_counts,
+            "check_errors": len([i for i in issues if i.get("type") == "check-error"]),
         },
         "by_page": {
             page: {

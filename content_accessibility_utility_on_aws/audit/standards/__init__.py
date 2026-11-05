@@ -130,10 +130,53 @@ WCAG_CRITERIA = {
     "3.3.8": {"name": "Accessible Authentication (Minimum)", "level": "AA"},  # WCAG 2.2
     "3.3.9": {"name": "Accessible Authentication (Enhanced)", "level": "AAA"},  # WCAG 2.2
     # Robust
-    "4.1.1": {"name": "Parsing", "level": "A"},
+    "4.1.1": {"name": "Parsing", "level": "A", "obsolete_in": "2.2"},
     "4.1.2": {"name": "Name, Role, Value", "level": "A"},
     "4.1.3": {"name": "Status Messages", "level": "AA"},
 }
+
+
+# The WCAG version audits target. Override per run with the audit option
+# ``wcag_version`` ("2.1" or "2.2").
+DEFAULT_WCAG_VERSION = "2.2"
+SUPPORTED_WCAG_VERSIONS = ("2.1", "2.2")
+
+# Criteria removed in a WCAG version, mapped to where their remaining
+# accessibility impact is assessed. WCAG 2.2 made 4.1.1 Parsing obsolete
+# (always satisfied); duplicate ids that break label/ARIA references or
+# focusable-element identity are failures of 4.1.2 Name, Role, Value.
+OBSOLETE_CRITERIA = {
+    "2.2": {"4.1.1": "4.1.2"},
+}
+
+
+def criterion_for_version(criterion_id, wcag_version=None):
+    """Return the criterion to report for ``criterion_id`` under a WCAG version.
+
+    Unknown versions fall back to ``DEFAULT_WCAG_VERSION``.
+    """
+    version = (
+        wcag_version if wcag_version in SUPPORTED_WCAG_VERSIONS else DEFAULT_WCAG_VERSION
+    )
+    return OBSOLETE_CRITERIA.get(version, {}).get(criterion_id, criterion_id)
+
+
+def relabel_issue_for_version(issue, wcag_version=None):
+    """Relabel an issue dict whose criterion is obsolete in ``wcag_version``.
+
+    Updates ``wcag_criterion``, ``criterion_name`` and ``criterion_level`` in
+    place and keeps the original id in ``original_wcag_criterion``. Returns
+    the issue.
+    """
+    original = issue.get("wcag_criterion")
+    target = criterion_for_version(original, wcag_version)
+    if target != original:
+        info = get_criterion_info(target)
+        issue["original_wcag_criterion"] = original
+        issue["wcag_criterion"] = target
+        issue["criterion_name"] = info.get("name", "")
+        issue["criterion_level"] = info.get("level", "")
+    return issue
 
 
 def get_criterion_info(criterion_id):

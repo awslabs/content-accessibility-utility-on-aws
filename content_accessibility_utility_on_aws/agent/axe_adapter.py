@@ -84,6 +84,8 @@ AXE_RULE_MAP: Dict[str, Dict[str, str]] = {
     # Duplicate ids (WCAG 4.1.1 in 2.1; parsing) break label[for]/aria-*
     # references — the reference resolves only to the first match. Routed to a
     # deterministic document-wide de-dup that also repairs label associations.
+    # 4.1.1 is obsolete in WCAG 2.2; audit/api.py relabels these to 4.1.2 via
+    # audit.standards.relabel_issue_for_version when targeting 2.2.
     "duplicate-id-active": {
         "type": "duplicate-id", "wcag": "4.1.1", "severity": "major",
     },

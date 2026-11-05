@@ -705,6 +705,7 @@ ConfigurationError, and ResourceError.]({{ '/assets/img/exception-hierarchy.svg'
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `severity_threshold` | str | "minor" | Minimum severity: minor, major, critical |
+| `wcag_version` | str | "2.2" | Target WCAG version, "2.1" or "2.2". Under 2.2, 4.1.1 Parsing findings are reported under 4.1.2 |
 | `check_images` | bool | True | Check image accessibility |
 | `check_headings` | bool | True | Check heading structure |
 | `check_links` | bool | True | Check link text |

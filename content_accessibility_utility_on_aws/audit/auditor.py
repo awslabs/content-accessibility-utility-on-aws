@@ -39,7 +39,9 @@ from content_accessibility_utility_on_aws.utils.logging_helper import (
     setup_logger,
 )
 from content_accessibility_utility_on_aws.audit.standards import (
+    DEFAULT_WCAG_VERSION,
     SEVERITY_LEVELS,
+    criterion_for_version,
     get_criterion_info,
 )
 
@@ -70,6 +72,9 @@ class AccessibilityAuditor:
                 - detailed (bool): Whether to include detailed context in the report.
                 - include_remediated (bool): Whether to include remediated items in
                     report (default: True).
+                - wcag_version (str): Target WCAG version, "2.1" or "2.2"
+                    (default: "2.2"). Under 2.2, findings for the obsolete
+                    4.1.1 Parsing criterion are reported under 4.1.2.
         """
         self.html_path = html_path
         self.html_content = html_content
@@ -89,6 +94,7 @@ class AccessibilityAuditor:
             "report_format": "json",
             "detailed": True,
             "include_remediated": True,
+            "wcag_version": DEFAULT_WCAG_VERSION,
         }
 
         # Update with user-provided options
@@ -313,6 +319,10 @@ class AccessibilityAuditor:
                 "auto_remediated": auto_remediated_count,
                 "compliant": compliant_count,
                 "severity_counts": severity_counts,
+                "check_errors": len(
+                    [i for i in self.issues if i.get("type") == "check-error"]
+                ),
+                "wcag_version": self.options.get("wcag_version", DEFAULT_WCAG_VERSION),
             },
             "by_page": {
                 page: {
@@ -421,10 +431,13 @@ class AccessibilityAuditor:
                     check.__class__.__name__,
                     len(self.issues),
                 )
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - reported, not swallowed
                 logger.error(
                     "Error running check %s: %s", check.__class__.__name__, str(e)
                 )
+                # Report the crash so "no issues" from a failed check is never
+                # mistaken for a pass.
+                self._add_check_error(check.__class__.__name__, e)
 
         # Get only the new issues added during this page's checks
         new_issues = self.issues[current_issues_count:]
@@ -569,6 +582,38 @@ class AccessibilityAuditor:
         logger.debug("Report summary: %s", report["summary"])
         return report
 
+    def _add_check_error(self, check_name: str, exc: Exception) -> None:
+        """Record a check that raised as a ``check-error`` issue.
+
+        Not subject to the severity threshold, and given the status
+        ``check_error`` so remediation (which only takes ``needs_remediation``)
+        never tries to "fix" it.
+        """
+        self.issues.append(
+            {
+                "id": f"issue-{len(self.issues) + 1}",
+                "type": "check-error",
+                "wcag_criterion": "",
+                "criterion_name": "",
+                "criterion_level": "",
+                "severity": "major",
+                "element": "unknown",
+                "description": (
+                    f"Accessibility check {check_name} failed to run: "
+                    f"{type(exc).__name__}: {exc}. Its criteria were not evaluated."
+                ),
+                "context": {
+                    "check": check_name,
+                    "exception": type(exc).__name__,
+                    "message": str(exc),
+                },
+                "location": {},
+                "remediation_status": "check_error",
+                "remediation_source": None,
+                "remediation_date": None,
+            }
+        )
+
     def _add_issue(
         self,
         issue_type: str,
@@ -603,7 +648,10 @@ class AccessibilityAuditor:
         # Always include compliant issues
         if status == "compliant":
             logger.debug("Including compliant issue: %s", issue_type)
-            pass  # Always include compliant issues
+            # A passing item is never a barrier, so it is informational
+            # whatever severity the check would give a failure of that kind
+            # (e.g. compliant-alt-text was reported as "critical").
+            severity = "info"
         else:
             # Skip if below severity threshold and not remediated
             threshold = self.options.get("severity_threshold", "minor")
@@ -652,6 +700,12 @@ class AccessibilityAuditor:
                 "page_number": self._get_page_number(element),
             }
 
+        # Report obsolete criteria (4.1.1 in WCAG 2.2) under their successor.
+        original_criterion = wcag_criterion
+        wcag_criterion = criterion_for_version(
+            wcag_criterion, self.options.get("wcag_version")
+        )
+
         # Get criterion info
         criterion_info = get_criterion_info(wcag_criterion)
 
@@ -675,6 +729,9 @@ class AccessibilityAuditor:
                 else None
             ),
         }
+
+        if original_criterion != wcag_criterion:
+            issue["original_wcag_criterion"] = original_criterion
 
         # Add the issue to the list
         self.issues.append(issue)

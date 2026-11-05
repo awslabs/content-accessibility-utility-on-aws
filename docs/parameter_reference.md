@@ -136,13 +136,24 @@ The standardized severity levels are:
 - `minor`: Low-impact issues that should be fixed but don't severely impact accessibility
 - `major`: Medium-impact issues that significantly affect accessibility for some users
 - `critical`: High-impact issues that make content completely inaccessible to certain users
+- `info`: Informational only. Every passing (`compliant`) item in an audit report has this severity
+
+### Target WCAG version
+
+Audits target WCAG 2.2 by default. Set the audit option `wcag_version` to
+`"2.1"` or `"2.2"` (API: `audit_html_accessibility(..., options={"wcag_version": "2.1"})`).
+WCAG 2.2 made 4.1.1 Parsing obsolete, so under 2.2 findings that 2.1 filed under
+4.1.1 (duplicate ids) are reported under 4.1.2. The issue keeps the old id in
+`original_wcag_criterion`. The report summary records the version in
+`summary.wcag_version`.
 
 ### Issue Types
 
 Common issue types include:
-- `missing-alt-text`: Images without alternative text
-- `empty-alt-text`: Images with empty alt text
-- `generic-alt-text`: Images with generic/uninformative alt text
+- `missing-alt-text`: Images without alternative text. Images hidden with `role="presentation"`, `role="none"` or `aria-hidden="true"` are reported as `compliant-decorative-image` instead
+- `empty-alt-text`: Remediation type for images with empty alt text. The audit treats `alt=""` as the valid decorative marker and reports it as `compliant-decorative-image`
+- `generic-alt-text`: Alt text that names the kind of image instead of describing it ("image", "chart", "logo"), looks like a file name ("IMG_1234.jpg"), or equals the image file's name or stem
+- `check-error`: An audit check raised an exception, so its criteria were not evaluated. Includes the check name and exception, has status `check_error`, and is counted in `summary.check_errors`
 - `contrast`: Insufficient color contrast
 - `heading-structure`: Improper heading structure or nesting
 - `missing-labels`: Form controls without labels
@@ -159,7 +170,7 @@ Issue types produced only by the browser-backed rendered audit (`--rendered` /
 - `missing-aria-state`: ARIA role missing its required state, e.g. `aria-checked` (WCAG 4.1.2)
 - `invalid-aria-structure`: ARIA role missing its required parent, e.g. `tab` without `tablist` (WCAG 4.1.2)
 - `focus-order-broken`: Positive `tabindex` distorts keyboard focus order (WCAG 2.4.3)
-- `duplicate-id`: Colliding element ids break `label[for]`/aria references (WCAG 4.1.1)
+- `duplicate-id`: Colliding element ids break `label[for]`/aria references (WCAG 4.1.2 when targeting 2.2; 4.1.1 under 2.1)
 
 ### Rendered / agent options
 
