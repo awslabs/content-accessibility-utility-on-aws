@@ -58,10 +58,12 @@ jobs:
         # baseurl / url come from the Pages action so project-site paths resolve.
         run: |
           bundle exec jekyll build \
-            --baseurl "${{ steps.pages.outputs.base_path }}" \
+            --baseurl "$PAGES_BASE_PATH" \
             --destination ./_site
         env:
           JEKYLL_ENV: production
+          # Passed through env, not expanded into the script.
+          PAGES_BASE_PATH: ${{ steps.pages.outputs.base_path }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0

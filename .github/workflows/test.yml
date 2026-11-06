@@ -32,6 +32,8 @@ jobs:
       run: ruff check --output-format=github .
     - name: ruff format --check
       run: ruff format --check .
+    - name: Release notes extraction test
+      run: .github/scripts/test-extract-release-notes.sh CHANGELOG.md "$(sed -n 's/^## \[\([0-9][^]]*\)\].*/\1/p' CHANGELOG.md | head -n 1)"
 
   test:
     name: pytest (Python ${{ matrix.python-version }})
