@@ -7,10 +7,23 @@ on:
   push:
     tags:
       - 'v*'
+  # Re-run only the sign-and-release job for a tag that is already on PyPI
+  # (for example after a failed "Create GitHub Release" step). The dists are
+  # downloaded from PyPI and checked against PyPI's sha256 digests; nothing is
+  # rebuilt or re-published.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing production tag to sign and attach to its GitHub Release (for example v1.2.0)
+        required: true
+        type: string
+
+permissions: {}
 
 jobs:
   build:
     name: Build distribution 📦
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +65,7 @@ jobs:
 
   validate-tag:
     name: Validate tag format
-    if: github.ref_type == 'tag'
+    if: github.event_name == 'push' && github.ref_type == 'tag'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -86,7 +99,7 @@ jobs:
     name: >-
       Publish Python 🐍 distribution 📦 to PyPI
     needs: [build, validate-tag]
-    if: github.ref_type == 'tag' && needs.validate-tag.outputs.is_production_tag == 'true'
+    if: github.event_name == 'push' && github.ref_type == 'tag' && needs.validate-tag.outputs.is_production_tag == 'true'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -106,7 +119,7 @@ jobs:
   publish-to-testpypi:
     name: Publish Python 🐍 distribution 📦 to TestPyPI
     needs: [build, validate-tag]
-    if: github.ref_type == 'tag' && needs.validate-tag.outputs.is_rc_tag == 'true'
+    if: github.event_name == 'push' && github.ref_type == 'tag' && needs.validate-tag.outputs.is_rc_tag == 'true'
     runs-on: ubuntu-latest
 
     environment:
@@ -127,20 +140,78 @@ jobs:
       with:
         repository-url: https://test.pypi.org/legacy/
 
+  fetch-published-dists:
+    name: Download the published dists 📦 from PyPI
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+    - name: Download and verify against PyPI sha256 digests
+      run: |
+        if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::'$TAG' is not a production tag (vX.Y.Z)"
+          exit 1
+        fi
+        mkdir -p dist
+        python3 - <<'PY'
+        import hashlib, json, os, sys, urllib.request
+
+        version = os.environ["TAG"][1:]
+        url = f"https://pypi.org/pypi/content-accessibility-utility-on-aws/{version}/json"
+        with urllib.request.urlopen(url, timeout=30) as r:
+            files = json.load(r)["urls"]
+        kinds = {f["packagetype"] for f in files}
+        if not {"sdist", "bdist_wheel"} <= kinds:
+            sys.exit(f"PyPI has {sorted(kinds)} for {version}; expected sdist and wheel")
+        for f in files:
+            name = f["filename"]
+            if "/" in name or name.startswith("."):
+                sys.exit(f"unexpected file name {name!r}")
+            with urllib.request.urlopen(f["url"], timeout=60) as r:
+                data = r.read()
+            digest = hashlib.sha256(data).hexdigest()
+            if digest != f["digests"]["sha256"]:
+                sys.exit(f"sha256 mismatch for {name}")
+            with open(os.path.join("dist", name), "wb") as out:
+                out.write(data)
+            print(f"{digest}  {name}")
+        PY
+    - name: Store the distribution packages
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: python-package-distributions
+        path: dist/
+
   github-release:
     name: >-
       Sign the Python 🐍 distribution 📦 with Sigstore
       and upload them to GitHub Release
-    needs: [publish-to-pypi]
+    needs: [publish-to-pypi, fetch-published-dists]
+    # Runs after a tag push publishes to PyPI, or after a manual dispatch
+    # fetched the already-published dists.
+    if: >-
+      !cancelled()
+      && (needs.publish-to-pypi.result == 'success'
+          || needs.fetch-published-dists.result == 'success')
     runs-on: ubuntu-latest
 
     permissions:
       contents: write  # IMPORTANT: mandatory for making GitHub Releases
       id-token: write  # IMPORTANT: mandatory for sigstore
 
+    env:
+      # Untrusted values reach scripts only through env, never ${{ }} in run.
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+
     steps:
     - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
+        ref: ${{ inputs.tag || github.ref }}
         persist-credentials: false
     - name: Download all the dists
       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -154,52 +225,21 @@ jobs:
           ./dist/*.tar.gz
           ./dist/*.whl
     - name: Extract release notes from changelog
-      id: release_notes
+      # Written to a file and passed with --notes-file, so the changelog text
+      # is never parsed by a shell.
+      run: .github/scripts/extract-release-notes.sh "${TAG#v}" CHANGELOG.md > "$RUNNER_TEMP/release-notes.md"
+    - name: Create or update GitHub Release
+      # Idempotent: if the release already exists (created by hand, or by an
+      # earlier run), upload the dists and signatures, replacing same-named
+      # assets, and leave its title and notes alone.
+      # `dist/` holds the packages plus the sigstore-produced bundles.
       run: |
-        VERSION="${GITHUB_REF_NAME#v}"
-        echo "Extracting notes for version: $VERSION"
-
-        # Extract the section for this version from CHANGELOG.md
-        # Matches from "## [VERSION]" until the next "## [" or end of file
-        if [ -f CHANGELOG.md ]; then
-          NOTES=$(awk -v ver="$VERSION" '
-            BEGIN { found=0 }
-            /^## \[/ {
-              if (found) exit
-              if (index($0, "[" ver "]") > 0) found=1
-            }
-            found { print }
-          ' CHANGELOG.md)
-
-          if [ -z "$NOTES" ]; then
-            NOTES="Release ${GITHUB_REF_NAME}"
-          fi
+        if gh release view "$TAG" > /dev/null 2>&1; then
+          echo "Release $TAG exists; uploading assets"
+          gh release upload "$TAG" dist/* --clobber
         else
-          NOTES="Release ${GITHUB_REF_NAME}"
+          gh release create "$TAG" dist/* \
+            --verify-tag \
+            --title "Release $TAG" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
         fi
-
-        # Use heredoc delimiter for multiline output
-        {
-          echo "notes<<RELEASE_NOTES_EOF"
-          echo "$NOTES"
-          echo "RELEASE_NOTES_EOF"
-        } >> "$GITHUB_OUTPUT"
-    - name: Create GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      run: >-
-        gh release create
-        "$GITHUB_REF_NAME"
-        --repo "$GITHUB_REPOSITORY"
-        --title "Release $GITHUB_REF_NAME"
-        --notes "${{ steps.release_notes.outputs.notes }}"
-    - name: Upload artifact signatures to GitHub Release
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
-      # Upload to GitHub Release using the `gh` CLI.
-      # `dist/` contains the built packages, and the
-      # sigstore-produced signatures and certificates.
-      run: >-
-        gh release upload
-        "$GITHUB_REF_NAME" dist/**
-        --repo "$GITHUB_REPOSITORY"
