@@ -7,10 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-06
 
 ### Bug Fixes
 
-- **remediate:** Fail closed when model calls fail; add `--no-ai`. **Behaviour change:** remediation no longer writes placeholder alt text ("Image description unavailable") or generic link text. Failed model-backed fixes are left unchanged and reported as `needs_review`, and the CLI exits `2` when any occurred (previously `0`). A one-time Bedrock preflight now stops the run with exit `1`, before writing output, when credentials, region or model access are missing. `--no-ai` (API `disable_ai=True`) applies deterministic fixes only. Also fixes duplicate skip links and keeps relative image paths such as `images/x.png`.
+- **audit:** Flag generic and file-name alt text (for example `chart`, `IMG_1234.jpg`, or alt equal to the image file name). Treat `alt=""`, `role="presentation"`/`"none"` and `aria-hidden="true"` as decorative and compliant. Passing items now have severity `info`. A check that raises is reported as a `check-error` issue instead of being skipped. New `wcag_version` setting (default `2.2`) relabels obsolete 4.1.1 findings to 4.1.2. ([#16](https://github.com/awslabs/content-accessibility-utility-on-aws/pull/16))
+- **deps:** Raise minimum versions so a fresh install can't resolve a known-vulnerable release: Pillow 13.0.0, pypdf 6.21.4, Flask 3.1.3, streamlit 1.66.1, strands-agents 1.48.0, strands-agents-tools 0.8.11, bedrock-agentcore 1.18.1. The old `[agent]` minimums could not install together; they now do. ([#14](https://github.com/awslabs/content-accessibility-utility-on-aws/pull/14))
+- **webapp:** `html_preview.py` now parses on Python 3.11. ([#13](https://github.com/awslabs/content-accessibility-utility-on-aws/pull/13))
+- **remediate:** Fail closed when model calls fail; add `--no-ai`. **Behaviour change:** remediation no longer writes placeholder alt text ("Image description unavailable") or generic link text. Failed model-backed fixes are left unchanged and reported as `needs_review`, and the CLI exits `2` when any occurred (previously `0`). A one-time Bedrock preflight now stops the run with exit `1`, before writing output, when credentials, region or model access are missing. `--no-ai` (API `disable_ai=True`) applies deterministic fixes only. Also fixes duplicate skip links and keeps relative image paths such as `images/x.png`. ([#15](https://github.com/awslabs/content-accessibility-utility-on-aws/pull/15))
+
+### CI
+
+- Dependabot version updates, CodeQL for Python and Actions, a ruff lint and format job, a CI job with the `[i18n,rendered]` extras and Chromium, and SHA-pinned actions. ([#13](https://github.com/awslabs/content-accessibility-utility-on-aws/pull/13))
 
 ## [1.1.1] - 2026-07-21
 
