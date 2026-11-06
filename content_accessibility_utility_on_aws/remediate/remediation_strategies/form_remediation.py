@@ -54,7 +54,7 @@ def remediate_missing_form_labels(
     if control_id:
         existing_label = soup.find("label", attrs={"for": control_id})
         if existing_label:
-            logger.debug(f"Form control already has a label")
+            logger.debug("Form control already has a label")
             return None
 
     # Generate an ID if one doesn't exist

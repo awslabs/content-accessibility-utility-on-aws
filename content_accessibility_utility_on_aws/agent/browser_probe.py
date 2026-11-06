@@ -179,7 +179,7 @@ class BrowserProbe(ABC):
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
-    def set_state_script(self, script: Optional[str]) -> None:  # pragma: no cover
+    def set_state_script(self, script: Optional[str]) -> None:  # noqa: B027  # pragma: no cover
         """Drive the page into a runtime state before probing (default no-op).
 
         Implementations backed by a real browser run ``script`` after each
@@ -188,7 +188,7 @@ class BrowserProbe(ABC):
         become observable. Probes without a JS runtime ignore it.
         """
 
-    def close(self) -> None:  # pragma: no cover - trivial
+    def close(self) -> None:  # noqa: B027  # pragma: no cover - trivial
         """Release any backend resources. Safe to call more than once."""
 
 

@@ -452,7 +452,7 @@ def remediate_html_accessibility(
                         main_content = combined_soup.find("main")
 
                         # Try to find a title in the first few pages
-                        for i, html_file in enumerate(sorted_html_files[:5]):
+                        for _i, html_file in enumerate(sorted_html_files[:5]):
                             try:
                                 rel_path = os.path.relpath(html_file, html_path)
                                 remediate_path = os.path.join(output_path, rel_path)

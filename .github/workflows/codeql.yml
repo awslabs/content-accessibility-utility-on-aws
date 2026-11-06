@@ -1,0 +1,50 @@
+# Copyright 2025 Amazon.com, Inc. or its affiliates.
+# SPDX-License-Identifier: Apache-2.0
+
+# Advanced CodeQL setup covering the Python package and the workflows.
+# NOTE: GitHub rejects uploads from an advanced workflow while CodeQL
+# "default setup" is enabled for the repository. A repo admin must set
+# Settings > Code security > CodeQL analysis to "Not configured" (or switch
+# to Advanced) for this workflow's results to be accepted.
+
+name: CodeQL
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  schedule:
+    - cron: "27 6 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["actions", "python"]
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        languages: ${{ matrix.language }}
+        build-mode: none
+        queries: security-extended
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      with:
+        category: "/language:${{ matrix.language }}"

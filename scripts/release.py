@@ -194,7 +194,7 @@ def do_rc_release(version: str, dry_run: bool) -> int:
     if dry_run:
         print("[DRY RUN] Would perform the following:")
         print(f"  1. Create tag: v{version}")
-        print(f"\nAfter running (without --dry-run):")
+        print("\nAfter running (without --dry-run):")
         print(f"  git push origin v{version}")
         return 0
 
@@ -204,9 +204,9 @@ def do_rc_release(version: str, dry_run: bool) -> int:
 
     print(f"\n{'=' * 50}")
     print("RC release prepared successfully!")
-    print(f"\nTo publish to TestPyPI, push the tag:")
+    print("\nTo publish to TestPyPI, push the tag:")
     print(f"  git push origin v{version}")
-    print(f"\nThe GitHub Action will inject the version during build.")
+    print("\nThe GitHub Action will inject the version during build.")
     print(f"{'=' * 50}\n")
 
     return 0
@@ -225,9 +225,9 @@ def do_prod_release(version: str, dry_run: bool) -> int:
         print("[DRY RUN] Would perform the following:")
         print(f"  1. Update version in {VERSION_FILE.name}")
         print(f"  2. Generate changelog in {CHANGELOG_FILE.name}")
-        print(f"  3. Commit changes")
+        print("  3. Commit changes")
         print(f"  4. Create tag: v{version}")
-        print(f"\nAfter running (without --dry-run):")
+        print("\nAfter running (without --dry-run):")
         print(f"  git push origin v{version}")
         return 0
 
@@ -250,7 +250,7 @@ def do_prod_release(version: str, dry_run: bool) -> int:
 
     print(f"\n{'=' * 50}")
     print("Production release prepared successfully!")
-    print(f"\nTo publish to PyPI and create GitHub Release, push the tag:")
+    print("\nTo publish to PyPI and create GitHub Release, push the tag:")
     print(f"  git push origin v{version}")
     print(f"{'=' * 50}\n")
 

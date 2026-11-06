@@ -415,7 +415,7 @@ class RemediationManager:
                                     modified = True
 
                             if modified:
-                                return f"Added scope attributes to table header cells using fallback method"
+                                return "Added scope attributes to table header cells using fallback method"
                         else:
                             # If we can't find the specific table, apply to ALL tables as a last resort
                             logger.warning(

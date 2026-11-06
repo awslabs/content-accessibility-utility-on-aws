@@ -405,7 +405,7 @@ def copy_images_to_extracted_html_dir(
 
     # Find the BDA output directory with the images
     bda_output_dir = None
-    for root, dirs, files in os.walk(output_dir):
+    for root, _dirs, files in os.walk(output_dir):
         if "standard_output" in root and "assets" in root:
             if any(f.endswith(".png") or f.endswith(".jpg") for f in files):
                 bda_output_dir = root

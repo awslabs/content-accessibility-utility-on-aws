@@ -129,7 +129,7 @@ RESPONSE FORMAT:
 """
         else:
             # Generic prompt for other issue types
-            prompt += f"""TASK: Fix the accessibility issue in the HTML element.
+            prompt += """TASK: Fix the accessibility issue in the HTML element.
 
 RESPONSE FORMAT:
 ```html

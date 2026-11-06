@@ -100,7 +100,7 @@ def fix_image_src_attributes(soup, element, image_dir=None):
                 # Try to find the source file in other locations if it doesn't exist
                 if not os.path.exists(src_file):
                     # Look for the file in the image_dir structure
-                    for root, dirs, files in os.walk(image_dir):
+                    for root, _dirs, files in os.walk(image_dir):
                         for file in files:
                             if file == expected_filename or file == image_filename:
                                 src_file = os.path.join(root, file)

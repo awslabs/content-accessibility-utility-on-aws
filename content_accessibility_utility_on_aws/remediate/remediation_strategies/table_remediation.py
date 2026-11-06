@@ -131,7 +131,7 @@ def remediate_table_headers_id(
     Returns:
         A message describing the remediation, or None if no remediation was performed
     """
-    logger.debug(f"Remediating missing header IDs in table")
+    logger.debug("Remediating missing header IDs in table")
     table = get_table_from_issue(soup, issue)
     if not table:
         logger.warning("Could not find table element for remediation")
@@ -438,7 +438,7 @@ def remediate_table_missing_scope(
                 fallback_total += 1
 
             if modified:
-                logger.debug(f"Added scope attributes to table header cells")
+                logger.debug("Added scope attributes to table header cells")
                 tables_modified += 1
 
         if tables_modified > 0:

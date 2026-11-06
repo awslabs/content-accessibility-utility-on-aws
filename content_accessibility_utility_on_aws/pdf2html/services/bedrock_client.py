@@ -491,7 +491,7 @@ class ExtendedBDAClient(BDAClient):
 
             # Debug: List all files in the output directory
             logger.debug("Listing all files in output directory:")
-            for root, dirs, files in os.walk(output_dir):
+            for root, _dirs, files in os.walk(output_dir):
                 for file in files:
                     logger.debug(f"  {os.path.join(root, file)}")
 
@@ -749,7 +749,7 @@ class ExtendedBDAClient(BDAClient):
 
         # Find all image files in the output directory
         image_files = []
-        for root, dirs, files in os.walk(output_dir):
+        for root, _dirs, files in os.walk(output_dir):
             for file in files:
                 if file.endswith(".png") or file.endswith(".jpg"):
                     image_files.append(os.path.join(root, file))

@@ -30,7 +30,7 @@ def normalize_path(path):
         The normalized path
     """
     if path is None:
-        logger.debug(f"normalize_path: Received None path")
+        logger.debug("normalize_path: Received None path")
         return None
 
     # First apply standard normalization

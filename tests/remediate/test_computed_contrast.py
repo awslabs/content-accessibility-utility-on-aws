@@ -17,7 +17,6 @@ from content_accessibility_utility_on_aws.utils.color_contrast import (
     contrast_ratio,
     parse_color,
     relative_luminance,
-    to_hex,
 )
 from content_accessibility_utility_on_aws.remediate.remediation_strategies.interactive_remediation import (
     remediate_computed_contrast,
