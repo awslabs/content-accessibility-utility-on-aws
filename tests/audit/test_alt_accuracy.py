@@ -74,7 +74,10 @@ def test_descriptive_alt_mentioning_kind_is_compliant(alt):
 def test_generic_alt_reason_explains_why():
     assert generic_alt_reason("chart") == "generic word"
     assert generic_alt_reason("IMG_1234.jpg") == "file name"
-    assert generic_alt_reason("sales-map", "img/sales-map.svg") == "same as image file name"
+    assert (
+        generic_alt_reason("sales-map", "img/sales-map.svg")
+        == "same as image file name"
+    )
     assert generic_alt_reason("Map of sales by region", "img/sales-map.svg") == ""
 
 
@@ -207,7 +210,9 @@ def test_inaccessible_fixture_alt_recall():
     report = AccessibilityAuditor(html_path=FIXTURE).audit()
     by_src = {}
     for issue in report["issues"]:
-        if issue["wcag_criterion"] != "1.1.1" or issue["type"].startswith("missing-figure"):
+        if issue["wcag_criterion"] != "1.1.1" or issue["type"].startswith(
+            "missing-figure"
+        ):
             continue
         attrs = (issue.get("context") or {}).get("attributes") or {}
         src = attrs.get("src") or ""

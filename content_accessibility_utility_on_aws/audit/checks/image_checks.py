@@ -41,7 +41,9 @@ _IMAGE_EXTENSIONS = r"(?:png|jpe?g|gif|svg|webp|bmp|tiff?|avif|heic)"
 # "IMG_1234.jpg", "chart-a.png", "DSC00042.JPG"
 _FILENAME_ALT = re.compile(rf"^[\w\-. ]+\.{_IMAGE_EXTENSIONS}$", re.IGNORECASE)
 # Camera-style names without an extension: "IMG_1234", "DSC00042", "PXL_2024..."
-_CAMERA_NAME_ALT = re.compile(r"^(?:img|dsc|dscn|dcim|pxl|photo|image)[_\-]?\d+$", re.IGNORECASE)
+_CAMERA_NAME_ALT = re.compile(
+    r"^(?:img|dsc|dscn|dcim|pxl|photo|image)[_\-]?\d+$", re.IGNORECASE
+)
 
 
 def _src_basename(src: str) -> str:

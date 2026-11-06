@@ -140,7 +140,8 @@ def _audit_to_file(html_path, tmp_path, monkeypatch, capsys):
     """Write an audit report the way users do: with the CLI audit command."""
     report_path = tmp_path / "audit.json"
     rc = _run_cli(
-        monkeypatch, ["audit", "-i", str(html_path), "-o", str(report_path), "-f", "json"]
+        monkeypatch,
+        ["audit", "-i", str(html_path), "-o", str(report_path), "-f", "json"],
     )
     assert rc == 0
     assert json.loads(report_path.read_text(encoding="utf-8"))["issues"]
@@ -252,7 +253,10 @@ def test_stubbed_model_success_still_writes_alt_text(tmp_path, monkeypatch):
 def test_short_text_raises_needs_review_when_model_call_fails():
     with pytest.raises(NeedsReviewError) as exc:
         generate_short_text(
-            _FailingClient(), instruction="x", context="ctx", purpose="heading_generation"
+            _FailingClient(),
+            instruction="x",
+            context="ctx",
+            purpose="heading_generation",
         )
     assert exc.value.model_failed
 
@@ -289,7 +293,9 @@ def test_empty_fragment_link_is_not_given_generic_text():
     soup = BeautifulSoup(
         "<html><body><div><a href='#settings'></a></div></body></html>", "html.parser"
     )
-    issue = make_issue("empty-link-text", path="html > body > div > a", element="a", href="#settings")
+    issue = make_issue(
+        "empty-link-text", path="html > body > div > a", element="a", href="#settings"
+    )
     with pytest.raises(NeedsReviewError):
         remediate_empty_link_text(soup, issue)
     assert soup.find("a").get_text() == ""
@@ -307,8 +313,16 @@ def test_cli_without_credentials_fails_fast_and_writes_nothing(
 
     rc = _run_cli(
         monkeypatch,
-        ["remediate", "-i", str(html_path), "-o", str(out),
-         "--audit-report", str(report_path), "--auto-fix"],
+        [
+            "remediate",
+            "-i",
+            str(html_path),
+            "-o",
+            str(out),
+            "--audit-report",
+            str(report_path),
+            "--auto-fix",
+        ],
     )
 
     assert rc != 0
@@ -316,15 +330,26 @@ def test_cli_without_credentials_fails_fast_and_writes_nothing(
     assert not out.exists()
 
 
-def test_cli_no_ai_applies_only_deterministic_fixes(tmp_path, monkeypatch, capsys, no_aws):
+def test_cli_no_ai_applies_only_deterministic_fixes(
+    tmp_path, monkeypatch, capsys, no_aws
+):
     html_path = _image_doc(tmp_path)
     report_path = _audit_to_file(html_path, tmp_path, monkeypatch, capsys)
     out = tmp_path / "out" / "remediated.html"
 
     rc = _run_cli(
         monkeypatch,
-        ["remediate", "-i", str(html_path), "-o", str(out),
-         "--audit-report", str(report_path), "--auto-fix", "--no-ai"],
+        [
+            "remediate",
+            "-i",
+            str(html_path),
+            "-o",
+            str(out),
+            "--audit-report",
+            str(report_path),
+            "--auto-fix",
+            "--no-ai",
+        ],
     )
 
     assert rc == 0
@@ -356,8 +381,16 @@ def test_cli_exits_2_when_model_fixes_fail(tmp_path, monkeypatch, capsys, no_aws
 
     rc = _run_cli(
         monkeypatch,
-        ["remediate", "-i", str(html_path), "-o", str(out),
-         "--audit-report", str(report_path), "--auto-fix"],
+        [
+            "remediate",
+            "-i",
+            str(html_path),
+            "-o",
+            str(out),
+            "--audit-report",
+            str(report_path),
+            "--auto-fix",
+        ],
     )
 
     assert rc == cli.EXIT_MODEL_FAILURES == 2
@@ -371,7 +404,9 @@ def test_cli_exits_2_when_model_fixes_fail(tmp_path, monkeypatch, capsys, no_aws
 
 
 def test_landmark_fixes_add_a_single_skip_link():
-    soup = BeautifulSoup("<html><head></head><body><p>Hi</p></body></html>", "html.parser")
+    soup = BeautifulSoup(
+        "<html><head></head><body><p>Hi</p></body></html>", "html.parser"
+    )
     remediate_missing_main_landmark(soup, make_issue("missing-main-landmark"))
     remediate_missing_footer_landmark(soup, make_issue("missing-footer-landmark"))
     remediate_missing_skip_link(soup, make_issue("missing-skip-link"))
