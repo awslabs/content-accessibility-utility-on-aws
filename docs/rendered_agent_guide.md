@@ -358,7 +358,7 @@ connect failure does not leak a managed session.
   contrast (1.4.3 / 1.4.11), name-role-value on custom widgets (4.1.2), and focus
   order / positive tabindex (2.4.3), plus model-authored accessible names, link
   text, and image alt text. Some fixes are applied by the **static path only**
-  (no rendered re-verify) — notably duplicate ids (4.1.1) and structural issues
+  (no rendered re-verify) — notably duplicate ids (4.1.2 under WCAG 2.2, 4.1.1 under 2.1) and structural issues
   (headings, tables, landmarks, language, titles); those pages are not sent to
   the agent.
 - **Residual (needs human judgment):** issues that require a page-behavior change

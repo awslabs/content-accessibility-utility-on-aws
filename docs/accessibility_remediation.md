@@ -88,7 +88,8 @@ The remediation process uses specialized templates for common accessibility issu
 | Issue Type | Description | WCAG Criterion |
 |------------|-------------|----------------|
 | `missing-alt-text` | Images missing alternative text | 1.1.1 |
-| `empty-alt-text` | Non-decorative images with empty alt text | 1.1.1 |
+| `empty-alt-text` | Non-decorative images with empty alt text (the audit itself treats `alt=""` as decorative and does not emit this; it can come from other report sources) | 1.1.1 |
+| `generic-alt-text` | Alt text that names the image kind ("chart", "image"), a file name ("IMG_1234.jpg"), or the image's own file name | 1.1.1 |
 | `missing-title` | Document missing a title element | 2.4.2 |
 | `skipped-heading-level` | Heading levels that skip (e.g., h1 to h3) | 1.3.1 |
 | `empty-heading` | Headings with no content | 1.3.1 |
@@ -96,7 +97,7 @@ The remediation process uses specialized templates for common accessibility issu
 | `table-missing-scope` | Table headers missing scope attribute | 1.3.1 |
 | `target-size-too-small` | Interactive targets smaller than 24×24 CSS px (WCAG 2.2) | 2.5.8 |
 | `duplicate-link-text-different-url` | Same link text pointing to different URLs | 2.4.9 |
-| Various ARIA issues | Improper ARIA attribute usage | 4.1.1, 4.1.2 |
+| Various ARIA issues | Improper ARIA attribute usage | 4.1.2 |
 | Various form issues | Form fields missing labels or accessible names | 1.3.1, 3.3.2 |
 
 The system can process additional issue types using a generic remediation template, but specialized templates provide better results.
@@ -116,7 +117,7 @@ detect them:
 | `missing-aria-state` | ARIA role missing its required state (e.g. `aria-checked`) | 4.1.2 |
 | `invalid-aria-structure` | ARIA role missing its required parent (e.g. `tab` without `tablist`) | 4.1.2 |
 | `focus-order-broken` | Positive `tabindex` distorts keyboard focus order | 2.4.3 |
-| `duplicate-id` | Colliding element ids break `label[for]`/aria references | 4.1.1 |
+| `duplicate-id` | Colliding element ids break `label[for]`/aria references | 4.1.2 (4.1.1 under WCAG 2.1) |
 
 When the accessibility **agent** is used, each such fix is applied, the page is
 re-rendered, and the fix is **verified** by a deterministic re-probe before the

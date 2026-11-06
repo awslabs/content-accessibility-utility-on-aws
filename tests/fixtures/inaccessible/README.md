@@ -22,7 +22,7 @@ Files:
 | 2.4.2 | no `<title>` |
 | 1.4.3 | low-contrast text defined in the stylesheet (static analysis misses; rendered audit catches) |
 | 2.4.7 | `outline:none` on all controls — no visible focus indicator |
-| 1.1.1 | logo/chart images with missing, empty, and generic (`alt="chart"`) alt |
+| 1.1.1 | logo/chart images with missing, empty, and generic (`alt="chart"`) alt. The audit flags the missing and generic alt. `alt=""` is the valid decorative marker, so the empty-alt chart is reported as decorative: whether it is actually informative needs human review |
 | 1.3.1 | heading jumps h1→h4; data table with no `<th>`/scope/caption; no landmarks |
 | 2.4.4 | link text "click here" / "read more" / a bare URL |
 | 4.1.2 | `div`/`span` "buttons" and a toggle with no role, name, or state |
